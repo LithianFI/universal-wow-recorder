@@ -5,7 +5,7 @@ AI used extensively to get the understanding of the basics. Works as a proof of 
 What currently works:
 Software detects the latest combatlog file and monitors it. When boss encounter starts it will tell OBS to start recording. Once the encounte ends, the recording continues for 3 more seconds before stop.
 What needs to be done:
-- Config
+- ~~Config~~
 - Basic gui (?)
 - Maybe attempt to integrate with WarcraftRecorder so that the replays are send to the cloud storage there
 
