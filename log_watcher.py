@@ -5,7 +5,7 @@ from threading import Event, Thread
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
-from config import Config
+from config_manager import ConfigManager
 from combat_parser import CombatParser
 
 class LogTailer:
@@ -57,7 +57,9 @@ class LogDirHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         fname = os.path.basename(event.src_path)
-        if Config.LOG_PATTERN.match(fname):
+        
+        # Use config manager's pattern
+        if self.parser.config.LOG_PATTERN.match(fname):
             print(f"[WATCHER] New combat-log detected: {fname}")
             self._start_new_tail(Path(event.src_path))
 

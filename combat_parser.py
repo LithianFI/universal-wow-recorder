@@ -6,12 +6,12 @@ import re
 import threading
 from datetime import datetime
 from pathlib import Path
-from config import Config
 
 class CombatParser:
-    def __init__(self, obs_client, state_manager):
+    def __init__(self, obs_client, state_manager, config_manager):
         self.obs_client = obs_client
         self.state = state_manager
+        self.config = config_manager
         self.last_recording_path = None
         
     def _clean_boss_name(self, boss_name):
@@ -58,7 +58,7 @@ class CombatParser:
         time_str = timestamp.strftime("%H-%M-%S")
         
         # Create filename
-        filename = f"{date_str}_{time_str}_{clean_boss}_{difficulty_name}{Config.RECORDING_EXTENSION}"
+        filename = f"{date_str}_{time_str}_{clean_boss}_{difficulty_name}{self.config.RECORDING_EXTENSION}"
         return filename
     
     def _find_latest_recording_file(self):
@@ -66,14 +66,33 @@ class CombatParser:
         try:
             # Get recording directory from OBS
             settings = self.obs_client.get_recording_settings()
-            if not settings or 'record_directory' not in settings:
-                print("[RENAME] Could not get recording directory")
-                return None
+            record_dir = None
             
-            record_dir = Path(settings['record_directory'])
+            if settings and 'record_directory' in settings:
+                record_dir = Path(settings['record_directory'])
+                print(f"[RENAME] Using OBS recording directory: {record_dir}")
+            else:
+                # Use fallback from config
+                fallback_path = self.config.RECORDING_PATH_FALLBACK
+                if fallback_path:
+                    record_dir = fallback_path
+                    print(f"[RENAME] OBS directory not detected, using fallback: {record_dir}")
+                else:
+                    print("[RENAME] Could not get recording directory from OBS and no fallback configured")
+                    return None
+            
             if not record_dir.exists():
                 print(f"[RENAME] Recording directory not found: {record_dir}")
-                return None
+                # Try to create it if it's the fallback path
+                if record_dir == self.config.RECORDING_PATH_FALLBACK:
+                    try:
+                        record_dir.mkdir(parents=True, exist_ok=True)
+                        print(f"[RENAME] Created recording directory: {record_dir}")
+                    except Exception as e:
+                        print(f"[RENAME] Failed to create directory: {e}")
+                        return None
+                else:
+                    return None
             
             # Look for video files (common extensions)
             video_extensions = {'.mp4', '.mkv', '.flv', '.mov', '.ts', '.m3u8', '.avi', '.wmv'}
@@ -99,11 +118,15 @@ class CombatParser:
     def _rename_recording_file(self, boss_name, difficulty_id):
         """Rename the recording file with boss information (called after delay)"""
         try:
+            if not self.config.AUTO_RENAME:
+                print(f"[RENAME] Auto-rename disabled in config, skipping")
+                return
+                
             print(f"[RENAME] Starting rename process for {boss_name}...")
             
             # Wait a moment to ensure OBS has finished writing
-            # OBS might still be writing the file for a few seconds after stop_record()
-            time.sleep(3)
+            # Use delay from config
+            time.sleep(self.config.RENAME_DELAY)
             
             # Find the latest recording file
             recording_path = self._find_latest_recording_file()
@@ -138,14 +161,18 @@ class CombatParser:
             new_filename = self._generate_filename(boss_name, difficulty_name, file_time)
             new_path = recording_path.parent / new_filename
             
-            # Check if file already exists
+            # Check if file already exists (with max attempts from config)
             counter = 1
-            while new_path.exists():
+            while new_path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
                 # For duplicate names, add attempt counter
                 boss_with_counter = f"{boss_name}_attempt{counter}"
                 new_filename = self._generate_filename(boss_with_counter, difficulty_name, file_time)
                 new_path = recording_path.parent / new_filename
                 counter += 1
+            
+            if new_path.exists():
+                print(f"[RENAME] Max rename attempts ({self.config.MAX_RENAME_ATTEMPTS}) reached, keeping original name")
+                return
             
             # Rename the file
             recording_path.rename(new_path)
@@ -161,6 +188,10 @@ class CombatParser:
     
     def _start_rename_thread(self, boss_name, difficulty_id):
         """Start a thread to rename the recording file after a delay"""
+        if not self.config.AUTO_RENAME:
+            print(f"[RENAME] Auto-rename disabled, not renaming {boss_name}")
+            return
+            
         rename_thread = threading.Thread(
             target=self._rename_recording_file,
             args=(boss_name, difficulty_id),
@@ -202,8 +233,9 @@ class CombatParser:
                 instance_id = int(fields[5])
                 
                 # Apply boss name override if configured
-                if boss_id in Config.BOSS_NAME_OVERRIDES:
-                    boss_name = Config.BOSS_NAME_OVERRIDES[boss_id]
+                overrides = self.config.BOSS_NAME_OVERRIDES
+                if boss_id in overrides:
+                    boss_name = overrides[boss_id]
                 
                 if not self.state.recording:
                     print(f"[INFO] ENCOUNTER_START: {boss_name} (ID: {boss_id}) at {ts_part}")

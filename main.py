@@ -1,29 +1,75 @@
 #!/usr/bin/env python3
-# main.py
+# main.py (updated with config validation)
 import time
+import argparse
 from watchdog.observers import Observer
 from pathlib import Path
 
-from config import Config
+from config_manager import ConfigManager
 from obs_client import OBSClient
 from state_manager import RecordingState
 from combat_parser import CombatParser
 from log_watcher import LogDirHandler
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description='WoW Raid Recorder')
+    parser.add_argument('--config', '-c', type=str, 
+                       help='Path to configuration file')
+    parser.add_argument('--show-config', action='store_true',
+                       help='Show current configuration and exit')
+    parser.add_argument('--no-rename', action='store_true',
+                       help='Disable auto-renaming of recordings')
+    parser.add_argument('--create-config', action='store_true',
+                       help='Create a default config file and exit')
+    return parser.parse_args()
+
 def main():
-    # Validate log directory exists
-    if not Config.LOG_DIR.is_dir():
-        raise RuntimeError(f"Log directory not found: {Config.LOG_DIR}")
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Handle --create-config flag
+    if args.create_config:
+        config_path = Path(args.config) if args.config else None
+        config = ConfigManager(config_path)
+        print(f"[CONFIG] Configuration file created at: {config.config_path}")
+        print("[CONFIG] Please edit the file and run the program again.")
+        return
+    
+    # Initialize configuration manager
+    config_path = Path(args.config) if args.config else None
+    config = ConfigManager(config_path)
+    
+    # Apply command line overrides
+    if args.no_rename:
+        config.set('Recording', 'auto_rename', 'false')
+        print("[CONFIG] Auto-rename disabled via command line")
+    
+    # Show configuration if requested
+    if args.show_config:
+        config.print_config()
+        return
+    
+    # Validate configuration
+    errors = config.validate_config()
+    if errors:
+        print("[ERROR] Configuration errors found:")
+        for section, section_errors in errors.items():
+            print(f"  [{section}]")
+            for error in section_errors:
+                print(f"    - {error}")
+        print("\nPlease fix these errors in your config file and try again.")
+        return
 
     # Initialize components
     obs_client = OBSClient(
-        host=Config.OBS_HOST,
-        port=Config.OBS_PORT,
-        password=Config.OBS_PASSWORD
+        host=config.OBS_HOST,
+        port=config.OBS_PORT,
+        password=config.OBS_PASSWORD
     )
     
     state_manager = RecordingState()
-    parser = CombatParser(obs_client, state_manager)
+    parser = CombatParser(obs_client, state_manager, config)
     log_handler = LogDirHandler(parser)
     
     # Connect to OBS
@@ -34,22 +80,40 @@ def main():
         settings = obs_client.get_recording_settings()
         if settings and 'record_directory' in settings:
             print(f"[OBS] Recording directory: {settings['record_directory']}")
+        elif config.RECORDING_PATH_FALLBACK:
+            print(f"[OBS] Using fallback recording path: {config.RECORDING_PATH_FALLBACK}")
+        else:
+            print("[OBS] Warning: No recording directory configured or detected")
         
     except Exception as e:
         print(f"Failed to connect to OBS: {e}")
+        print("Please ensure:")
+        print("1. OBS is running")
+        print("2. OBS WebSocket server is enabled (Tools -> WebSocket Server Settings)")
+        print("3. Host, port, and password in config match OBS settings")
         return
 
     # Start directory observer
     observer = Observer()
-    observer.schedule(log_handler, str(Config.LOG_DIR), recursive=False)
+    observer.schedule(log_handler, str(config.LOG_DIR), recursive=False)
     observer.start()
-    print(f"[INIT] Watching directory: {Config.LOG_DIR}")
-    print(f"[INIT] Recordings will be named as: YYYY-MM-DD_HH-MM-SS_BossName_Difficulty.mp4")
+    print(f"[INIT] Watching directory: {config.LOG_DIR}")
+    print(f"[INIT] Recordings will be named as: YYYY-MM-DD_HH-MM-SS_BossName_Difficulty{config.RECORDING_EXTENSION}")
+    if config.AUTO_RENAME:
+        print(f"[INIT] Auto-rename enabled (delay: {config.RENAME_DELAY}s)")
+    else:
+        print("[INIT] Auto-rename disabled")
+    
+    # Show recording path info
+    if config.RECORDING_PATH_FALLBACK:
+        print(f"[INIT] Fallback recording path: {config.RECORDING_PATH_FALLBACK}")
+        if not config.RECORDING_PATH_FALLBACK.exists():
+            print(f"[INIT] Warning: Fallback recording path does not exist")
 
     # Attach to the newest existing log file (if any)
     try:
         existing = sorted(
-            [p for p in Config.LOG_DIR.iterdir() if Config.LOG_PATTERN.match(p.name)],
+            [p for p in config.LOG_DIR.iterdir() if config.LOG_PATTERN.match(p.name)],
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
@@ -61,7 +125,6 @@ def main():
 
     # Main loop
     try:
-        print("Recorder running")
         while True:
             time.sleep(1)
             

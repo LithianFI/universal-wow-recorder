@@ -145,6 +145,21 @@ class OBSClient:
         except Exception as e:
             print(f"[OBS] Failed to get recording settings: {e}")
             return None
+        
+    def set_recording_path(self, path: str):
+        """Set OBS recording path (if you want to control it from config)"""
+        if not self.client:
+            raise ConnectionError("Not connected to OBS")
+        
+        try:
+            # Note: Setting recording path might require specific OBS version
+            # and might not be available in all WebSocket APIs
+            self.client.set_record_directory(record_directory=path)
+            print(f"[OBS] Recording path set to: {path}")
+            return True
+        except Exception as e:
+            print(f"[OBS] Failed to set recording path (may not be supported): {e}")
+            return False
     
     def get_last_recording_file(self):
         """Get the last recording file path (workaround method)"""
@@ -190,3 +205,5 @@ class OBSClient:
         except Exception as e:
             print(f"[OBS] Failed to get last recording file: {e}")
             return None
+        
+    
