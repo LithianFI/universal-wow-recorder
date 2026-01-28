@@ -1,4 +1,4 @@
-# combat_parser.py (updated with minimum duration check)
+# combat_parser.py (updated with difficulty filtering)
 import csv
 import io
 import time
@@ -31,6 +31,7 @@ class CombatParser:
             3: "Mythic",
             4: "Mythic+",
             5: "Timewalking",
+            7: "LFR",  # Looking For Raid
             9: "40Player",
             14: "Normal",
             15: "Heroic", 
@@ -115,6 +116,26 @@ class CombatParser:
             print(f"[ERROR] Failed to find recording file: {e}")
             return None
     
+    def _delete_short_recording(self, recording_path, recording_duration):
+        """Delete a recording that's too short"""
+        try:
+            if not recording_path.exists():
+                print(f"[CLEANUP] Recording file already doesn't exist: {recording_path}")
+                return False
+            
+            # Get file info before deletion
+            file_size = recording_path.stat().st_size
+            file_size_mb = file_size / (1024 * 1024)  # Convert to MB
+            
+            # Delete the file
+            recording_path.unlink()
+            print(f"[CLEANUP] Deleted short recording ({recording_duration}s, {file_size_mb:.2f}MB): {recording_path.name}")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to delete short recording {recording_path}: {e}")
+            return False
+    
     def _rename_recording_file(self, boss_name, difficulty_id, recording_duration):
         """Rename the recording file with boss information (called after delay)"""
         try:
@@ -122,12 +143,24 @@ class CombatParser:
                 print(f"[RENAME] Auto-rename disabled in config, skipping")
                 return
             
-            # Check minimum duration
-            MIN_RECORDING_DURATION = self.config.MIN_RECORDING_DURATION
-            if recording_duration < MIN_RECORDING_DURATION:
-                print(f"[RENAME] Recording too short ({recording_duration}s < {MIN_RECORDING_DURATION}s), skipping rename")
-                # Optionally, we could delete the short recording file here
-                # But for now, we'll just leave it with its original name
+            # Check minimum duration from config
+            min_duration = self.config.MIN_RECORDING_DURATION
+            if recording_duration < min_duration:
+                print(f"[RENAME] Recording too short ({recording_duration}s < {min_duration}s), will delete...")
+                
+                # Wait for OBS to finish writing
+                time.sleep(self.config.RENAME_DELAY)
+                
+                # Find the short recording file
+                recording_path = self._find_latest_recording_file()
+                if recording_path:
+                    # Delete the short recording if configured to do so
+                    if self.config.DELETE_SHORT_RECORDINGS:
+                        self._delete_short_recording(recording_path, recording_duration)
+                    else:
+                        print(f"[CLEANUP] Short recording kept (delete_short_recordings = false)")
+                else:
+                    print("[CLEANUP] Could not find short recording to delete")
                 return
                 
             print(f"[RENAME] Starting rename process for {boss_name} (duration: {recording_duration}s)...")
@@ -149,8 +182,12 @@ class CombatParser:
             
             # Get file size to check if it's a valid file (not empty or corrupted)
             file_size = recording_path.stat().st_size
+            file_size_mb = file_size / (1024 * 1024)  # Convert to MB
+            
             if file_size < 1024:  # Less than 1KB is likely corrupted/empty
-                print(f"[RENAME] Recording file too small ({file_size} bytes), likely corrupted, skipping rename")
+                print(f"[RENAME] Recording file too small ({file_size_mb:.2f}MB), likely corrupted, deleting...")
+                if self.config.DELETE_SHORT_RECORDINGS:
+                    self._delete_short_recording(recording_path, recording_duration)
                 return
             
             # Get file size and wait if it's still changing (OBS might still be writing)
@@ -190,7 +227,7 @@ class CombatParser:
             
             # Rename the file
             recording_path.rename(new_path)
-            print(f"[RENAME] Successfully renamed to: {new_filename}")
+            print(f"[RENAME] Successfully renamed {file_size_mb:.2f}MB file to: {new_filename}")
             
             # Update last recording path
             self.last_recording_path = str(new_path)
@@ -212,12 +249,18 @@ class CombatParser:
             daemon=True
         )
         rename_thread.start()
-        print(f"[RENAME] Started rename thread for {boss_name} (duration: {recording_duration}s)")
+        
+        # Log appropriate message based on duration
+        min_duration = self.config.MIN_RECORDING_DURATION
+        if recording_duration < min_duration:
+            print(f"[CLEANUP] Started cleanup thread for short recording ({recording_duration}s)")
+        else:
+            print(f"[RENAME] Started rename thread for {boss_name} (duration: {recording_duration}s)")
     
     def process_line(self, line: str):
         """
         Handles a single combat-log line that is CSV-formatted.
-        Starts on ENCOUNTER_START, stops on ENCOUNTER_END.
+        Starts on ENCOUNTER_START (if difficulty is enabled), stops on ENCOUNTER_END.
         """
         # 1️⃣ Split off the timestamp (everything before the double-space)
         try:
@@ -246,13 +289,20 @@ class CombatParser:
                 difficulty_id = int(fields[3])
                 instance_id = int(fields[5])
                 
+                # Check if this difficulty is enabled in config
+                if not self.config.is_difficulty_enabled(difficulty_id):
+                    difficulty_name = self._get_difficulty_name(difficulty_id)
+                    print(f"[INFO] Skipping {difficulty_name} encounter (ID: {difficulty_id}) - not enabled in config")
+                    return
+                
                 # Apply boss name override if configured
                 overrides = self.config.BOSS_NAME_OVERRIDES
                 if boss_id in overrides:
                     boss_name = overrides[boss_id]
                 
                 if not self.state.recording:
-                    print(f"[INFO] ENCOUNTER_START: {boss_name} (ID: {boss_id}) at {ts_part}")
+                    difficulty_name = self._get_difficulty_name(difficulty_id)
+                    print(f"[INFO] ENCOUNTER_START: {boss_name} ({difficulty_name}, ID: {boss_id}) at {ts_part}")
                     
                     # Store encounter details
                     self.state.start_encounter(boss_id, boss_name, difficulty_id, instance_id)
@@ -261,7 +311,7 @@ class CombatParser:
                     try:
                         self.obs_client.start_recording()
                         self.state.start_recording()
-                        print(f"[INFO] Recording started for {boss_name}")
+                        print(f"[INFO] Recording started for {boss_name} ({difficulty_name})")
                     except Exception as e:
                         print(f"[ERROR] Failed to start recording: {e}")
             return
@@ -282,13 +332,19 @@ class CombatParser:
                 # Stop recording
                 try:
                     self.obs_client.stop_recording()
-                    print(f"[INFO] Recording stopped for {boss_name} (duration: {recording_duration}s)")
                     
-                    # Start rename thread after recording stops (pass duration for validation)
+                    min_duration = self.config.MIN_RECORDING_DURATION
+                    if recording_duration < min_duration:
+                        print(f"[INFO] Short recording stopped ({recording_duration}s) - will be deleted")
+                    else:
+                        difficulty_name = self._get_difficulty_name(difficulty_id)
+                        print(f"[INFO] Recording stopped for {boss_name} ({difficulty_name}, duration: {recording_duration}s)")
+                    
+                    # Start rename/cleanup thread after recording stops (pass duration for validation)
                     if boss_name and difficulty_id:
                         self._start_rename_thread(boss_name, difficulty_id, recording_duration)
                     else:
-                        print(f"[INFO] No boss info available, not renaming")
+                        print(f"[INFO] No boss info available, not processing recording")
                     
                 except Exception as e:
                     print(f"[ERROR] Failed to stop recording: {e}")

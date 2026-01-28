@@ -99,10 +99,22 @@ def main():
     observer.start()
     print(f"[INIT] Watching directory: {config.LOG_DIR}")
     print(f"[INIT] Recordings will be named as: YYYY-MM-DD_HH-MM-SS_BossName_Difficulty{config.RECORDING_EXTENSION}")
+    
+    # Show difficulty settings
+    print(f"[INIT] Enabled difficulties:")
+    print(f"  - LFR: {'✓' if config.RECORD_LFR else '✗'}")
+    print(f"  - Normal: {'✓' if config.RECORD_NORMAL else '✗'}")
+    print(f"  - Heroic: {'✓' if config.RECORD_HEROIC else '✗'}")
+    print(f"  - Mythic: {'✓' if config.RECORD_MYTHIC else '✗'}")
+    print(f"  - Other: {'✓' if config.RECORD_OTHER else '✗'}")
+    
     if config.AUTO_RENAME:
         print(f"[INIT] Auto-rename enabled (delay: {config.RENAME_DELAY}s)")
     else:
         print("[INIT] Auto-rename disabled")
+    
+    # Show recording cleanup settings
+    print(f"[INIT] Short recording cleanup: {'✓' if config.DELETE_SHORT_RECORDINGS else '✗'} (min: {config.MIN_RECORDING_DURATION}s)")
     
     # Show recording path info
     if config.RECORDING_PATH_FALLBACK:

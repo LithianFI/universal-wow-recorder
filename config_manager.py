@@ -1,9 +1,9 @@
-# config_manager.py (fixed interpolation issue)
+# config_manager.py (updated with difficulty filtering)
 import os
 import re
 import configparser
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 
 class ConfigManager:
     def __init__(self, config_path: Optional[Path] = None):
@@ -41,8 +41,16 @@ class ConfigManager:
                 'rename_delay': '3',  # seconds
                 'max_rename_attempts': '10',
                 'min_recording_duration': '5',  # Minimum seconds to save a recording
+                'delete_short_recordings': 'true',  # Whether to delete short recordings
                 # Default OBS recording paths for different OS
                 'recording_path_fallback': self._get_default_recording_path(),
+            },
+            'Difficulties': {
+                'record_lfr': 'false',
+                'record_normal': 'true',
+                'record_heroic': 'true',
+                'record_mythic': 'true',
+                'record_other': 'false',  # Other difficulties like Timewalking, Mythic+, etc.
             },
             'BossNames': {
                 # These will be added dynamically based on overrides
@@ -119,11 +127,23 @@ auto_rename = true
 rename_delay = 3
 # Maximum attempts before giving up on finding the recording file
 max_rename_attempts = 10
-# Minimum seconds to save a recording
-min_recording_duration: 5  
+# Minimum recording duration in seconds (shorter recordings will be deleted)
+min_recording_duration = 5
+# Delete recordings that are shorter than min_recording_duration
+delete_short_recordings = true
 # Fallback recording path if OBS recording directory cannot be detected
 # Set to empty to always use OBS detected directory
 recording_path_fallback = {recording_path}
+
+[Difficulties]
+# Which raid difficulties to record
+# Set to true to record, false to ignore
+record_lfr = false
+record_normal = true
+record_heroic = true
+record_mythic = true
+# Other difficulties include: Timewalking, Mythic+, etc.
+record_other = false
 
 [BossNames]
 # Boss ID to name overrides (optional)
@@ -223,12 +243,76 @@ recording_path_fallback = {recording_path}
         return self.config.getint('Recording', 'max_rename_attempts', fallback=10)
     
     @property
+    def MIN_RECORDING_DURATION(self) -> int:
+        return self.config.getint('Recording', 'min_recording_duration', fallback=5)
+    
+    @property
+    def DELETE_SHORT_RECORDINGS(self) -> bool:
+        return self.config.getboolean('Recording', 'delete_short_recordings', fallback=True)
+    
+    @property
     def RECORDING_PATH_FALLBACK(self) -> Optional[Path]:
         """Get fallback recording path from config"""
         path_str = self.config.get('Recording', 'recording_path_fallback', fallback='', raw=True)
         if path_str and path_str.strip():
             return self._sanitize_path(path_str.strip())
         return None
+    
+    # Difficulty filtering properties
+    @property
+    def RECORD_LFR(self) -> bool:
+        return self.config.getboolean('Difficulties', 'record_lfr', fallback=False)
+    
+    @property
+    def RECORD_NORMAL(self) -> bool:
+        return self.config.getboolean('Difficulties', 'record_normal', fallback=True)
+    
+    @property
+    def RECORD_HEROIC(self) -> bool:
+        return self.config.getboolean('Difficulties', 'record_heroic', fallback=True)
+    
+    @property
+    def RECORD_MYTHIC(self) -> bool:
+        return self.config.getboolean('Difficulties', 'record_mythic', fallback=True)
+    
+    @property
+    def RECORD_OTHER(self) -> bool:
+        return self.config.getboolean('Difficulties', 'record_other', fallback=False)
+    
+    def get_enabled_difficulties(self) -> Set[int]:
+        """Get a set of enabled difficulty IDs based on config"""
+        enabled = set()
+        
+        # Difficulty ID mapping based on WoW combat logs
+        # Note: WoW uses different IDs for the same difficulty in different contexts
+        # We'll check against all known IDs for each difficulty
+        
+        # LFR - Looking For Raid
+        if self.RECORD_LFR:
+            enabled.update([7, 17])
+        
+        # Normal
+        if self.RECORD_NORMAL:
+            enabled.update([1, 14])
+        
+        # Heroic
+        if self.RECORD_HEROIC:
+            enabled.update([2, 15])
+        
+        # Mythic
+        if self.RECORD_MYTHIC:
+            enabled.update([3, 16, 23])
+        
+        # Other difficulties (Timewalking, Mythic+, etc.)
+        if self.RECORD_OTHER:
+            enabled.update([4, 5, 8, 9, 24, 33])  # Mythic+, Timewalking, etc.
+        
+        return enabled
+    
+    def is_difficulty_enabled(self, difficulty_id: int) -> bool:
+        """Check if a specific difficulty ID is enabled"""
+        enabled = self.get_enabled_difficulties()
+        return difficulty_id in enabled
     
     @property
     def BOSS_NAME_OVERRIDES(self) -> Dict[int, str]:
@@ -242,10 +326,6 @@ recording_path_fallback = {recording_path}
                 except ValueError:
                     continue
         return overrides
-    
-    @property
-    def MIN_RECORDING_DURATION(self) -> int:
-        return self.config.getint('Recording', 'min_recording_duration', fallback=5)
     
     def set_boss_name_override(self, boss_id: int, name: str):
         """Set a boss name override"""
@@ -279,6 +359,17 @@ recording_path_fallback = {recording_path}
                     print(f"  {key} = [HIDDEN]")
                 else:
                     print(f"  {key} = {value}")
+        
+        # Also print enabled difficulties summary
+        print("\n[Enabled Difficulties]")
+        enabled = self.get_enabled_difficulties()
+        print(f"  LFR: {'✓' if self.RECORD_LFR else '✗'}")
+        print(f"  Normal: {'✓' if self.RECORD_NORMAL else '✗'}")
+        print(f"  Heroic: {'✓' if self.RECORD_HEROIC else '✗'}")
+        print(f"  Mythic: {'✓' if self.RECORD_MYTHIC else '✗'}")
+        print(f"  Other: {'✓' if self.RECORD_OTHER else '✗'}")
+        print(f"  Total enabled difficulty IDs: {len(enabled)}")
+        
         print("=============================\n")
     
     def validate_config(self) -> Dict[str, List[str]]:
