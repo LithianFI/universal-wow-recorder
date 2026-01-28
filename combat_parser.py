@@ -3,7 +3,9 @@ import csv
 import io
 import time
 import re
+import threading
 from datetime import datetime
+from pathlib import Path
 from config import Config
 
 class CombatParser:
@@ -25,13 +27,13 @@ class CombatParser:
         """Convert difficulty ID to readable name"""
         difficulties = {
             1: "Normal",
-            2: "Heroic",
+            2: "Heroic", 
             3: "Mythic",
             4: "Mythic+",
             5: "Timewalking",
             9: "40Player",
             14: "Normal",
-            15: "Heroic",
+            15: "Heroic", 
             16: "Mythic",
             17: "LFR",
             18: "Event",
@@ -58,6 +60,114 @@ class CombatParser:
         # Create filename
         filename = f"{date_str}_{time_str}_{clean_boss}_{difficulty_name}{Config.RECORDING_EXTENSION}"
         return filename
+    
+    def _find_latest_recording_file(self):
+        """Find the most recent recording file in OBS recording directory"""
+        try:
+            # Get recording directory from OBS
+            settings = self.obs_client.get_recording_settings()
+            if not settings or 'record_directory' not in settings:
+                print("[RENAME] Could not get recording directory")
+                return None
+            
+            record_dir = Path(settings['record_directory'])
+            if not record_dir.exists():
+                print(f"[RENAME] Recording directory not found: {record_dir}")
+                return None
+            
+            # Look for video files (common extensions)
+            video_extensions = {'.mp4', '.mkv', '.flv', '.mov', '.ts', '.m3u8', '.avi', '.wmv'}
+            video_files = []
+            
+            for file in record_dir.iterdir():
+                if file.suffix.lower() in video_extensions and file.is_file():
+                    video_files.append(file)
+            
+            if not video_files:
+                print(f"[RENAME] No video files found in {record_dir}")
+                return None
+            
+            # Return the most recently modified file
+            latest_file = max(video_files, key=lambda f: f.stat().st_mtime)
+            print(f"[RENAME] Found latest recording: {latest_file.name}")
+            return latest_file
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to find recording file: {e}")
+            return None
+    
+    def _rename_recording_file(self, boss_name, difficulty_id):
+        """Rename the recording file with boss information (called after delay)"""
+        try:
+            print(f"[RENAME] Starting rename process for {boss_name}...")
+            
+            # Wait a moment to ensure OBS has finished writing
+            # OBS might still be writing the file for a few seconds after stop_record()
+            time.sleep(3)
+            
+            # Find the latest recording file
+            recording_path = self._find_latest_recording_file()
+            if not recording_path:
+                print("[RENAME] Could not find recording file to rename")
+                return
+            
+            # Verify the file exists and is not still being written
+            if not recording_path.exists():
+                print(f"[RENAME] Recording file disappeared: {recording_path}")
+                return
+            
+            # Get file size and wait if it's still changing (OBS might still be writing)
+            initial_size = recording_path.stat().st_size
+            time.sleep(1)
+            final_size = recording_path.stat().st_size
+            
+            if initial_size != final_size:
+                print("[RENAME] File size still changing, waiting...")
+                time.sleep(2)
+                final_size = recording_path.stat().st_size
+                
+                if initial_size != final_size:
+                    print("[RENAME] File still being written, aborting rename")
+                    return
+            
+            # Get difficulty name
+            difficulty_name = self._get_difficulty_name(difficulty_id)
+            
+            # Generate new filename
+            file_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
+            new_filename = self._generate_filename(boss_name, difficulty_name, file_time)
+            new_path = recording_path.parent / new_filename
+            
+            # Check if file already exists
+            counter = 1
+            while new_path.exists():
+                # For duplicate names, add attempt counter
+                boss_with_counter = f"{boss_name}_attempt{counter}"
+                new_filename = self._generate_filename(boss_with_counter, difficulty_name, file_time)
+                new_path = recording_path.parent / new_filename
+                counter += 1
+            
+            # Rename the file
+            recording_path.rename(new_path)
+            print(f"[RENAME] Successfully renamed to: {new_filename}")
+            
+            # Update last recording path
+            self.last_recording_path = str(new_path)
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to rename recording file: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _start_rename_thread(self, boss_name, difficulty_id):
+        """Start a thread to rename the recording file after a delay"""
+        rename_thread = threading.Thread(
+            target=self._rename_recording_file,
+            args=(boss_name, difficulty_id),
+            daemon=True
+        )
+        rename_thread.start()
+        print(f"[RENAME] Started rename thread for {boss_name}")
     
     def process_line(self, line: str):
         """
@@ -112,38 +222,30 @@ class CombatParser:
 
         if event == "ENCOUNTER_END":
             if self.state.recording and self.state.encounter_active:
-                if len(fields) >= 5:
-                    encounter_result = fields[4]  # 0 = wipe, 1 = kill
-                    result_text = "Kill" if encounter_result == "1" else "Wipe"
-                    print(f"[INFO] ENCOUNTER_END: {result_text} at {ts_part}")
+                # Just log the event without parsing result
+                print(f"[INFO] ENCOUNTER_END detected at {ts_part}")
                     
-                    # Get boss info before resetting state
-                    boss_name = self.state.current_boss
-                    difficulty_id = self.state.difficulty_id
+                # Get boss info before resetting state
+                boss_name = self.state.current_boss
+                difficulty_id = self.state.difficulty_id
+                
+                # Run this for 3s extra to properly get the end of the encounter
+                time.sleep(3)
+                
+                # Stop recording
+                try:
+                    self.obs_client.stop_recording()
+                    print(f"[INFO] Recording stopped for {boss_name}")
                     
-                    # Run this for 3s extra to properly get the end of the encounter
-                    time.sleep(3)
+                    # Start rename thread after recording stops
+                    if boss_name and difficulty_id:
+                        self._start_rename_thread(boss_name, difficulty_id)
                     
-                    # Stop recording
-                    try:
-                        self.obs_client.stop_recording()
-                        print(f"[INFO] Recording stopped for {boss_name}")
-                        
-                        # Get recording info after stopping
-                        recording_info = self.obs_client.get_recording_status()
-                        if recording_info and 'output_path' in recording_info:
-                            self.last_recording_path = recording_info['output_path']
-                            print(f"[INFO] Recording saved to: {self.last_recording_path}")
-                            
-                            # Schedule file rename (if we have boss info)
-                            if boss_name and difficulty_id:
-                                self._schedule_file_rename(boss_name, difficulty_id)
-                        
-                    except Exception as e:
-                        print(f"[ERROR] Failed to stop recording: {e}")
-                    
-                    # Reset state
-                    self.state.reset()
+                except Exception as e:
+                    print(f"[ERROR] Failed to stop recording: {e}")
+                
+                # Reset state
+                self.state.reset()
             return
 
         # Optional safety-net: stop on any creature death
@@ -151,83 +253,19 @@ class CombatParser:
             if self.state.recording:
                 print(f"[INFO] UNIT_DIED detected at {ts_part} – stopping")
                 try:
-                    self.obs_client.stop_recording()
+                    # Get boss info before resetting
+                    boss_name = self.state.current_boss
+                    difficulty_id = self.state.difficulty_id
                     
-                    # Get recording info
-                    recording_info = self.obs_client.get_recording_status()
-                    if recording_info and 'output_path' in recording_info:
-                        self.last_recording_path = recording_info['output_path']
-                        
-                        # Try to rename if we have boss info
-                        if self.state.current_boss and self.state.difficulty_id:
-                            self._schedule_file_rename(self.state.current_boss, self.state.difficulty_id)
+                    self.obs_client.stop_recording()
+                    print(f"[INFO] Recording stopped due to UNIT_DIED")
+                    
+                    # Start rename thread
+                    if boss_name and difficulty_id:
+                        self._start_rename_thread(boss_name, difficulty_id)
                     
                 except Exception as e:
                     print(f"[ERROR] Failed to stop recording: {e}")
                 
                 self.state.reset()
             return
-    
-    def _schedule_file_rename(self, boss_name, difficulty_id):
-        """Schedule file rename for the next check"""
-        # This will be called after a delay to allow OBS to finish writing
-        self.pending_rename = {
-            'boss_name': boss_name,
-            'difficulty_id': difficulty_id,
-            'timestamp': time.time()
-        }
-        print(f"[RENAME] File rename scheduled for {boss_name}")
-    
-    def check_and_rename_pending(self):
-        """Check for pending file renames and execute them"""
-        if hasattr(self, 'pending_rename'):
-            # Wait a bit to ensure OBS has finished writing
-            if time.time() - self.pending_rename['timestamp'] > 5:  # 5 second delay
-                boss_name = self.pending_rename['boss_name']
-                difficulty_id = self.pending_rename['difficulty_id']
-                
-                # Get difficulty name
-                difficulty_name = self._get_difficulty_name(difficulty_id)
-                
-                # Try to rename the file
-                if self.last_recording_path:
-                    self._rename_recording_file(boss_name, difficulty_name)
-                
-                # Clear pending rename
-                del self.pending_rename
-    
-    def _rename_recording_file(self, boss_name, difficulty_name):
-        """Rename the recording file with boss information"""
-        try:
-            # Get OBS recording path
-            recording_path = Path(self.last_recording_path)
-            
-            if not recording_path.exists():
-                print(f"[RENAME] Recording file not found: {recording_path}")
-                return
-            
-            # Generate new filename
-            file_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
-            new_filename = self._generate_filename(boss_name, difficulty_name, file_time)
-            new_path = recording_path.parent / new_filename
-            
-            # Check if file already exists
-            counter = 1
-            while new_path.exists():
-                new_filename = self._generate_filename(
-                    f"{boss_name}_attempt{counter}", 
-                    difficulty_name, 
-                    file_time
-                )
-                new_path = recording_path.parent / new_filename
-                counter += 1
-            
-            # Rename the file
-            recording_path.rename(new_path)
-            print(f"[RENAME] File renamed to: {new_filename}")
-            
-            # Update last recording path
-            self.last_recording_path = str(new_path)
-            
-        except Exception as e:
-            print(f"[ERROR] Failed to rename recording file: {e}")

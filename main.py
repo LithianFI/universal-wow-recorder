@@ -44,6 +44,7 @@ def main():
     observer.schedule(log_handler, str(Config.LOG_DIR), recursive=False)
     observer.start()
     print(f"[INIT] Watching directory: {Config.LOG_DIR}")
+    print(f"[INIT] Recordings will be named as: YYYY-MM-DD_HH-MM-SS_BossName_Difficulty.mp4")
 
     # Attach to the newest existing log file (if any)
     try:
@@ -58,26 +59,15 @@ def main():
     except Exception as e:
         print(f"[INIT] Error finding existing logs: {e}")
 
-    # Main loop with file rename checking
+    # Main loop
     try:
-        rename_check_interval = 5  # seconds
-        last_rename_check = time.time()
-        
+        print("Recorder running")
         while True:
-            # Check for pending file renames periodically
-            current_time = time.time()
-            if current_time - last_rename_check >= rename_check_interval:
-                parser.check_and_rename_pending()
-                last_rename_check = current_time
+            time.sleep(1)
             
-            time.sleep(0.1)  # Smaller sleep for more responsive checking
-            
-    except KeyboardInterrupt:
+    except Exception:
         print("\n[SHUTDOWN] Shutting down gracefully...")
     finally:
-        # Final rename check
-        parser.check_and_rename_pending()
-        
         # Cleanup
         observer.stop()
         observer.join()
