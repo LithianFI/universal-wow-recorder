@@ -308,6 +308,9 @@ class RecordingProcessor:
     
     def process_encounter_end(self, boss_info: BossInfo, recording_duration: float) -> bool:
         """Stop recording and handle the recording file."""
+        if not self.config.is_difficulty_enabled(boss_info.difficulty_id):
+            diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
+            return False
         print(f"[PROC] Stopping recording for: {boss_info.name}")
         
         # Stop OBS recording
