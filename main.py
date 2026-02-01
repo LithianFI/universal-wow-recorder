@@ -14,6 +14,16 @@ from state_manager import RecordingState
 from combat_parser.parser import CombatParser
 from log_watcher import LogMonitor
 
+from constants import (
+    DEFAULT_OBS_HOST,
+    DEFAULT_OBS_PORT,
+    DEFAULT_RENAME_DELAY,
+    DEFAULT_MIN_RECORDING_DURATION,
+    DEFAULT_DUNGEON_TIMEOUT,
+    LOG_PREFIXES,
+    ERROR_MESSAGES,
+)
+
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -49,7 +59,7 @@ def validate_configuration(config):
     # Check log directory
     if not config.LOG_DIR.exists():
         errors.setdefault('General', []).append(
-            f"Log directory does not exist: {config.LOG_DIR}"
+            f"{ERROR_MESSAGES['LOG_DIR_NOT_FOUND']}: {config.LOG_DIR}"
         )
     
     # Check OBS connection settings
@@ -91,6 +101,7 @@ def print_startup_info(config, obs_settings):
     print(f"  • Heroic: {'✓' if config.RECORD_HEROIC else '✗'}")
     print(f"  • Mythic: {'✓' if config.RECORD_MYTHIC else '✗'}")
     print(f"  • Other: {'✓' if config.RECORD_OTHER else '✗'}")
+    print(f"  • M+: {'✓' if config.RECORD_MPLUS else '✗'}")
     
     print(f"\n📝 File Naming: YYYY-MM-DD_HH-MM-SS_BossName_Difficulty{config.RECORDING_EXTENSION}")
     print("="*60 + "\n")
@@ -108,22 +119,22 @@ def initialize_components(config):
     
     # Connect to OBS
     try:
-        print("[INIT] 🔌 Connecting to OBS...")
+        print(f"{LOG_PREFIXES['RECORDER']} 🔌 Connecting to OBS...")
         if not obs_client.connect():
-            raise ConnectionError("Failed to connect to OBS")
+            raise ConnectionError(ERROR_MESSAGES['OBS_CONNECTION_FAILED'])
         
         # Get recording settings
         obs_settings = obs_client.get_recording_settings()
         return obs_client, obs_settings
         
     except Exception as e:
-        print(f"[INIT] ❌ Failed to connect to OBS: {e}")
+        print(f"{LOG_PREFIXES['RECORDER']} ❌ {ERROR_MESSAGES['OBS_CONNECTION_FAILED']}: {e}")
         raise
 
 
 def print_troubleshooting_tips():
     """Print troubleshooting tips for OBS connection issues."""
-    print("\n🔧 Troubleshooting tips:")
+    print(f"\n{LOG_PREFIXES['RECORDER']} 🔧 Troubleshooting tips:")
     print("1. Ensure OBS Studio is running")
     print("2. Enable OBS WebSocket server:")
     print("   • Tools → WebSocket Server Settings")
@@ -152,7 +163,7 @@ def main():
     # Apply command line overrides
     if args.no_rename:
         config.set('Recording', 'auto_rename', 'false')
-        print("[CONFIG] Auto-rename disabled via command line")
+        print(f"{LOG_PREFIXES['CONFIG']} Auto-rename disabled via command line")
     
     # Show configuration if requested
     if args.show_config:
@@ -162,7 +173,7 @@ def main():
     # Validate configuration
     errors = validate_configuration(config)
     if errors:
-        print("❌ Configuration errors found:")
+        print(f"{LOG_PREFIXES['CONFIG']} ❌ Configuration errors found:")
         for section, section_errors in errors.items():
             print(f"\n  [{section}]")
             for error in section_errors:
@@ -190,13 +201,13 @@ def main():
         log_monitor.start()
         
         if not log_monitor.is_monitoring():
-            print("[INIT] ❌ Failed to start log monitoring")
+            print(f"{LOG_PREFIXES['MONITOR']} ❌ Failed to start log monitoring")
             return
             
-        print("✅ Ready! Waiting for raid encounters... (Press Ctrl+C to stop)\n")
+        print(f"{LOG_PREFIXES['RECORDER']} ✅ Ready! Waiting for raid encounters... (Press Ctrl+C to stop)\n")
         
     except Exception as e:
-        print(f"[INIT] ❌ Failed to start log monitor: {e}")
+        print(f"{LOG_PREFIXES['MONITOR']} ❌ Failed to start log monitor: {e}")
         obs_client.disconnect()
         return
     
@@ -209,16 +220,16 @@ def main():
             # You can enable this for debugging
             # if int(time.time()) % 30 == 0:
             #     status = log_monitor.get_status()
-            #     print(f"[STATUS] Monitoring: {status['is_monitoring']}, "
+            #     print(f"{LOG_PREFIXES['STATUS']} Monitoring: {status['is_monitoring']}, "
             #           f"Tailing: {status['is_tailing']}")
             
     except Exception:
-        print("\n\n🛑 Shutdown requested...")
+        print(f"\n\n{LOG_PREFIXES['RECORDER']} 🛑 Shutdown requested...")
     finally:
         # Clean shutdown
-        print("\n" + "="*60)
-        print("Cleaning up...")
-        print("="*60)
+        print(f"\n{LOG_PREFIXES['RECORDER']} " + "="*60)
+        print(f"{LOG_PREFIXES['RECORDER']} Cleaning up...")
+        print(f"{LOG_PREFIXES['RECORDER']} " + "="*60)
         
         # Stop log monitoring
         if 'log_monitor' in locals():
@@ -232,8 +243,8 @@ def main():
         if 'obs_client' in locals():
             obs_client.disconnect()
         
-        print("✅ Cleanup complete")
-        print("="*60)
+        print(f"{LOG_PREFIXES['RECORDER']} ✅ Cleanup complete")
+        print(f"{LOG_PREFIXES['RECORDER']} " + "="*60)
 
 
 if __name__ == "__main__":

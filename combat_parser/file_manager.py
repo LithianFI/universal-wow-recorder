@@ -3,19 +3,22 @@ Recording file management operations.
 """
 
 import time
-import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
+
+from constants import (
+    VIDEO_EXTENSIONS,
+    DIFFICULTY_NAMES,
+    DEFAULT_FILE_STABILITY_CHECK_INTERVAL,
+    LOG_PREFIXES,
+)
 
 from combat_parser.events import BossInfo, DungeonInfo
 
 
 class RecordingFileManager:
     """Manages recording file operations: finding, renaming, deleting."""
-    
-    # Common video file extensions
-    VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.flv', '.mov', '.ts', '.m3u8', '.avi', '.wmv'}
     
     def __init__(self, config, obs_client):
         self.config = config
@@ -30,22 +33,22 @@ class RecordingFileManager:
             if settings and 'record_directory' in settings:
                 path = Path(settings['record_directory'])
                 if path.exists():
-                    print(f"[FILE] Using OBS recording directory: {path}")
+                    print(f"{LOG_PREFIXES['FILE']} Using OBS recording directory: {path}")
                     return path
             
             # Fallback to config
             fallback = self.config.RECORDING_PATH_FALLBACK
             if fallback:
-                print(f"[FILE] Using fallback directory: {fallback}")
+                print(f"{LOG_PREFIXES['FILE']} Using fallback directory: {fallback}")
                 if not fallback.exists():
                     fallback.mkdir(parents=True, exist_ok=True)
                 return fallback
             
-            print("[FILE] No recording directory available")
+            print(f"{LOG_PREFIXES['FILE']} No recording directory available")
             return None
             
         except Exception as e:
-            print(f"[FILE] Error getting recording directory: {e}")
+            print(f"{LOG_PREFIXES['FILE']} Error getting recording directory: {e}")
             return None
     
     def find_latest_recording(self) -> Optional[Path]:
@@ -58,35 +61,24 @@ class RecordingFileManager:
             # Find all video files
             video_files = []
             for file in record_dir.iterdir():
-                if file.suffix.lower() in self.VIDEO_EXTENSIONS and file.is_file():
+                if file.suffix.lower() in VIDEO_EXTENSIONS and file.is_file():
                     video_files.append(file)
             
             if not video_files:
-                print(f"[FILE] No video files found in {record_dir}")
+                print(f"{LOG_PREFIXES['FILE']} No video files found in {record_dir}")
                 return None
             
             # Get most recently modified file
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
-            print(f"[FILE] Found latest recording: {latest.name}")
+            print(f"{LOG_PREFIXES['FILE']} Found latest recording: {latest.name}")
             return latest
             
         except Exception as e:
-            print(f"[FILE] Error finding recordings: {e}")
+            print(f"{LOG_PREFIXES['FILE']} Error finding recordings: {e}")
             return None
     
-    def find_recording_by_name(self, filename: str) -> Optional[Path]:
-        """Find a recording file by name."""
-        record_dir = self.get_recording_directory()
-        if not record_dir:
-            return None
-        
-        file_path = record_dir / filename
-        if file_path.exists() and file_path.is_file():
-            return file_path
-        
-        return None
-    
-    def validate_file_stable(self, file_path: Path, check_interval: float = 1.0) -> bool:
+    def validate_file_stable(self, file_path: Path, 
+                           check_interval: float = DEFAULT_FILE_STABILITY_CHECK_INTERVAL) -> bool:
         """Check if a file has stopped changing (OBS finished writing)."""
         try:
             if not file_path.exists():
@@ -98,13 +90,13 @@ class RecordingFileManager:
             final_size = file_path.stat().st_size
             
             if initial_size != final_size:
-                print(f"[FILE] File still changing: {initial_size} → {final_size} bytes")
+                print(f"{LOG_PREFIXES['FILE']} File still changing: {initial_size} → {final_size} bytes")
                 return False
             
             return True
             
         except Exception as e:
-            print(f"[FILE] Error validating file stability: {e}")
+            print(f"{LOG_PREFIXES['FILE']} Error validating file stability: {e}")
             return False
     
     def generate_filename(self, boss_info: BossInfo = None, dungeon_info: DungeonInfo = None, 
@@ -112,8 +104,9 @@ class RecordingFileManager:
         """Generate a filename for a recording based on encounter info."""
         # Determine if this is a boss or dungeon
         if boss_info:
-            # Get difficulty name
-            difficulty_name = self._get_difficulty_name(boss_info.difficulty_id)
+            # Get difficulty name from constants
+            difficulty_name = DIFFICULTY_NAMES.get(boss_info.difficulty_id, 
+                                                  f"Difficulty_{boss_info.difficulty_id}")
             
             # Format timestamp
             if not file_time:
@@ -145,6 +138,7 @@ class RecordingFileManager:
         filename += self.config.RECORDING_EXTENSION
         
         return filename
+    
     
     def rename_recording(self, recording_path: Path, boss_info: BossInfo = None, 
                         dungeon_info: DungeonInfo = None) -> Optional[Path]:

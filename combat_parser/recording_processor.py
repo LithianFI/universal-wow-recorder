@@ -5,6 +5,12 @@ Recording processing logic for encounters and dungeons.
 import time
 from typing import Optional
 
+from constants import (
+    DEFAULT_RENAME_DELAY,
+    DEFAULT_MIN_RECORDING_DURATION,
+    LOG_PREFIXES,
+)
+
 from combat_parser.events import BossInfo, DungeonInfo
 
 
@@ -21,14 +27,14 @@ class RecordingProcessor:
         # Check if difficulty is enabled
         if not self.config.is_difficulty_enabled(boss_info.difficulty_id):
             diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
-            print(f"[PROC] Skipping {diff_name} encounter - not enabled in config")
+            print(f"{LOG_PREFIXES['PROC']} Skipping {diff_name} encounter - not enabled in config")
             return False
         
-        print(f"[PROC] Starting recording for: {boss_info.name}")
+        print(f"{LOG_PREFIXES['PROC']} Starting recording for: {boss_info.name}")
         
         # Start OBS recording
         if not self.obs.start_recording():
-            print("[PROC] Failed to start OBS recording")
+            print(f"{LOG_PREFIXES['PROC']} Failed to start OBS recording")
             return False
         
         return True
@@ -37,14 +43,14 @@ class RecordingProcessor:
         """Start recording for a Mythic+ dungeon."""
         # Check if M+ is enabled
         if not self.config.RECORD_MPLUS:
-            print(f"[PROC] Skipping M+ dungeon - not enabled in config")
+            print(f"{LOG_PREFIXES['PROC']} Skipping M+ dungeon - not enabled in config")
             return False
         
-        print(f"[PROC] Starting recording for: {dungeon_info.name} (+{dungeon_info.dungeon_level})")
+        print(f"{LOG_PREFIXES['PROC']} Starting recording for: {dungeon_info.name} (+{dungeon_info.dungeon_level})")
         
         # Start OBS recording
         if not self.obs.start_recording():
-            print("[PROC] Failed to start OBS recording")
+            print(f"{LOG_PREFIXES['PROC']} Failed to start OBS recording")
             return False
         
         return True
@@ -55,15 +61,16 @@ class RecordingProcessor:
             diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
             return False
         
-        print(f"[PROC] Stopping recording for: {boss_info.name}")
+        print(f"{LOG_PREFIXES['PROC']} Stopping recording for: {boss_info.name}")
         
         # Stop OBS recording
         if not self.obs.stop_recording():
-            print("[PROC] Failed to stop OBS recording")
+            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
             return False
         
         # Wait before file operations
-        time.sleep(self.config.RENAME_DELAY)
+        wait_time = self.config.RENAME_DELAY if hasattr(self.config, 'RENAME_DELAY') else DEFAULT_RENAME_DELAY
+        time.sleep(wait_time)
         
         # Process the recording
         return self._process_recording_file(boss_info=boss_info, recording_duration=recording_duration)
@@ -74,15 +81,16 @@ class RecordingProcessor:
         if not self.config.RECORD_MPLUS:
             return False
         
-        print(f"[PROC] Stopping dungeon recording{f' ({reason})' if reason else ''}")
+        print(f"{LOG_PREFIXES['PROC']} Stopping dungeon recording{f' ({reason})' if reason else ''}")
         
         # Stop OBS recording
         if not self.obs.stop_recording():
-            print("[PROC] Failed to stop OBS recording")
+            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
             return False
         
         # Wait before file operations
-        time.sleep(self.config.RENAME_DELAY)
+        wait_time = self.config.RENAME_DELAY if hasattr(self.config, 'RENAME_DELAY') else DEFAULT_RENAME_DELAY
+        time.sleep(wait_time)
         
         # Process the recording
         return self._process_recording_file(dungeon_info=dungeon_info, recording_duration=recording_duration)
@@ -91,19 +99,20 @@ class RecordingProcessor:
                                recording_duration: float = 0) -> bool:
         """Process the recording file (rename or delete)."""
         # Check minimum duration
-        if recording_duration < self.config.MIN_RECORDING_DURATION:
-            print(f"[PROC] Recording too short ({recording_duration:.1f}s), will delete")
+        min_duration = self.config.MIN_RECORDING_DURATION if hasattr(self.config, 'MIN_RECORDING_DURATION') else DEFAULT_MIN_RECORDING_DURATION
+        if recording_duration < min_duration:
+            print(f"{LOG_PREFIXES['PROC']} Recording too short ({recording_duration:.1f}s), will delete")
             return self._handle_short_recording(recording_duration)
         
         # Get the recording file
         recording_path = self.file_manager.find_latest_recording()
         if not recording_path:
-            print("[PROC] Could not find recording file")
+            print(f"{LOG_PREFIXES['PROC']} Could not find recording file")
             return False
         
         # Validate file is stable
         if not self.file_manager.validate_file_stable(recording_path):
-            print("[PROC] Recording file not stable, skipping")
+            print(f"{LOG_PREFIXES['PROC']} Recording file not stable, skipping")
             return False
         
         # Rename the file
@@ -119,7 +128,7 @@ class RecordingProcessor:
     def _handle_short_recording(self, duration: float) -> bool:
         """Handle a recording that's too short."""
         if not self.config.DELETE_SHORT_RECORDINGS:
-            print(f"[PROC] Short recording kept (delete_short_recordings = false)")
+            print(f"{LOG_PREFIXES['PROC']} Short recording kept (delete_short_recordings = false)")
             return True
         
         # Find and delete the short recording
@@ -132,11 +141,11 @@ class RecordingProcessor:
     
     def force_stop_recording(self) -> bool:
         """Force stop any active recording."""
-        print(f"[PROC] Force stopping recording")
+        print(f"{LOG_PREFIXES['PROC']} Force stopping recording")
         
         # Stop OBS recording
         if not self.obs.stop_recording():
-            print("[PROC] Failed to stop OBS recording")
+            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
             return False
         
         return True

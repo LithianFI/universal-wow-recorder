@@ -5,7 +5,11 @@ Dungeon timeout monitoring.
 import time
 import threading
 from typing import Optional, Callable
-from datetime import datetime
+
+from constants import (
+    DEFAULT_DUNGEON_TIMEOUT,
+    LOG_PREFIXES,
+)
 
 
 class DungeonMonitor:
@@ -31,29 +35,29 @@ class DungeonMonitor:
             daemon=True
         )
         self._monitor_thread.start()
-        print("[DUNGEON] Started dungeon timeout monitor")
+        print(f"{LOG_PREFIXES['DUNGEON']} Started dungeon timeout monitor")
     
     def stop(self):
         """Stop the dungeon monitor."""
         self._running = False
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=2.0)
-        print("[DUNGEON] Stopped dungeon timeout monitor")
+        print(f"{LOG_PREFIXES['DUNGEON']} Stopped dungeon timeout monitor")
     
     def _monitor_loop(self):
         """Monitor dungeon for inactivity timeout."""
         while self._running:
             try:
                 if self.state.dungeon_active:
-                    timeout = self.config.DUNGEON_TIMEOUT_SECONDS
+                    timeout = self.config.DUNGEON_TIMEOUT_SECONDS if hasattr(self.config, 'DUNGEON_TIMEOUT_SECONDS') else DEFAULT_DUNGEON_TIMEOUT
                     if self.state.is_dungeon_idle(timeout):
-                        print(f"[DUNGEON] Dungeon idle for {timeout}s, triggering timeout")
+                        print(f"{LOG_PREFIXES['DUNGEON']} Dungeon idle for {timeout}s, triggering timeout")
                         if self.on_timeout:
                             self.on_timeout()
                 
                 time.sleep(self._check_interval)
             except Exception as e:
-                print(f"[DUNGEON] Error in monitor: {e}")
+                print(f"{LOG_PREFIXES['DUNGEON']} Error in monitor: {e}")
                 time.sleep(self._check_interval)
     
     def is_running(self) -> bool:

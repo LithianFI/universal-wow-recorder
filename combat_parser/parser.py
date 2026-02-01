@@ -16,6 +16,8 @@ from combat_parser.file_manager import RecordingFileManager
 from combat_parser.recording_processor import RecordingProcessor
 from combat_parser.dungeon_monitor import DungeonMonitor
 
+from constants import LOG_PREFIXES
+
 
 class CombatParser:
     """Main parser that coordinates combat log parsing and recording actions."""
@@ -74,7 +76,7 @@ class CombatParser:
         # Extract dungeon information
         dungeon_info = event.get_dungeon_info()
         if not dungeon_info:
-            print(f"[PARSER] Could not parse dungeon info from: {event}")
+            print(f"{LOG_PREFIXES['PARSER']} Could not parse dungeon info from: {event}")
             return
         
         # Start the dungeon in state
@@ -95,7 +97,7 @@ class CombatParser:
             'dungeon_id': dungeon_info.dungeon_id,
         })
 
-        print(f"[PARSER] Started M+ dungeon: {dungeon_info.name} (+{dungeon_info.dungeon_level})")
+        print(f"{LOG_PREFIXES['PARSER']} Started M+ dungeon: {dungeon_info.name} (+{dungeon_info.dungeon_level})")
     
     def _handle_dungeon_end(self, event: CombatEvent, reason: str = "dungeon_complete"):
         """Handle CHALLENGE_MODE_END event."""
@@ -137,7 +139,7 @@ class CombatParser:
         # Reset state
         self.state.reset()
 
-        print(f"[PARSER] Ended M+ dungeon: {dungeon_info.name} ({reason})")
+        print(f"{LOG_PREFIXES['PARSER']} Ended M+ dungeon: {dungeon_info.name} ({reason})")
     
     def _handle_zone_change(self, event: CombatEvent):
         """Handle ZONE_CHANGE event during dungeon runs."""
@@ -145,7 +147,7 @@ class CombatParser:
         if not self.state.dungeon_active:
             return
         
-        print(f"[PARSER] Zone change detected during dungeon run")
+        print(f"{LOG_PREFIXES['PARSER']} Zone change detected during dungeon run")
         
         # Check if we changed to a different instance (likely left dungeon)
         try:
@@ -157,7 +159,7 @@ class CombatParser:
                 
                 # Simple check: if zone doesn't contain dungeon name (case-insensitive)
                 if current_dungeon and current_dungeon.lower() not in new_zone.lower():
-                    print(f"[PARSER] Zone changed from dungeon to: {new_zone}")
+                    print(f"{LOG_PREFIXES['PARSER']} Zone changed from dungeon to: {new_zone}")
                     self._handle_dungeon_end(event, "zone_change")
         except (IndexError, ValueError):
             pass
@@ -180,7 +182,7 @@ class CombatParser:
         # Extract boss information
         boss_info = event.get_boss_info()
         if not boss_info:
-            print(f"[PARSER] Could not parse boss info from: {event}")
+            print(f"{LOG_PREFIXES['PARSER']} Could not parse boss info from: {event}")
             return
         
         # Apply boss name overrides
@@ -203,7 +205,7 @@ class CombatParser:
             'difficulty_id': boss_info.difficulty_id,
         })
 
-        print(f"[PARSER] Started encounter: {boss_info.name}")
+        print(f"{LOG_PREFIXES['PARSER']} Started encounter: {boss_info.name}")
     
     def _handle_encounter_end(self, event: CombatEvent):
         """Handle ENCOUNTER_END event."""
@@ -245,7 +247,7 @@ class CombatParser:
         # Reset state
         self.state.reset()
 
-        print(f"[PARSER] Ended encounter: {boss_info.name}")
+        print(f"{LOG_PREFIXES['PARSER']} Ended encounter: {boss_info.name}")
     
     def _process_dungeon_start_thread(self, dungeon_info: DungeonInfo):
         """Thread function for starting dungeon recording."""
@@ -308,7 +310,7 @@ class CombatParser:
     
     def shutdown(self):
         """Clean shutdown of the parser."""
-        print("[PARSER] Shutting down...")
+        print(f"{LOG_PREFIXES['PARSER']} Shutting down...")
         
         # Stop dungeon monitor
         self.dungeon_monitor.stop()
@@ -322,4 +324,4 @@ class CombatParser:
                 thread.join(timeout=5.0)
         
         self._active_threads.clear()
-        print("[PARSER] Shutdown complete")
+        print(f"{LOG_PREFIXES['PARSER']} Shutdown complete")

@@ -6,6 +6,8 @@ Tracks the current state of encounters and recordings.
 import time
 from typing import Optional
 
+from constants import LOG_PREFIXES
+
 
 class RecordingState:
     """Manages the state of current recording and encounter."""
@@ -39,7 +41,7 @@ class RecordingState:
         self.instance_id = instance_id
         self.encounter_start_time = time.time()
         
-        print(f"[STATE] 🏁 Encounter started: {boss_name} (ID: {boss_id})")
+        print(f"{LOG_PREFIXES['STATE']} 🏁 Encounter started: {boss_name} (ID: {boss_id})")
     
     def start_dungeon(self, dungeon_id: int, dungeon_name: str, 
                      dungeon_level: int, timestamp: str = ""):
@@ -59,17 +61,17 @@ class RecordingState:
         self.dungeon_start_timestamp = timestamp
         self.last_activity_time = time.time()
         
-        print(f"[STATE] 🏁 M+ Dungeon started: {dungeon_name} (+{dungeon_level})")
+        print(f"{LOG_PREFIXES['STATE']} 🏁 M+ Dungeon started: {dungeon_name} (+{dungeon_level})")
     
     def start_recording(self):
         """Mark recording as started."""
         self.recording = True
         self.recording_start_time = time.time()
-        print(f"[STATE] ⏺️ Recording marked as started")
+        print(f"{LOG_PREFIXES['STATE']} ⏺️ Recording marked as started")
     
     def reset(self):
         """Reset state to default (encounter ended)."""
-        print(f"[STATE] 🔄 Resetting state")
+        print(f"{LOG_PREFIXES['STATE']} 🔄 Resetting state")
         self._reset_all()
     
     def _reset_all(self):

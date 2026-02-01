@@ -12,7 +12,7 @@ import threading
 from pathlib import Path
 
 from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit  # Make sure emit is imported!
 
 from config_manager import ConfigManager
 from obs_client import OBSClient
@@ -20,13 +20,22 @@ from state_manager import RecordingState
 from combat_parser.parser import CombatParser
 from log_watcher import LogMonitor
 
+from constants import (
+    DEFAULT_WEB_HOST,
+    DEFAULT_WEB_PORT,
+    FLASK_SECRET_KEY,
+    MAX_EVENT_LOG_SIZE,
+    STATUS_BROADCAST_INTERVAL,
+    LOG_PREFIXES,
+)
+
 
 # -----------------------------------------------------------------------------
 # Flask App Setup
 # -----------------------------------------------------------------------------
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'wow-recorder-secret'
+app.config['SECRET_KEY'] = FLASK_SECRET_KEY
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 config_manager: ConfigManager = None
@@ -37,7 +46,6 @@ combat_parser: CombatParser = None
 recorder_running = False
 shutdown_event = threading.Event()
 event_log: list = []
-MAX_EVENT_LOG_SIZE = 50
 
 
 # -----------------------------------------------------------------------------
@@ -87,7 +95,7 @@ def get_config():
             'min_recording_duration': config_manager.MIN_RECORDING_DURATION,
             'delete_short_recordings': config_manager.DELETE_SHORT_RECORDINGS,
             'recording_path_fallback': str(config_manager.RECORDING_PATH_FALLBACK or ''),
-            'dungeon_timeout_seconds': config_manager.DUNGEON_TIMEOUT_SECONDS,  # NEW
+            'dungeon_timeout_seconds': config_manager.DUNGEON_TIMEOUT_SECONDS,
         },
         'difficulties': {
             'record_lfr': config_manager.RECORD_LFR,
@@ -95,7 +103,7 @@ def get_config():
             'record_heroic': config_manager.RECORD_HEROIC,
             'record_mythic': config_manager.RECORD_MYTHIC,
             'record_other': config_manager.RECORD_OTHER,
-            'record_mplus': config_manager.RECORD_MPLUS,  # NEW
+            'record_mplus': config_manager.RECORD_MPLUS,
         },
         'boss_names': config_manager.BOSS_NAME_OVERRIDES,
     }
@@ -289,16 +297,26 @@ def serve_video(filename: str):
 # -----------------------------------------------------------------------------
 
 @socketio.on('connect')
-def handle_connect():
-    """Handle client connection - send current status and event log."""
+def handle_connect(auth=None):
+    """Handle client connection - send current status and event log.
+    
+    Args:
+        auth: Optional authentication data (not used)
+    """
+    print(f"{LOG_PREFIXES['WEBSOCKET']} Client connected")
     status = build_status()
     emit('status', status)
     emit('event_log', event_log)
 
 
 @socketio.on('request_status')
-def handle_status_request():
-    """Handle explicit status request from client."""
+def handle_status_request(auth=None):
+    """Handle explicit status request from client.
+    
+    Args:
+        auth: Optional authentication data (not used)
+    """
+    print(f"{LOG_PREFIXES['WEBSOCKET']} Status requested by client")
     status = build_status()
     emit('status', status)
 
@@ -306,6 +324,7 @@ def handle_status_request():
 # -----------------------------------------------------------------------------
 # Status
 # -----------------------------------------------------------------------------
+
 
 def build_status() -> dict:
     """Build current status dictionary."""
@@ -320,6 +339,9 @@ def build_status() -> dict:
             'difficulty_id': summary.get('difficulty_id'),
             'encounter_duration': round(summary.get('encounter_duration', 0), 1),
             'recording_duration': round(summary.get('recording_duration', 0), 1),
+            'dungeon_active': summary.get('dungeon_active', False),
+            'dungeon_name': summary.get('dungeon_name'),
+            'dungeon_level': summary.get('dungeon_level'),
         }
 
     monitor_state = {}
@@ -342,7 +364,6 @@ def build_status() -> dict:
         'log_monitor': monitor_state,
     }
 
-
 # -----------------------------------------------------------------------------
 # Status Broadcast Loop
 # -----------------------------------------------------------------------------
@@ -361,6 +382,8 @@ def status_broadcast_loop():
                 recorder.get('recording'),
                 recorder.get('encounter_active'),
                 recorder.get('boss_name'),
+                recorder.get('dungeon_active'),
+                recorder.get('dungeon_name'),
                 log_mon.get('current_log'),
                 status.get('obs_connected'),
             )
@@ -373,9 +396,9 @@ def status_broadcast_loop():
                 socketio.emit('status', status)
 
         except Exception as e:
-            print(f"[BROADCAST] Error: {e}")
+            print(f"{LOG_PREFIXES['WEBSOCKET']} Error: {e}")
 
-        shutdown_event.wait(0.5)
+        shutdown_event.wait(STATUS_BROADCAST_INTERVAL)
 
 
 # -----------------------------------------------------------------------------
@@ -404,17 +427,13 @@ def handle_recording_saved():
 # -----------------------------------------------------------------------------
 
 def init_recorder(config_path: Path) -> bool:
-    """Initialize recorder components.
-
-    Returns:
-        True if successful, False otherwise
-    """
+    """Initialize recorder components."""
     global config_manager, obs_client, state_manager, log_monitor, combat_parser, recorder_running
 
     try:
         config_manager = ConfigManager(config_path)
 
-        print("[RECORDER] Connecting to OBS...")
+        print(f"{LOG_PREFIXES['RECORDER']} Connecting to OBS...")
         obs_client = OBSClient(
             host=config_manager.OBS_HOST,
             port=config_manager.OBS_PORT,
@@ -422,25 +441,25 @@ def init_recorder(config_path: Path) -> bool:
         )
 
         if not obs_client.connect():
-            print("[RECORDER] Warning: Could not connect to OBS")
-            print("[RECORDER] Recording will not work until OBS is connected")
+            print(f"{LOG_PREFIXES['RECORDER']} Warning: Could not connect to OBS")
+            print(f"{LOG_PREFIXES['RECORDER']} Recording will not work until OBS is connected")
         else:
-            print("[RECORDER] Connected to OBS")
+            print(f"{LOG_PREFIXES['RECORDER']} Connected to OBS")
 
         state_manager = RecordingState()
 
         combat_parser = CombatParser(obs_client, state_manager, config_manager)
-        combat_parser.on_event = handle_combat_event
-        combat_parser.on_recording_saved = handle_recording_saved
+        combat_parser.on_event = handle_combat_event  # This should point to handle_combat_event
+        combat_parser.on_recording_saved = handle_recording_saved  # This should point to handle_recording_saved
 
         log_monitor = LogMonitor(config_manager.LOG_DIR, combat_parser)
 
         if config_manager.LOG_DIR.exists():
             log_monitor.start()
-            print(f"[RECORDER] Monitoring: {config_manager.LOG_DIR}")
+            print(f"{LOG_PREFIXES['RECORDER']} Monitoring: {config_manager.LOG_DIR}")
         else:
             print(f"")
-            print(f"⚠️  [RECORDER] LOG DIRECTORY NOT FOUND")
+            print(f"⚠️  {LOG_PREFIXES['RECORDER']} LOG DIRECTORY NOT FOUND")
             print(f"   Path: {config_manager.LOG_DIR}")
             print(f"   Please update 'log_dir' in your config.ini")
             print(f"")
@@ -449,9 +468,8 @@ def init_recorder(config_path: Path) -> bool:
         return True
 
     except Exception as e:
-        print(f"[RECORDER] Initialization error: {e}")
+        print(f"{LOG_PREFIXES['RECORDER']} Initialization error: {e}")
         return False
-
 
 def shutdown_recorder():
     """Clean shutdown of recorder components."""
@@ -477,10 +495,10 @@ def main():
     parser = argparse.ArgumentParser(description='WoW Raid Recorder with Web frontend')
     parser.add_argument('--config', type=Path, default=Path('config.ini'),
                         help='Path to configuration file')
-    parser.add_argument('--host', default='0.0.0.0',
-                        help='Web server host (default: 0.0.0.0)')
-    parser.add_argument('--port', type=int, default=5001,
-                        help='Web server port (default: 5001)')
+    parser.add_argument('--host', default=DEFAULT_WEB_HOST,
+                        help=f'Web server host (default: {DEFAULT_WEB_HOST})')
+    parser.add_argument('--port', type=int, default=DEFAULT_WEB_PORT,
+                        help=f'Web server port (default: {DEFAULT_WEB_PORT})')
     parser.add_argument('--no-recorder', action='store_true',
                         help='Start web GUI only, without recorder')
     parser.add_argument('--debug', action='store_true',

@@ -6,6 +6,13 @@ Handles communication with OBS Studio for recording control.
 import time
 import obsws_python as obs
 
+from constants import (
+    DEFAULT_OBS_HOST,
+    DEFAULT_OBS_PORT,
+    DEFAULT_OBS_TIMEOUT,
+    LOG_PREFIXES,
+)
+
 
 class OBSClient:
     """Client for OBS WebSocket communication."""
@@ -14,8 +21,10 @@ class OBSClient:
     # Initialization
     # ---------------------------------------------------------------------
     
-    def __init__(self, host: str = 'localhost', port: int = 4455, 
-                 password: str = '', timeout: int = 3):
+    def __init__(self, host: str = DEFAULT_OBS_HOST, 
+                 port: int = DEFAULT_OBS_PORT, 
+                 password: str = '', 
+                 timeout: int = DEFAULT_OBS_TIMEOUT):
         """Initialize OBS client.
         
         Args:
@@ -49,11 +58,11 @@ class OBSClient:
                 timeout=self.timeout
             )
             self._is_connected = True
-            print("[OBS] ✅ Connected to OBS WebSocket")
+            print(f"{LOG_PREFIXES['OBS']} ✅ Connected to OBS WebSocket")
             return True
             
         except Exception as e:
-            print(f"[OBS] ❌ Failed to connect: {e}")
+            print(f"{LOG_PREFIXES['OBS']} ❌ Failed to connect: {e}")
             self._is_connected = False
             return False
     
@@ -62,9 +71,9 @@ class OBSClient:
         if self.client and self._is_connected:
             try:
                 self.client.disconnect()
-                print("[OBS] 🔌 Disconnected from OBS")
+                print(f"{LOG_PREFIXES['OBS']} 🔌 Disconnected from OBS")
             except Exception as e:
-                print(f"[OBS] ⚠️ Error during disconnect: {e}")
+                print(f"{LOG_PREFIXES['OBS']} ⚠️ Error during disconnect: {e}")
             finally:
                 self.client = None
                 self._is_connected = False
@@ -91,19 +100,19 @@ class OBSClient:
             # Check if already recording
             status = self.get_recording_status()
             if status and status.get('is_recording', False):
-                print("[OBS] ⚠️ Recording already active")
+                print(f"{LOG_PREFIXES['OBS']} ⚠️ Recording already active")
                 return True
             
             # Start recording
             self.client.start_record()
-            print("[OBS] ⏺️ Recording started")
+            print(f"{LOG_PREFIXES['OBS']} ⏺️ Recording started")
             
             # Brief pause to ensure recording initializes
             time.sleep(0.5)
             return True
             
         except Exception as e:
-            print(f"[OBS] ❌ Failed to start recording: {e}")
+            print(f"{LOG_PREFIXES['OBS']} ❌ Failed to start recording: {e}")
             return False
     
     def stop_recording(self) -> bool:
@@ -119,20 +128,21 @@ class OBSClient:
             # Check if recording is active
             status = self.get_recording_status()
             if not status or not status.get('is_recording', False):
-                print("[OBS] ⚠️ No active recording to stop")
+                print(f"{LOG_PREFIXES['OBS']} ⚠️ No active recording to stop")
                 return True
             
             # Stop recording
             self.client.stop_record()
-            print("[OBS] ⏹️ Recording stopped")
+            print(f"{LOG_PREFIXES['OBS']} ⏹️ Recording stopped")
             
             # Wait for recording to finalize
             time.sleep(1)
             return True
             
         except Exception as e:
-            print(f"[OBS] ❌ Failed to stop recording: {e}")
+            print(f"{LOG_PREFIXES['OBS']} ❌ Failed to stop recording: {e}")
             return False
+    
     
     # ---------------------------------------------------------------------
     # Recording Status and Information
