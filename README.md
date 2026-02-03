@@ -21,11 +21,13 @@ Linx/Mac
 1. Make the script executable via terminal: chmod +x launch.sh (Make sure you are in the folder where the app is located)
 2. ./launch.sh
 
-Windows
+Windows:
 
 1. Double-click on launch.bat
 
-6. Open http://localhost:5001 in your browser
+Optionally:
+
+Open http://localhost:5001 in your browser to access the GUI if it didn't automatically load
 
 ### Command line options
 
