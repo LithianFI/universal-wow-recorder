@@ -16,32 +16,14 @@ Tested on Linux and Mac, should work on Windows as well, but if you are on Windo
 
 ## How to run
 
-1. Create and activate a virtual environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+Linx/Mac
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+1. Make the script executable via terminal: chmod +x launch.sh (Make sure you are in the folder where the app is located)
+2. ./launch.sh
 
-3. Copy and configure your config file:
-```bash
-cp config.ini.example config.ini
-```
-   Edit `config.ini` with your settings:
-   - Set `log_dir` to your WoW Logs directory
-   - Configure OBS WebSocket settings (host, port, password)
-   - Set `recording_path_fallback` to your OBS recording directory
+Windows
 
-4. Make sure OBS is running with WebSocket server enabled (Tools > WebSocket Server Settings)
-
-5. Run the application:
-```bash
-python run.py
-```
+1. Double-click on launch.bat
 
 6. Open http://localhost:5001 in your browser
 
