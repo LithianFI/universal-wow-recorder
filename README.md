@@ -171,6 +171,33 @@ On first run the app starts without a recorder and opens the configuration page.
 
 ---
 
+## OBS encoder settings
+
+Frame time hitches while recording usually mean OBS is using a software encoder (x264). Pick a hardware encoder instead. In OBS: **Settings → Output → Output Mode: Advanced → Recording → Encoder**.
+
+Codecs in order of efficiency: **AV1 > HEVC > H.264**. Pick the most efficient one your GPU has hardware support for:
+
+| GPU | Encoder |
+|---|---|
+| AMD RX 7000 / NVIDIA RTX 40 / Intel Arc | AV1 |
+| AMD RX 6000 / NVIDIA RTX 20–30 / Intel iGPU gen 11+ | HEVC |
+| Older AMD, NVIDIA GTX 16 and older, Intel iGPU gen 9–10 | H.264 |
+
+Encoder name prefixes: `VAAPI` on Linux, `AMF` (AMD) / `QSV` (Intel) / `NVENC` (NVIDIA) on Windows. Avoid `AOM AV1` and `SVT-AV1` — those are software encoders despite the AV1 name.
+
+Then set **Rate Control: CBR**, **Keyframe Interval: 2s**, and a bitrate from this table:
+
+| Resolution (60fps) | AV1 / HEVC | H.264 |
+|---|---|---|
+| 1080p | 12–20 Mbps | 25–40 Mbps |
+| 1440p | 20–30 Mbps | 40–60 Mbps |
+| 3440×1440 | 25–40 Mbps | 50–70 Mbps |
+| 4K | 40–60 Mbps | 80–120 Mbps |
+
+To confirm the GPU is actually doing the encoding: `radeontop` / `nvtop` / `intel_gpu_top` on Linux, or Task Manager → Performance → GPU → Video Encode on Windows. If the encoder block stays idle, OBS fell back to software — restart OBS and re-check the dropdown.
+
+---
+
 ## Contributing
 
 PRs and issues welcome. The project is intentionally simple — a thin Python backend talking to OBS over WebSocket and serving a vanilla HTML/Alpine.js frontend. No build step required for the web UI.
