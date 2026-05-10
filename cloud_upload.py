@@ -361,22 +361,34 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 print("[WCR Cloud] No signed URL in response")
                 return False
 
-            # Step 2 – PUT file to signed URL
+            # Step 2 – PUT file to signed URL, retry up to 5 times on failure
             content_type = 'video/mp4' if key.endswith('.mp4') else 'application/octet-stream'
+            attempts = 0
+            success = False
 
-            with open(file_path, 'rb') as f:
-                put_resp = requests.put(
-                    signed_url,
-                    data=f,
-                    headers={
-                        'Content-Type': content_type,
-                        'Content-Length': str(file_size),
-                    },
-                    timeout=600,
-                )
+            while not success and attempts < 5:
+                attempts += 1
+                try:
+                    with open(file_path, 'rb') as f:
+                        put_resp = requests.put(
+                            signed_url,
+                            data=f,
+                            headers={
+                                'Content-Type': content_type,
+                                'Content-Length': str(file_size),
+                            },
+                            timeout=600,
+                        )
+                    if put_resp.status_code in (200, 204):
+                        success = True
+                    else:
+                        print(f"[WCR Cloud] PUT attempt {attempts}/5 failed: "
+                              f"{put_resp.status_code}")
+                except Exception as e:
+                    print(f"[WCR Cloud] PUT attempt {attempts}/5 error: {e}")
 
-            if put_resp.status_code not in (200, 204):
-                print(f"[WCR Cloud] PUT failed: {put_resp.status_code}")
+            if not success:
+                print(f"[WCR Cloud] Single part upload failed after 5 attempts: {key}")
                 return False
 
             progress.uploaded_bytes = file_size
@@ -440,18 +452,35 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     if not chunk:
                         break
 
-                    put_resp = requests.put(
-                        url,
-                        data=chunk,
-                        headers={
-                            'Content-Type': content_type,
-                            'Content-Length': str(len(chunk)),
-                        },
-                        timeout=600,
-                    )
+                    # Retry each part up to 5 times — on failure we only need to
+                    # re-send this part, not restart the whole upload.
+                    attempts = 0
+                    part_success = False
+                    put_resp = None
 
-                    if put_resp.status_code not in (200, 204):
-                        print(f"[WCR Cloud] Part {part_num} failed: {put_resp.status_code}")
+                    while not part_success and attempts < 5:
+                        attempts += 1
+                        try:
+                            put_resp = requests.put(
+                                url,
+                                data=chunk,
+                                headers={
+                                    'Content-Type': content_type,
+                                    'Content-Length': str(len(chunk)),
+                                },
+                                timeout=600,
+                            )
+                            if put_resp.status_code in (200, 204):
+                                part_success = True
+                            else:
+                                print(f"[WCR Cloud] Part {part_num} attempt {attempts}/5 "
+                                      f"failed: {put_resp.status_code}")
+                        except Exception as e:
+                            print(f"[WCR Cloud] Part {part_num} attempt {attempts}/5 "
+                                  f"error: {e}")
+
+                    if not part_success or put_resp is None:
+                        print(f"[WCR Cloud] Part {part_num} failed after 5 attempts: {key}")
                         return False
 
                     # Strip quotes from etag (axios does this too per WCR source)
@@ -503,13 +532,38 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 timeout=15,
             )
 
+            if resp.status_code == 401:
+                print("[WCR Cloud] 401 posting metadata — re-authenticating")
+                await self.authenticate()
+                return
+
             if resp.status_code not in (200, 201, 204):
                 print(f"[WCR Cloud] Failed to post metadata: {resp.status_code} {resp.text}")
             else:
                 print(f"[WCR Cloud] ✅ Metadata registered: {metadata.video_key}")
+                self._run_housekeeping(g)
 
         except Exception as e:
             print(f"[WCR Cloud] Error posting metadata: {e}")
+
+    def _run_housekeeping(self, encoded_guild: str):
+        """POST /guild/{g}/housekeeper — fire-and-forget after each upload.
+
+        Asks the server to evict old unprotected recordings to free space for
+        the next upload, matching the behaviour in WCR CloudClient.postVideo().
+        """
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/guild/{encoded_guild}/housekeeper",
+                headers=self._headers,
+                timeout=15,
+            )
+            if resp.status_code in (200, 201, 204):
+                print(f"[WCR Cloud] Housekeeping OK: {resp.text[:120]}")
+            else:
+                print(f"[WCR Cloud] Housekeeping returned {resp.status_code}")
+        except Exception as e:
+            print(f"[WCR Cloud] Housekeeping error (non-fatal): {e}")
 
 
 # =============================================================================
