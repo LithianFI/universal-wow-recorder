@@ -374,7 +374,7 @@ def queue_cloud_upload(filename: str):
             file_size=file_path.stat().st_size,
             start=int(time.time() * 1000),
             unique_hash='',
-            category='manual',
+            category='Manual',
             encounter_name=boss_name,
             difficulty=difficulty,
         )
