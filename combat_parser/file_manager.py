@@ -8,14 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from ..constants import (
+from constants import (
     VIDEO_EXTENSIONS,
     DIFFICULTY_NAMES,
     DEFAULT_FILE_STABILITY_CHECK_INTERVAL,
     LOG_PREFIXES,
 )
 
-from .events import BossInfo, DungeonInfo
+from combat_parser.events import BossInfo, DungeonInfo
 
 
 class RecordingFileManager:

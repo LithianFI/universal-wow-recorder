@@ -6,7 +6,7 @@ import time
 import threading
 from typing import Optional, Callable
 
-from ..constants import (
+from constants import (
     LOG_PREFIXES,
 )
 

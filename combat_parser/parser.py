@@ -8,23 +8,29 @@ from datetime import datetime
 from typing import Optional, List, Callable
 from pathlib import Path
 
-from ..obs_client import OBSClient
-from ..state_manager import RecordingState
-from ..config_manager import ConfigManager
+from obs_client import OBSClient
+from state_manager import RecordingState
+from config_manager import ConfigManager
 
-from .file_manager import RecordingFileManager
-from .recording_processor import RecordingProcessor
-from .dungeon_monitor import DungeonMonitor
-from .events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
-from ..metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
+from combat_parser.file_manager import RecordingFileManager
+from combat_parser.recording_processor import RecordingProcessor
+from combat_parser.dungeon_monitor import DungeonMonitor
+from combat_parser.events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
+from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
 
-from ..constants import LOG_PREFIXES
+from constants import LOG_PREFIXES
 
 _RELEVANT_EVENTS = frozenset((
     "ENCOUNTER_START", "ENCOUNTER_END",
     "CHALLENGE_MODE_START", "CHALLENGE_MODE_END",
     "ZONE_CHANGE", "COMBATANT_INFO", "UNIT_DIED",
+    "SPELL_DAMAGE",
 ))
+
+# WCR ignores any unit with maxHP below this on Retail to avoid tracking
+# adds/players before the boss takes its first SPELL_DAMAGE hit.
+# (LogHandler.ts: private static minBossHp = 100 * 10 ** 6)
+_MIN_BOSS_HP = 100 * 10 ** 6
 
 
 _LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
@@ -67,6 +73,12 @@ class CombatParser:
         # Log timestamps for the current encounter window (used for death scanning)
         self.encounter_start_log_timestamp: Optional[str] = None
         self.encounter_end_log_timestamp: Optional[str] = None
+
+        # Boss HP tracking — updated live from SPELL_DAMAGE events.
+        # WCR strategy: track the unit with the highest maxHP seen (RaidEncounter.updateHp).
+        # Initialized to 1/1 so bossPercent = 100% until we see real data.
+        self._boss_current_hp: int = 1
+        self._boss_max_hp: int = 1
 
         # Throttle update_activity() calls — no need to call time.time() on every line
         self._last_activity_update: float = 0.0
@@ -116,6 +128,10 @@ class CombatParser:
         # Grab specID from COMBATANT_INFO once we know the player GUID
         if self.player_guid and self.player_spec_id is None and 'COMBATANT_INFO' in line:
             self._parse_combatant_info(line)
+
+        # Track boss HP% live from SPELL_DAMAGE events (mirrors WCR handleSpellDamage).
+        if self.state.encounter_active and 'SPELL_DAMAGE' in line:
+            self._track_boss_health(line)
         
     def start_manual_recording(self) -> bool:
         """Start a manual recording triggered by the user."""
@@ -291,6 +307,51 @@ class CombatParser:
         except (ValueError, IndexError):
             pass
 
+    def _track_boss_health(self, line: str):
+        """Update boss HP from a SPELL_DAMAGE line, mirroring WCR's handleSpellDamage.
+
+        WCR reads SPELL_DAMAGE and calls raid.updateHp(current, max), which only
+        updates if max >= current stored maxHp. This means we always track the
+        highest-HP unit seen — a safe proxy for the boss without needing a hardcoded
+        list of boss names (RaidEncounter.ts updateHp comment).
+
+        SPELL_DAMAGE fields (0-indexed from event type, matching WCR's LogLine.arg()):
+          arg(0)  = SPELL_DAMAGE
+          arg(1)  = srcGUID      arg(2)  = srcName    arg(3)  = srcFlags
+          arg(4)  = srcRaidFlags arg(5)  = destGUID   arg(6)  = destName
+          arg(7)  = destFlags    arg(8)  = destRaidFlags
+          arg(9)  = spellId      arg(10) = spellName  arg(11) = spellSchool
+          arg(12) = amount       arg(13) = baseAmount arg(14) = currentHP (dest)
+          arg(15) = maxHP (dest) ...
+
+        WCR: arg(14) = currentHP, arg(15) = maxHP  (LogHandler.ts lines 508/524)
+        """
+        try:
+            ts_split = line.split('  ', 1)
+            if len(ts_split) < 2:
+                return
+            # Split only as far as we need (arg 15 = index 15, so 17 parts)
+            parts = ts_split[1].split(',', 17)
+            if len(parts) < 16:
+                return
+
+            max_hp = int(parts[15].strip())
+
+            # WCR: skip units with maxHP < 100M on Retail (avoids tracking adds)
+            if max_hp < _MIN_BOSS_HP:
+                return
+
+            current_hp = int(parts[14].strip())
+
+            # WCR strategy: only update if this unit has more HP than any seen
+            # so far — the boss will always have the highest HP in an encounter.
+            if max_hp >= self._boss_max_hp:
+                self._boss_max_hp = max_hp
+                self._boss_current_hp = current_hp
+
+        except (ValueError, IndexError):
+            pass
+
     def _handle_dungeon_start(self, event: CombatEvent):
         """Handle CHALLENGE_MODE_START event."""
         # Don't start if already recording a dungeon
@@ -435,6 +496,10 @@ class CombatParser:
         self.encounter_start_log_timestamp = boss_info.timestamp
         self.encounter_end_log_timestamp = None
 
+        # Reset boss HP tracking for this new pull
+        self._boss_current_hp = 1
+        self._boss_max_hp = 1
+
         # Initialize metadata for encounter
         self._init_metadata_for_encounter(boss_info)
 
@@ -471,8 +536,9 @@ class CombatParser:
             timestamp=event.timestamp
         )
  
+        boss_hp_percent = round((100 * self._boss_current_hp) / self._boss_max_hp)
         self._finalize_metadata(is_kill=is_kill, duration=encounter_duration,
-                                fight_percentage=fight_percentage)
+                                fight_percentage=boss_hp_percent)
  
         self._emit_event('ENCOUNTER_END', event.timestamp, {
             'boss_name': boss_name,
@@ -684,8 +750,8 @@ class CombatParser:
                     ts_split = line.split('  ', 1)
                     if len(ts_split) < 2:
                         continue
-                    parts = ts_split[1].split(',', 25)
-                    if len(parts) < 24:
+                    parts = ts_split[1].split(',', 27)
+                    if len(parts) < 26:
                         continue
  
                     guid = parts[1].strip()
@@ -693,7 +759,7 @@ class CombatParser:
                         continue
  
                     faction = int(parts[2].strip())
-                    spec_id = int(parts[23].strip())
+                    spec_id = int(parts[25].strip())  # WCR: arg(25) — RetailLogHandler.ts line 490
  
                     # Always update guid_to_spec so any death lines later in this
                     # same pass can look up the spec_id for this player.
@@ -723,6 +789,12 @@ class CombatParser:
                     continue
  
         print(f"{LOG_PREFIXES['PARSER']} Scan complete: {deaths_found} deaths, {combatants_found} combatants found")
+
+        # Recompute uniqueHash now that combatants are fully populated.
+        # _finalize_metadata() runs before this scan, so the hash it computed
+        # had an empty combatants list — WCR only writes metadata after all
+        # processing is done, so we match that by recomputing here.
+        self.current_metadata._recompute_hash()
 
     def _parse_timestamp_to_ms(self, timestamp: str) -> int:
         """Parse combat log timestamp to milliseconds."""

@@ -9,7 +9,7 @@ from threading import Event, Thread
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
-from .constants import (
+from constants import (
     DEFAULT_LOG_PATTERN,
     LOG_PREFIXES,
 )

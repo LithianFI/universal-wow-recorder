@@ -6,7 +6,7 @@ Handles communication with OBS Studio for recording control.
 import time
 import obsws_python as obs
 
-from .constants import (
+from constants import (
     DEFAULT_OBS_HOST,
     DEFAULT_OBS_PORT,
     DEFAULT_OBS_TIMEOUT,

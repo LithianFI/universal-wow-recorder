@@ -7,12 +7,12 @@ from typing import Optional
 from pathlib import Path
 from datetime import datetime
 
-from ..constants import (
+from constants import (
     LOG_PREFIXES,
 )
 
-from .events import BossInfo, DungeonInfo
-from ..metadata_generator import RecordingMetadata
+from combat_parser.events import BossInfo, DungeonInfo
+from metadata_generator import RecordingMetadata
 
 
 class RecordingProcessor:

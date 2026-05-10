@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .constants import LOG_PREFIXES
+from constants import LOG_PREFIXES
 
 
 class ClipError(Exception):
