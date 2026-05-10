@@ -212,7 +212,7 @@ class CombatEvent:
             return None
     
     def get_encounter_end_info(self) -> tuple[bool, Optional[str], float]:
-        """Get kill/wipe status and fight percentage from ENCOUNTER_END event.
+        """Get kill/wipe status from ENCOUNTER_END event.
 
         ENCOUNTER_END fields:
           [0] ENCOUNTER_END
@@ -220,8 +220,12 @@ class CombatEvent:
           [2] encounterName
           [3] difficultyID
           [4] groupSize
-          [5] success  (1 = kill, 0 = wipe)
-          [6] fightPercentage  (boss HP% remaining at end; 0 on kill)
+          [5] success   (1 = kill, 0 = wipe)
+          [6] fightTime (fight duration in milliseconds — NOT boss HP%)
+
+        Note: there is no fightPercentage field in the combat log. Boss HP% at
+        wipe would require tracking UNIT_HEALTH events during the fight, which
+        this parser does not do. fight_percentage is always returned as 0.0.
         """
         is_kill = False
         boss_name = None
@@ -231,8 +235,6 @@ class CombatEvent:
             try:
                 is_kill = self.fields[5] == "1"
                 boss_name = self.fields[2] if len(self.fields) > 2 else None
-                if len(self.fields) >= 7:
-                    fight_percentage = float(self.fields[6])
             except (ValueError, IndexError):
                 pass
 
