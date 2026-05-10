@@ -1,0 +1,1 @@
+"""WoW Raid Recorder package."""

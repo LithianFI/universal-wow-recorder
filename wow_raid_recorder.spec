@@ -9,17 +9,20 @@ block_cipher = None
 
 a = Analysis(
     ['run.py'],
-    pathex=[],
+    pathex=['src'],
     binaries=[],
     datas=[
-        # Bundle all HTML templates (served directly from project root)
-        ('index.html', '.'),
-        ('config.html', '.'),
-        ('recordings.html', '.'),
-        ('stats.html', '.'),
-        ('clips.html', '.'),
+        # Bundle all HTML templates from the new package templates folder.
+        # Flask (initialised in src/wow_raid_recorder/app.py with Flask(__name__))
+        # looks for a sibling `templates/` directory, so we ship them next to
+        # the package module.
+        ('src/wow_raid_recorder/templates/index.html',      'wow_raid_recorder/templates'),
+        ('src/wow_raid_recorder/templates/config.html',     'wow_raid_recorder/templates'),
+        ('src/wow_raid_recorder/templates/recordings.html', 'wow_raid_recorder/templates'),
+        ('src/wow_raid_recorder/templates/stats.html',      'wow_raid_recorder/templates'),
+        ('src/wow_raid_recorder/templates/clips.html',      'wow_raid_recorder/templates'),
         # Bundle example config
-        ('config.ini.example', '.'),
+        ('config_ini.example', '.'),
         # Linux terminal launcher (sits next to the binary)
         ('WoWRaidRecorder.sh', '.'),
     ],

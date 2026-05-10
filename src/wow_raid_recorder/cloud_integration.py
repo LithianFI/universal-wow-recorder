@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Callable
 from threading import Thread
 
-from cloud_upload import (
+from .cloud_upload import (
     CloudUploadProvider,
     WarcraftRecorderCloud,
     GoogleDriveUpload, 

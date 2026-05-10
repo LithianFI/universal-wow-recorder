@@ -22,7 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from constants import VIDEO_EXTENSIONS, LOG_PREFIXES
+from .constants import VIDEO_EXTENSIONS, LOG_PREFIXES
 
 
 # Clip files produced by the export endpoint are suffixed with "_clip_MMSS-MMSS"

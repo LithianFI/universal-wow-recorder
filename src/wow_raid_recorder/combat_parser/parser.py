@@ -8,23 +8,22 @@ from datetime import datetime
 from typing import Optional, List, Callable
 from pathlib import Path
 
-from obs_client import OBSClient
-from state_manager import RecordingState
-from config_manager import ConfigManager
+from ..obs_client import OBSClient
+from ..state_manager import RecordingState
+from ..config_manager import ConfigManager
 
-from combat_parser.file_manager import RecordingFileManager
-from combat_parser.recording_processor import RecordingProcessor
-from combat_parser.dungeon_monitor import DungeonMonitor
-from combat_parser.events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
-from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
+from .file_manager import RecordingFileManager
+from .recording_processor import RecordingProcessor
+from .dungeon_monitor import DungeonMonitor
+from .events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
+from ..metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
 
-from constants import LOG_PREFIXES
+from ..constants import LOG_PREFIXES
 
 _RELEVANT_EVENTS = frozenset((
     "ENCOUNTER_START", "ENCOUNTER_END",
     "CHALLENGE_MODE_START", "CHALLENGE_MODE_END",
     "ZONE_CHANGE", "COMBATANT_INFO", "UNIT_DIED",
-    "UNIT_HEALTH",
 ))
 
 
@@ -68,10 +67,6 @@ class CombatParser:
         # Log timestamps for the current encounter window (used for death scanning)
         self.encounter_start_log_timestamp: Optional[str] = None
         self.encounter_end_log_timestamp: Optional[str] = None
-
-        # Boss HP tracking — updated live from UNIT_HEALTH events
-        self._boss_unit_guid: Optional[str] = None
-        self._last_boss_hp_percent: float = 0.0
 
         # Throttle update_activity() calls — no need to call time.time() on every line
         self._last_activity_update: float = 0.0
@@ -121,12 +116,6 @@ class CombatParser:
         # Grab specID from COMBATANT_INFO once we know the player GUID
         if self.player_guid and self.player_spec_id is None and 'COMBATANT_INFO' in line:
             self._parse_combatant_info(line)
-
-        # Track boss HP% live so we can record it on a wipe.
-        # UNIT_HEALTH format (after timestamp double-space):
-        #   UNIT_HEALTH,unitGUID,"unitName",unitFlags,unitRaidFlags,currentHP,maxHP
-        if self.state.encounter_active and 'UNIT_HEALTH' in line:
-            self._track_boss_health(line)
         
     def start_manual_recording(self) -> bool:
         """Start a manual recording triggered by the user."""
@@ -302,53 +291,6 @@ class CombatParser:
         except (ValueError, IndexError):
             pass
 
-    def _track_boss_health(self, line: str):
-        """Update _last_boss_hp_percent from a UNIT_HEALTH line.
-
-        UNIT_HEALTH format (advanced combat log):
-          UNIT_HEALTH,unitGUID,"unitName",unitFlags,unitRaidFlags,currentHP,maxHP
-
-        We identify the boss as the first non-player NPC unit we see take damage
-        during an active encounter. Unit flags 0xa48 / 0x10a48 indicate a hostile
-        NPC (AFFILIATION_OUTSIDER | REACTION_HOSTILE | CONTROL_NPC | TYPE_NPC).
-        In practice, filtering for any NPC GUID (starting with "Creature-") that
-        is NOT the player is sufficient.
-        """
-        try:
-            ts_split = line.split('  ', 1)
-            if len(ts_split) < 2:
-                return
-            parts = ts_split[1].split(',', 7)
-            if len(parts) < 7:
-                return
-
-            # parts: [0]=UNIT_HEALTH, [1]=guid, [2]=name, [3]=flags,
-            #        [4]=raidFlags, [5]=currentHP, [6]=maxHP
-            guid = parts[1].strip()
-
-            # Only track NPC units (boss), not players or pets
-            if not guid.startswith('Creature-'):
-                return
-
-            current_hp = int(parts[5].strip())
-            max_hp = int(parts[6].strip())
-
-            if max_hp <= 0:
-                return
-
-            hp_percent = (current_hp / max_hp) * 100.0
-
-            # Lock onto the first creature we see — that's the boss.
-            # If we haven't locked yet, or this is our locked target, update.
-            if self._boss_unit_guid is None:
-                self._boss_unit_guid = guid
-
-            if guid == self._boss_unit_guid:
-                self._last_boss_hp_percent = hp_percent
-
-        except (ValueError, IndexError):
-            pass
-
     def _handle_dungeon_start(self, event: CombatEvent):
         """Handle CHALLENGE_MODE_START event."""
         # Don't start if already recording a dungeon
@@ -493,10 +435,6 @@ class CombatParser:
         self.encounter_start_log_timestamp = boss_info.timestamp
         self.encounter_end_log_timestamp = None
 
-        # Reset boss HP tracking for this new pull
-        self._boss_unit_guid = None
-        self._last_boss_hp_percent = 0.0
-
         # Initialize metadata for encounter
         self._init_metadata_for_encounter(boss_info)
 
@@ -534,7 +472,7 @@ class CombatParser:
         )
  
         self._finalize_metadata(is_kill=is_kill, duration=encounter_duration,
-                                fight_percentage=self._last_boss_hp_percent)
+                                fight_percentage=fight_percentage)
  
         self._emit_event('ENCOUNTER_END', event.timestamp, {
             'boss_name': boss_name,
@@ -785,12 +723,6 @@ class CombatParser:
                     continue
  
         print(f"{LOG_PREFIXES['PARSER']} Scan complete: {deaths_found} deaths, {combatants_found} combatants found")
-
-        # Recompute uniqueHash now that combatants are fully populated.
-        # _finalize_metadata() runs before this scan, so the hash it computed
-        # had an empty combatants list — WCR only writes metadata after all
-        # processing is done, so we match that by recomputing here.
-        self.current_metadata._recompute_hash()
 
     def _parse_timestamp_to_ms(self, timestamp: str) -> int:
         """Parse combat log timestamp to milliseconds."""

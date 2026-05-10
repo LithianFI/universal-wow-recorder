@@ -6,7 +6,7 @@ Tracks the current state of encounters and recordings.
 import time
 from typing import Optional
 
-from constants import LOG_PREFIXES
+from .constants import LOG_PREFIXES
 
 
 class RecordingState:
