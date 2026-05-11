@@ -379,6 +379,20 @@
                                 <div class="h-full bg-amber-400 rounded pointer-events-none"
                                     :style="'width:' + playedPercent + '%'"></div>
 
+                                <!-- Clip range highlight -->
+                                <div x-show="clipInPercent !== null || clipOutPercent !== null"
+                                    class="absolute top-0 h-full pointer-events-none"
+                                    style="background:rgba(201,169,97,0.35);"
+                                    :style="'left:' + (clipInPercent ?? 0) + '%;width:' + ((clipOutPercent ?? 100) - (clipInPercent ?? 0)) + '%;'"></div>
+                                <div x-show="clipInPercent !== null"
+                                    class="absolute top-0 bottom-0 w-0.5 pointer-events-none"
+                                    style="background:#c9a961;"
+                                    :style="'left:' + clipInPercent + '%;'"></div>
+                                <div x-show="clipOutPercent !== null"
+                                    class="absolute top-0 bottom-0 w-0.5 pointer-events-none"
+                                    style="background:#c9a961;"
+                                    :style="'left:' + clipOutPercent + '%;'"></div>
+
                                 <template x-for="(pct, i) in deathMarkerPositions" :key="i">
                                     <div class="absolute top-0 bottom-0 -translate-x-1/2 z-10 group/marker"
                                         :style="'left:' + pct + '%'">
@@ -450,6 +464,27 @@
                                 </div>
 
                                 <div class="flex-1"></div>
+
+                                <!-- Clip controls -->
+                                <div class="flex items-center gap-1.5 border-l border-white/20 pl-3">
+                                    <button @click="clipSetIn()" class="quick-btn">
+                                        In
+                                        <span x-show="clipInSecs !== null" class="text-gold-500 ml-1 font-mono"
+                                            x-text="formatVideoTime(clipInSecs)"></span>
+                                    </button>
+                                    <button @click="clipSetOut()" class="quick-btn">
+                                        Out
+                                        <span x-show="clipOutSecs !== null" class="text-gold-500 ml-1 font-mono"
+                                            x-text="formatVideoTime(clipOutSecs)"></span>
+                                    </button>
+                                    <button @click="clipExport()" :disabled="!canExportClip || clipBusy"
+                                        class="quick-btn"
+                                        :class="canExportClip && !clipBusy ? 'border-gold-500 text-gold-500' : ''">
+                                        <span x-text="clipBusy ? 'Exporting…' : 'Export'"></span>
+                                    </button>
+                                    <button @click="clipClear()" x-show="clipInSecs !== null || clipOutSecs !== null"
+                                        class="text-white/40 hover:text-white transition-colors px-1 text-sm">✕</button>
+                                </div>
 
                                 <span x-show="deathMarkerPositions.length > 0"
                                     class="px-2 py-0.5 rounded-full text-[10px]"
@@ -561,6 +596,19 @@
             </section>
         </div>
 
+        <!-- Toast notifications -->
+        <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:320px;">
+            <template x-for="t in toasts" :key="t.id">
+                <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg text-sm shadow-xl"
+                    :style="t.type === 'error'
+                        ? 'background:#1f0c0c;border:1px solid rgba(224,112,112,0.45);color:#e07070;'
+                        : 'background:#0d1a0d;border:1px solid rgba(112,194,89,0.45);color:#8fd06b;'">
+                    <span x-text="t.type === 'error' ? '✕' : '✓'" class="shrink-0 font-bold mt-px"></span>
+                    <span x-text="t.message" class="leading-snug"></span>
+                </div>
+            </template>
+        </div>
+
         <!-- Delete modal -->
         <div x-show="showDeleteModal" x-cloak
             class="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
@@ -657,6 +705,12 @@
                 deathNames: [],
                 deathSpecIds: [],
 
+                clipInSecs: null,
+                clipOutSecs: null,
+                clipBusy: false,
+                toasts: [],
+                _toastSeq: 0,
+
                 init() {
                     this.fetchRecordings();
                     this.connectSocket();
@@ -665,6 +719,14 @@
                 connectSocket() {
                     this.socket = io();
                     this.socket.on('recordings_updated', () => this.fetchRecordings());
+                    this.socket.on('clip_complete', (data) => {
+                        this.clipBusy = false;
+                        if (data.error) {
+                            this.toast('Clip export failed: ' + data.error, 'error');
+                        } else {
+                            this.toast('Clip exported successfully', 'success');
+                        }
+                    });
                 },
 
                 // ── Parsing & metadata hydration ─────────────────────
@@ -882,6 +944,9 @@
                     this.duration = 0;
                     this.playedPercent = 0;
                     this.speed = 1;
+                    this.clipInSecs = null;
+                    this.clipOutSecs = null;
+                    this.clipBusy = false;
 
                     this.$nextTick(() => {
                         if (this.$refs.videoPlayer) this.$refs.videoPlayer.load();
@@ -1069,6 +1134,62 @@
                     const pct = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
                     this.seekPreviewPercent = pct;
                     this.seekPreviewTime = (pct / 100) * this.duration;
+                },
+
+                // ── Clip helpers ─────────────────────────────────────
+                get clipInPercent() {
+                    if (this.clipInSecs === null || !this.duration) return null;
+                    return (this.clipInSecs / this.duration) * 100;
+                },
+                get clipOutPercent() {
+                    if (this.clipOutSecs === null || !this.duration) return null;
+                    return (this.clipOutSecs / this.duration) * 100;
+                },
+                get canExportClip() {
+                    return this.clipInSecs !== null
+                        && this.clipOutSecs !== null
+                        && this.clipOutSecs > this.clipInSecs;
+                },
+                clipSetIn() {
+                    const t = this.currentTime;
+                    this.clipInSecs = t;
+                    if (this.clipOutSecs !== null && this.clipOutSecs <= t) this.clipOutSecs = null;
+                },
+                clipSetOut() {
+                    const t = this.currentTime;
+                    this.clipOutSecs = t;
+                    if (this.clipInSecs !== null && this.clipInSecs >= t) this.clipInSecs = null;
+                },
+                clipClear() {
+                    this.clipInSecs = null;
+                    this.clipOutSecs = null;
+                },
+                async clipExport() {
+                    if (!this.canExportClip || !this.selectedRecording) return;
+                    this.clipBusy = true;
+                    try {
+                        const url = '/api/recordings/'
+                            + this.selectedRecording.name.split('/').map(encodeURIComponent).join('/')
+                            + '/clip';
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ start: this.clipInSecs, end: this.clipOutSecs }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            this.toast('Clip export failed: ' + (data.error || 'unknown error'), 'error');
+                            this.clipBusy = false;
+                        }
+                    } catch (e) {
+                        console.error('Clip request error:', e);
+                        this.clipBusy = false;
+                    }
+                },
+                toast(message, type = 'success', duration = 4000) {
+                    const id = ++this._toastSeq;
+                    this.toasts.push({ id, message, type });
+                    setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, duration);
                 },
             };
         }
