@@ -106,8 +106,7 @@ class OBSClient:
             
             # Start recording
             self.client.start_record()
-            print(f"{LOG_PREFIXES['OBS']} ⏺️ Recording started")
-            
+
             # Brief pause to ensure recording initializes
             time.sleep(0.5)
             return True
@@ -134,8 +133,7 @@ class OBSClient:
             
             # Stop recording
             self.client.stop_record()
-            print(f"{LOG_PREFIXES['OBS']} ⏹️ Recording stopped")
-            
+
             # Wait for recording to finalize
             time.sleep(1)
             return True

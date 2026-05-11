@@ -207,8 +207,6 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             resp.raise_for_status()
             affiliations = resp.json()  # [{guildName, read, write, del}, ...]
 
-            print(f"[WCR Cloud] Got {len(affiliations)} affiliations")
-
             affiliation = next(
                 (a for a in affiliations if a.get('guildName') == self.guild_name),
                 None
@@ -491,9 +489,6 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     progress.uploaded_bytes = offset
                     if progress_callback:
                         progress_callback(progress)
-
-                    pct = round(100 * offset / file_size, 1)
-                    print(f"[WCR Cloud] Part {part_num}/{len(urls)} done ({pct}%)")
 
             # Step 3 – complete multipart upload
             complete_resp = requests.post(
@@ -975,9 +970,5 @@ class GoogleDriveUpload(CloudUploadProvider):
                 progress.uploaded_bytes = uploaded
                 if progress_callback:
                     progress_callback(progress)
-
-                pct = uploaded / file_size * 100
-                speed_mb = progress.upload_speed / (1024 * 1024)
-                print(f"[GDrive] Progress: {pct:.1f}%  ({speed_mb:.1f} MB/s)")
 
         return uploaded >= file_size

@@ -651,7 +651,6 @@ def handle_connect(auth=None):
 @socketio.on('request_status')
 def handle_status_request(auth=None):
     """Handle explicit status request from client."""
-    print(f"{LOG_PREFIXES['WEBSOCKET']} Status requested by client")
     status = build_status()
     emit('status', status)
 
@@ -911,7 +910,6 @@ async def init_cloud_manager():
 
         if s.cloud_manager:
             s.cloud_manager.set_progress_callback(broadcast_upload_progress)
-            print("[Cloud] ✅ Cloud manager initialized")
         else:
             print("[Cloud] ❌ Failed to initialize cloud manager")
     except Exception as e:
@@ -941,8 +939,6 @@ def init_recorder(config_path: Path) -> bool:
         if not s.obs_client.connect():
             print(f"{LOG_PREFIXES['RECORDER']} Warning: Could not connect to OBS")
             print(f"{LOG_PREFIXES['RECORDER']} Recording will not work until OBS is connected")
-        else:
-            print(f"{LOG_PREFIXES['RECORDER']} Connected to OBS")
 
         s.state_manager = RecordingState()
 

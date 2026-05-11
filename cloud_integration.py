@@ -37,9 +37,7 @@ class CloudUploadManager:
         self.event_loop: Optional[asyncio.AbstractEventLoop] = None
         self.upload_thread: Optional[Thread] = None
         self.progress_callback: Optional[Callable] = None
-        
-        print("[Cloud Manager] Initialized")
-    
+
     async def initialize(self) -> bool:
         if not self.config.CLOUD_UPLOAD_ENABLED:
             print("[Cloud Manager] Cloud upload is disabled in config")
