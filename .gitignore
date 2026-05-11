@@ -3,4 +3,4 @@ __pycache__
 .venv/
 config.ini
 build/
-CLAUDE.md
+.claude
