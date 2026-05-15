@@ -39,7 +39,7 @@ class RecordingMetadata:
         self.start_timestamp = None
         self.unique_hash = None
         self.boss_percent = 0
-        self.app_version = "1.0.0"
+        self.app_version = "7.5.1"
         # M+ specific fields
         self.keystone_level: Optional[int] = None
         self.map_id: Optional[int] = None
@@ -86,18 +86,28 @@ class RecordingMetadata:
         Shape matches WCR's PlayerDeathType:
           { name, specId, date (ISO), timestamp (seconds from video start), friendly }
 
-        'timestamp' in WCR is seconds elapsed from the encounter start, not epoch ms.
-        'date' is an ISO string of the absolute wall-clock time.
+        WCR (LogHandler.ts line 193):
+          deathDate = (line.date().getTime() - 2) / 1000   ← 2ms subtracted, whole-second wall clock
+          relativeTime = deathDate - activityStartDate (in seconds)
+
+        line.date() truncates to whole seconds (LogLine.ts sets milliseconds to 0),
+        so we do the same. The -2ms nudge matches WCR's intentional 2ms lookback.
         """
         from datetime import datetime, timezone
 
-        date_iso = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+        # Truncate to whole seconds (WCR's line.date() sets ms to 0)
+        timestamp_s_truncated = (timestamp_ms // 1000) * 1000
 
-        # Compute seconds from encounter start (what WCR's frontend expects)
+        # WCR date format: "2026-05-13T20:55:45.000Z"
+        date_iso = datetime.fromtimestamp(timestamp_s_truncated / 1000, tz=timezone.utc) \
+                           .strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+        # WCR: deathDate = (wallClockMs - 2) / 1000
+        #      relativeTime = deathDate - (startMs / 1000)
         if self.start_timestamp:
-            offset_secs = (timestamp_ms - self.start_timestamp) / 1000
+            offset_secs = ((timestamp_s_truncated - 2) / 1000) - (self.start_timestamp / 1000)
         else:
-            offset_secs = timestamp_ms / 1000  # fallback: treat as raw seconds
+            offset_secs = (timestamp_s_truncated - 2) / 1000
 
         self.deaths.append({
             "name": name,
@@ -129,25 +139,42 @@ class RecordingMetadata:
         self._recompute_hash()
     
     def _recompute_hash(self):
-        """Recompute the uniqueHash from current state. Call after any change to
-        category, flavour, result, or combatants that affects the hash."""
+        """Recompute the uniqueHash to exactly match Activity.getUniqueHash() in WCR.
+
+        WCR (Activity.ts):
+          deterministicFields = [category, flavour, result].map(f => f.toString())
+          sortedNames = combatantMap.values().map(c => c.name).sort().filter(Boolean)
+          uniqueString = deterministicFields.join(' ') + sortedNames.join(' ')
+          md5(uniqueString)
+
+        Key points:
+        - result.toString() in JS: true → 'true', false → 'false'
+        - Names are joined with a SPACE (not empty string)
+        - The two halves are concatenated directly with NO space between them
+          e.g. "Raids Retail trueName1 Name2"
+        - The combatantMap includes the player — WCR adds the player via addCombatant
+          the same way as any other combatant, so we include player_info here too.
+        """
         import hashlib
 
-        # Mirror WCR: [category, flavour, str(result)].join(' ')
-        # Python's str(True) == 'True' but JS's true.toString() == 'true'
         result_str = 'true' if self.result else 'false'
         deterministic = f"{self.category} {self.flavour} {result_str}"
 
-        # Sorted combatant names (WCR uses _name field)
-        names = sorted(
-            c['_name'] for c in self.combatants if c.get('_name')
-        )
-        # Also include player name if available and not already in combatants
-        if self.player_info.get('_name') and self.player_info['_name'] not in names:
-            names.append(self.player_info['_name'])
-            names.sort()
+        # Build the full name set: combatants + player (WCR's combatantMap holds both)
+        all_names = set()
+        for c in self.combatants:
+            name = c.get('_name')
+            if name:
+                all_names.add(name)
+        player_name = self.player_info.get('_name')
+        if player_name:
+            all_names.add(player_name)
 
-        unique_string = deterministic + ''.join(names)
+        sorted_names = sorted(all_names)
+
+        # Mirror JS: deterministicFields.join(' ') + sortedNames.join(' ')
+        # No space between the two halves — that's what WCR produces.
+        unique_string = deterministic + ' '.join(sorted_names)
         self.unique_hash = hashlib.md5(unique_string.encode('utf-8')).hexdigest()
     
     def generate_filename(self, start_datetime: datetime, extension: str = ".mp4") -> str:

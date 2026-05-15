@@ -561,6 +561,7 @@ class CombatParser:
 
         # Explicit category for boss encounters
         self.current_metadata.category = RecordingCategory.RAIDS
+        self.current_metadata.overrun = 3  # WCR RaidEncounter: this.overrun = 3
 
         self.current_metadata.set_encounter_info(
             encounter_id=boss_info.boss_id,
