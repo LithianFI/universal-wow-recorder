@@ -51,6 +51,17 @@ class OBSClient:
         Returns:
             True if connected successfully, False otherwise
         """
+        # Always tear down any previous client before creating a new one.
+        # obsws_python's ReqClient spawns a background thread on init; leaving
+        # a stale instance alive blocks the new connection attempt.
+        if self.client is not None:
+            try:
+                self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
+            self._is_connected = False
+
         try:
             self.client = obs.ReqClient(
                 host=self.host,
@@ -64,6 +75,7 @@ class OBSClient:
             
         except Exception as e:
             print(f"{LOG_PREFIXES['OBS']} ❌ Failed to connect: {e}")
+            self.client = None
             self._is_connected = False
             return False
     
@@ -106,7 +118,8 @@ class OBSClient:
             
             # Start recording
             self.client.start_record()
-
+            print(f"{LOG_PREFIXES['OBS']} ⏺️ Recording started")
+            
             # Brief pause to ensure recording initializes
             time.sleep(0.5)
             return True
@@ -133,7 +146,8 @@ class OBSClient:
             
             # Stop recording
             self.client.stop_record()
-
+            print(f"{LOG_PREFIXES['OBS']} ⏹️ Recording stopped")
+            
             # Wait for recording to finalize
             time.sleep(1)
             return True

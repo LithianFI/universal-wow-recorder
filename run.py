@@ -136,6 +136,7 @@ def reconnect_obs():
     try:
         success = s.obs_client.connect()
         if success:
+            _persist_obs_recording_path(s.obs_client, s.config_manager)
             return jsonify({'success': True, 'message': 'Reconnected to OBS'})
         return jsonify({'success': False, 'error': 'Failed to connect to OBS'}), 500
     except Exception as e:
@@ -208,7 +209,45 @@ def save_config():
 
     try:
         data = request.get_json()
+
+        # Snapshot cloud-relevant settings before applying changes so we can
+        # tell whether a reinitialisation is needed.
+        _CLOUD_KEYS = {
+            'cloud_upload_enabled', 'cloud_upload_provider',
+            'wcr_username', 'wcr_password', 'wcr_guild',
+            'gdrive_credentials_file', 'gdrive_folder_id',
+        }
+        before = {k: getattr(s.config_manager, k.upper(), None) for k in _CLOUD_KEYS}
+
         s.config_manager.update_from_dict(data)
+
+        after = {k: getattr(s.config_manager, k.upper(), None) for k in _CLOUD_KEYS}
+        cloud_changed = before != after
+
+        if cloud_changed:
+            # Shut down existing manager (if any) then reinitialise.
+            def _reinit_cloud():
+                if s.cloud_manager:
+                    try:
+                        asyncio.run(s.cloud_manager.shutdown())
+                    except Exception:
+                        pass
+                    s.cloud_manager = None
+
+                if s.config_manager.CLOUD_UPLOAD_ENABLED:
+                    try:
+                        asyncio.run(init_cloud_manager())
+                        broadcast_cloud_status()
+                        print("[Cloud] ✅ Cloud manager reinitialized after config change")
+                    except Exception as e:
+                        print(f"[Cloud] ❌ Reinit error after config change: {e}")
+                else:
+                    broadcast_cloud_status()
+                    print("[Cloud] Cloud upload disabled — manager shut down")
+
+            import threading
+            threading.Thread(target=_reinit_cloud, daemon=True).start()
+
         return jsonify({'success': True, 'message': 'Configuration saved'})
     except Exception as e:
         return jsonify({'error': str(e)}), 400
@@ -526,6 +565,27 @@ def get_stats():
     return jsonify({'encounters': encounters})
 
 
+def _persist_obs_recording_path(obs_client, config_manager):
+    """Read the recording directory from OBS and save it as recording_path_fallback.
+
+    This means the recordings page keeps working even when OBS is not running,
+    because get_recording_directory() falls back to the stored path.
+    """
+    try:
+        settings = obs_client.get_recording_settings()
+        record_dir = settings.get('record_directory') if settings else None
+        if not record_dir:
+            return
+        current = str(config_manager.RECORDING_PATH_FALLBACK or '')
+        if current == record_dir:
+            return  # already up to date — skip the write
+        config_manager.config.set('Recording', 'recording_path_fallback', record_dir)
+        config_manager.save()
+        print(f"[CONFIG] Saved OBS recording path: {record_dir}")
+    except Exception as e:
+        print(f"[CONFIG] Could not persist OBS recording path: {e}")
+
+
 def get_recording_directory() -> Optional[Path]:
     s = get_state()
     if s.combat_parser and s.combat_parser.file_manager:
@@ -651,6 +711,7 @@ def handle_connect(auth=None):
 @socketio.on('request_status')
 def handle_status_request(auth=None):
     """Handle explicit status request from client."""
+    print(f"{LOG_PREFIXES['WEBSOCKET']} Status requested by client")
     status = build_status()
     emit('status', status)
 
@@ -755,9 +816,23 @@ def status_broadcast_loop():
     """Background thread that broadcasts status updates."""
     last_status = None
     last_cloud_broadcast = 0
+    last_obs_reconnect_attempt = 0
+    OBS_RECONNECT_INTERVAL = 15  # seconds between passive reconnect attempts
 
     while not shutdown_event.is_set():
         try:
+            s = get_state()
+
+            # Passively attempt to reconnect to OBS when disconnected.
+            # This handles the case where OBS is started after the recorder.
+            if s.obs_client and not s.obs_client.is_connected:
+                now = time.time()
+                if now - last_obs_reconnect_attempt >= OBS_RECONNECT_INTERVAL:
+                    last_obs_reconnect_attempt = now
+                    if s.obs_client.connect():
+                        print(f"{LOG_PREFIXES['OBS']} ✅ Auto-reconnected to OBS")
+                        _persist_obs_recording_path(s.obs_client, s.config_manager)
+
             status = build_status()
 
             recorder = status.get('recorder') or {}
@@ -910,6 +985,7 @@ async def init_cloud_manager():
 
         if s.cloud_manager:
             s.cloud_manager.set_progress_callback(broadcast_upload_progress)
+            print("[Cloud] ✅ Cloud manager initialized")
         else:
             print("[Cloud] ❌ Failed to initialize cloud manager")
     except Exception as e:
@@ -939,6 +1015,9 @@ def init_recorder(config_path: Path) -> bool:
         if not s.obs_client.connect():
             print(f"{LOG_PREFIXES['RECORDER']} Warning: Could not connect to OBS")
             print(f"{LOG_PREFIXES['RECORDER']} Recording will not work until OBS is connected")
+        else:
+            print(f"{LOG_PREFIXES['RECORDER']} Connected to OBS")
+            _persist_obs_recording_path(s.obs_client, s.config_manager)
 
         s.state_manager = RecordingState()
 
