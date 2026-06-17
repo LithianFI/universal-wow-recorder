@@ -29,7 +29,7 @@ DIFFICULTY_IDS = {
     'lfr': [7, 17],           # Looking For Raid
     'normal': [1, 14],        # Normal
     'heroic': [2, 15],        # Heroic
-    'mythic': [3, 16, 23],    # Mythic
+    'mythic': [3, 16, 22, 23],    # Mythic
     'other': [4, 5, 8, 9, 24, 33],  # Timewalking, Mythic+, etc.
 }
 
@@ -46,8 +46,9 @@ DIFFICULTY_NAMES = {
     15: "Heroic", 
     16: "Mythic", 
     17: "LFR",
-    23: "Mythic", 
-    24: "Timewalking", 
+    22: "Mythic",
+    23: "Mythic",
+    24: "Timewalking",
     33: "Timewalking",
 }
 

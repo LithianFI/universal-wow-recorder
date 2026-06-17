@@ -269,6 +269,7 @@ class RecordingMetadata:
             15: "H",  # Heroic (raid)
             16: "M",  # Mythic (raid)
             17: "LFR",# LFR (raid)
+            22: "M",  # Mythic Flex
             23: "M",  # Mythic
         }
         return difficulty_map.get(difficulty_id, "N")

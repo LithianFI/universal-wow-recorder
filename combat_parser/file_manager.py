@@ -211,7 +211,7 @@ class RecordingFileManager:
             1: "Normal", 2: "Heroic", 3: "Mythic", 4: "Mythic+",
             5: "Timewalking", 7: "LFR", 9: "40Player",
             14: "Normal", 15: "Heroic", 16: "Mythic", 17: "LFR",
-            23: "Mythic", 24: "Timewalking", 33: "Timewalking",
+            22: "Mythic", 23: "Mythic", 24: "Timewalking", 33: "Timewalking",
         }
         return difficulties.get(difficulty_id, f"Difficulty_{difficulty_id}")
     
