@@ -71,6 +71,11 @@ class ConfigManager:
             'gdrive_folder_id': '',
             'proton_enabled': 'false',
             'proton_folder': '',
+            # POV sync — check cloud for other players' recordings of the same encounter
+            'pov_sync_enabled': 'false',
+            'pov_sync_interval': '15',
+            'pov_auto_download': 'false',
+            'pov_download_dir': '',
         },
         'BossNames': {},
     }
@@ -119,8 +124,12 @@ class ConfigManager:
             'wcr_username':        str,
             'wcr_password':        str,
             'wcr_guild':           str,
-            'gdrive_credentials_file': str,  
-            'gdrive_folder_id':        str,  
+            'gdrive_credentials_file': str,
+            'gdrive_folder_id':        str,
+            'pov_sync_enabled':    lambda v: str(v).lower(),
+            'pov_sync_interval':   str,
+            'pov_auto_download':   lambda v: str(v).lower(),
+            'pov_download_dir':    str,
         }),
     }
 
@@ -502,6 +511,25 @@ proton_folder =
     @property
     def PROTON_FOLDER(self) -> str:
         return self.config.get('CloudUpload', 'proton_folder', fallback='', raw=True)
+
+    @property
+    def POV_SYNC_ENABLED(self) -> bool:
+        return self.config.getboolean('CloudUpload', 'pov_sync_enabled', fallback=False)
+
+    @property
+    def POV_SYNC_INTERVAL(self) -> int:
+        """Sync interval in minutes."""
+        return self.config.getint('CloudUpload', 'pov_sync_interval', fallback=15)
+
+    @property
+    def POV_AUTO_DOWNLOAD(self) -> bool:
+        """Automatically download discovered POVs without user prompt."""
+        return self.config.getboolean('CloudUpload', 'pov_auto_download', fallback=False)
+
+    @property
+    def POV_DOWNLOAD_DIR(self) -> str:
+        """Custom directory for downloaded POVs (empty = <recordings>/other_povs)."""
+        return self.config.get('CloudUpload', 'pov_download_dir', fallback='', raw=True)
 
     # ---------------------------------------------------------------------
     # Difficulty Management

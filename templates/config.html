@@ -622,6 +622,58 @@
                         </div>
                     </div>
 
+                    <!-- POV sync (WCR only) -->
+                    <div x-show="config.cloud_upload.provider === 'warcraft_recorder'" x-cloak
+                        class="space-y-4 pt-4 border-t border-ink-500">
+                        <p class="label-cap">Multi-POV sync</p>
+                        <p class="text-parchment-400 text-xs -mt-1">
+                            Periodically fetches guildmates' recordings of the same encounter and downloads
+                            them locally. Downloads are paused while a recording is in progress.
+                        </p>
+
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-parchment-700 text-sm font-medium">Enable POV sync</div>
+                                <div class="text-parchment-400 text-xs">Check the cloud for other players' recordings</div>
+                            </div>
+                            <button type="button" class="toggle"
+                                :class="config.cloud_upload.pov_sync_enabled ? 'on' : 'off'"
+                                @click="config.cloud_upload.pov_sync_enabled = !config.cloud_upload.pov_sync_enabled">
+                                <span class="toggle-thumb"></span>
+                            </button>
+                        </div>
+
+                        <div x-show="config.cloud_upload.pov_sync_enabled" x-cloak class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <div class="text-parchment-700 text-sm font-medium">Auto-download POVs</div>
+                                    <div class="text-parchment-400 text-xs">Automatically download encounters less than 24 hours old</div>
+                                </div>
+                                <button type="button" class="toggle"
+                                    :class="config.cloud_upload.pov_auto_download ? 'on' : 'off'"
+                                    @click="config.cloud_upload.pov_auto_download = !config.cloud_upload.pov_auto_download">
+                                    <span class="toggle-thumb"></span>
+                                </button>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="field-label">Sync interval (minutes)</label>
+                                    <input type="number" x-model.number="config.cloud_upload.pov_sync_interval"
+                                        min="1" max="1440" class="input">
+                                    <p class="field-help">How often to check the cloud for new POVs (default 15).</p>
+                                </div>
+                                <div>
+                                    <label class="field-label">Download directory</label>
+                                    <input type="text" x-model="config.cloud_upload.pov_download_dir"
+                                        class="input input-mono"
+                                        placeholder="Leave empty for &lt;recordings&gt;/other_povs/">
+                                    <p class="field-help">Absolute path where POV files are saved. Leave empty for the default.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Google Drive -->
                     <div x-show="config.cloud_upload.provider === 'google_drive'" x-cloak
                         class="space-y-4 pt-4 border-t border-ink-500">
@@ -732,6 +784,10 @@
                         wcr_guild: '',
                         gdrive_credentials_file: '',
                         gdrive_folder_id: '',
+                        pov_sync_enabled: false,
+                        pov_sync_interval: 15,
+                        pov_auto_download: false,
+                        pov_download_dir: '',
                     },
                 },
 
@@ -787,6 +843,10 @@
                                 wcr_guild: data.cloud_upload.wcr_guild ?? '',
                                 gdrive_credentials_file: data.cloud_upload.gdrive_credentials_file ?? '',
                                 gdrive_folder_id: data.cloud_upload.gdrive_folder_id ?? '',
+                                pov_sync_enabled: data.cloud_upload.pov_sync_enabled === true,
+                                pov_sync_interval: data.cloud_upload.pov_sync_interval ?? 15,
+                                pov_auto_download: data.cloud_upload.pov_auto_download === true,
+                                pov_download_dir: data.cloud_upload.pov_download_dir ?? '',
                             };
                         }
                     } catch (error) {

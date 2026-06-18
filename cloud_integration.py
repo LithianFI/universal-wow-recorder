@@ -11,11 +11,12 @@ from threading import Thread
 from cloud_upload import (
     CloudUploadProvider,
     WarcraftRecorderCloud,
-    GoogleDriveUpload, 
+    GoogleDriveUpload,
     CloudUploadQueue,
     VideoMetadata,
     UploadProgress,
 )
+from cloud_pov_sync import PovSyncManager, DownloadProgress
 
 
 class CloudUploadManager:
@@ -37,8 +38,16 @@ class CloudUploadManager:
         self.event_loop: Optional[asyncio.AbstractEventLoop] = None
         self.upload_thread: Optional[Thread] = None
         self.progress_callback: Optional[Callable] = None
+        self.pov_sync: Optional[PovSyncManager] = None
+        self._get_recording_dir: Optional[Callable] = None
+        self._is_recording: Optional[Callable] = None
 
-    async def initialize(self) -> bool:
+    async def initialize(self,
+                         get_recording_dir_fn: Optional[Callable] = None,
+                         is_recording_fn: Optional[Callable] = None) -> bool:
+        self._get_recording_dir = get_recording_dir_fn
+        self._is_recording = is_recording_fn
+
         if not self.config.CLOUD_UPLOAD_ENABLED:
             print("[Cloud Manager] Cloud upload is disabled in config")
             return False
@@ -53,15 +62,19 @@ class CloudUploadManager:
             print(f"[Cloud Manager] Unknown/unsupported provider: {provider_name}")
             return False
 
-
         if success:
             self.upload_queue = CloudUploadQueue(self.provider)
 
             if self.progress_callback:
                 self.upload_queue.add_progress_callback(self.progress_callback)
 
-            # Start the persistent worker thread (replaces the old _start_queue_processor)
             self.upload_queue.start()
+
+            # Start POV sync if enabled and provider supports it (WCR only)
+            if (provider_name == 'warcraft_recorder'
+                    and self.config.POV_SYNC_ENABLED
+                    and self._get_recording_dir is not None):
+                self._start_pov_sync()
 
             print("[Cloud Manager] ✅ Cloud upload initialized and ready")
 
@@ -170,9 +183,55 @@ class CloudUploadManager:
         """Get cloud storage information."""
         if not self.provider:
             return {}
-        
         return self.provider.get_storage_info()
-    
+
+    # ------------------------------------------------------------------
+    # POV sync
+    # ------------------------------------------------------------------
+
+    def _start_pov_sync(self):
+        """Instantiate and start the PovSyncManager."""
+        if not isinstance(self.provider, WarcraftRecorderCloud):
+            return
+        self.pov_sync = PovSyncManager(
+            wcr_cloud=self.provider,
+            config=self.config,
+            get_recording_dir_fn=self._get_recording_dir,
+            is_recording_fn=self._is_recording,
+        )
+        self.pov_sync.start()
+        print("[Cloud Manager] POV sync started")
+
+    def set_pov_progress_callback(self, cb: Callable[[DownloadProgress], None]):
+        if self.pov_sync:
+            self.pov_sync.add_progress_callback(cb)
+
+    def get_available_povs(self) -> dict:
+        if not self.pov_sync:
+            return {}
+        return self.pov_sync.get_available_povs()
+
+    def get_pov_status(self) -> dict:
+        if not self.pov_sync:
+            return {'enabled': False}
+        status = self.pov_sync.get_status()
+        status['enabled'] = True
+        return status
+
+    def trigger_pov_sync(self):
+        if self.pov_sync:
+            self.pov_sync.trigger_sync()
+
+    def queue_pov_download(self, video_key: str) -> bool:
+        if not self.pov_sync:
+            return False
+        return self.pov_sync.queue_download(video_key)
+
+    def queue_all_povs_for_hash(self, unique_hash: str) -> int:
+        if not self.pov_sync:
+            return 0
+        return self.pov_sync.queue_all_for_hash(unique_hash)
+
     def is_ready(self) -> bool:
         """Check if cloud upload is ready."""
         return (
@@ -184,8 +243,9 @@ class CloudUploadManager:
     
     async def shutdown(self):
         print("[Cloud Manager] Shutting down...")
+        if self.pov_sync:
+            self.pov_sync.stop()
         if self.upload_queue:
-            # Give any active upload up to 5 minutes to finish, then stop
             wait = 0
             while self.upload_queue._active and wait < 300:
                 await asyncio.sleep(1)
@@ -211,26 +271,36 @@ def create_cloud_manager(config) -> CloudUploadManager:
     return manager
 
 
-async def initialize_cloud_upload(config) -> Optional[CloudUploadManager]:
+async def initialize_cloud_upload(
+    config,
+    get_recording_dir_fn: Optional[Callable] = None,
+    is_recording_fn: Optional[Callable] = None,
+) -> Optional[CloudUploadManager]:
     """
     Initialize cloud upload if enabled in config.
-    
+
     Args:
-        config: ConfigManager instance
-        
+        config:               ConfigManager instance
+        get_recording_dir_fn: callable that returns the recording Path (or None).
+        is_recording_fn:      callable returning True while a recording is active;
+                              used to pause POV downloads during fights.
+
     Returns:
         CloudUploadManager if successful, None otherwise
     """
     if not config.CLOUD_UPLOAD_ENABLED:
         print("[Cloud] Cloud upload disabled in config")
         return None
-    
+
     manager = CloudUploadManager(config)
-    success = await manager.initialize()
-    
+    success = await manager.initialize(
+        get_recording_dir_fn=get_recording_dir_fn,
+        is_recording_fn=is_recording_fn,
+    )
+
     if success:
         return manager
-    
+
     print("[Cloud] Failed to initialize cloud upload")
     return None
 

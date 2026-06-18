@@ -541,6 +541,75 @@ class WarcraftRecorderCloud(CloudUploadProvider):
         except Exception as e:
             print(f"[WCR Cloud] Error posting metadata: {e}")
 
+    def get_signed_download_url(self, video_key: str) -> Optional[str]:
+        """
+        Fetch a presigned download URL for a single cloud video key.
+        Tries two endpoint patterns: GET /video/{key} then POST /download {key}.
+        """
+        g = requests.utils.quote(self.guild_name)
+        url_fields = ('signedVideoKey', 'videoUrl', 'signedUrl', 'url', 'downloadUrl', 'signed')
+
+        # Pattern 1: GET /guild/{g}/video/{key}
+        try:
+            enc_key = requests.utils.quote(video_key, safe='')
+            resp = requests.get(
+                f"{self.API_BASE}/guild/{g}/video/{enc_key}",
+                headers=self._headers, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                for field in url_fields:
+                    v = data.get(field, '')
+                    if v and str(v).startswith('http'):
+                        return v
+                print(f"[WCR Cloud] GET /video/{{key}} 200 but no URL field — "
+                      f"keys present: {list(data.keys())}")
+            else:
+                print(f"[WCR Cloud] GET /video/{{key}} → HTTP {resp.status_code}: "
+                      f"{resp.text[:120]}")
+        except Exception as exc:
+            print(f"[WCR Cloud] GET /video/{{key}} error: {exc}")
+
+        # Pattern 2: POST /guild/{g}/download {key: video_key}  (mirror of /upload)
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/guild/{g}/download",
+                headers={**self._headers, 'Content-Type': 'application/json'},
+                json={'key': video_key},
+                timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                for field in url_fields:
+                    v = data.get(field, '')
+                    if v and str(v).startswith('http'):
+                        return v
+                print(f"[WCR Cloud] POST /download 200 but no URL field — "
+                      f"keys present: {list(data.keys())}")
+            else:
+                print(f"[WCR Cloud] POST /download → HTTP {resp.status_code}: "
+                      f"{resp.text[:120]}")
+        except Exception as exc:
+            print(f"[WCR Cloud] POST /download error: {exc}")
+
+        return None
+
+    def get_guild_videos(self) -> List[dict]:
+        """
+        Fetch the full video list for the guild.
+        Returns the raw list of cloud video objects (each includes a signed
+        download URL embedded by the WCR API).
+        """
+        if not self.is_authenticated():
+            return []
+        g = requests.utils.quote(self.guild_name)
+        resp = requests.get(
+            f"{self.API_BASE}/guild/{g}/video",
+            headers=self._headers, timeout=15)
+        if resp.status_code == 401:
+            print("[WCR Cloud] 401 fetching video list")
+            return []
+        resp.raise_for_status()
+        return resp.json()
+
     def _run_housekeeping(self, encoded_guild: str):
         """POST /guild/{g}/housekeeper — fire-and-forget after each upload.
 

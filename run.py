@@ -41,6 +41,7 @@ from cloud_integration import (
     should_auto_upload,
 )
 from cloud_upload import UploadProgress
+from cloud_pov_sync import DownloadProgress
 from retention import apply_retention
 
 
@@ -236,7 +237,7 @@ def save_config():
 
                 if s.config_manager.CLOUD_UPLOAD_ENABLED:
                     try:
-                        asyncio.run(init_cloud_manager())
+                        asyncio.run(init_cloud_manager())  # already passes get_recording_directory
                         broadcast_cloud_status()
                         print("[Cloud] ✅ Cloud manager reinitialized after config change")
                     except Exception as e:
@@ -614,13 +615,23 @@ def list_recording_files() -> list:
     recordings = []
 
     for file in record_dir.rglob(f'*{ext}'):
-        if file.is_file():
-            stat = file.stat()
-            recordings.append({
-                'name': str(file.relative_to(record_dir)),
-                'size': stat.st_size,
-                'modified': stat.st_mtime,
-            })
+        if not file.is_file():
+            continue
+        json_path = file.with_suffix('.json')
+        if json_path.exists():
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                if meta.get('pov'):
+                    continue
+            except Exception:
+                pass
+        stat = file.stat()
+        recordings.append({
+            'name': str(file.relative_to(record_dir)),
+            'size': stat.st_size,
+            'modified': stat.st_mtime,
+        })
 
     recordings.sort(key=lambda x: x['modified'], reverse=True)
     return recordings
@@ -664,6 +675,159 @@ def get_cloud_status():
         'queue': queue_status,
         'storage': storage_info,
     })
+
+
+@app.route('/api/recordings/<path:filename>/local-povs')
+def get_local_povs_for_recording(filename: str):
+    """Return local downloaded POV files that share this recording's uniqueHash."""
+    record_dir = get_recording_directory()
+    if not record_dir:
+        return jsonify({'povs': []}), 200
+    try:
+        video_path = _resolve_recording_path(record_dir, filename)
+    except _PathTraversalError:
+        return jsonify({'error': 'Invalid path'}), 403
+
+    json_path = video_path.with_suffix('.json')
+    if not json_path.exists():
+        return jsonify({'povs': []}), 200
+
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+    except Exception:
+        return jsonify({'povs': []}), 200
+
+    unique_hash = meta.get('uniqueHash', '')
+    main_start = meta.get('start', 0)
+    if not unique_hash:
+        return jsonify({'povs': []}), 200
+
+    s = get_state()
+    ext = s.config_manager.RECORDING_EXTENSION.lower() if s.config_manager else '.mp4'
+    povs = []
+
+    for candidate_json in record_dir.rglob('*.json'):
+        if candidate_json == json_path:
+            continue
+        try:
+            with open(candidate_json, 'r', encoding='utf-8') as f:
+                pov_meta = json.load(f)
+            if pov_meta.get('uniqueHash') != unique_hash:
+                continue
+            if not pov_meta.get('pov'):
+                continue
+            c_start = int(pov_meta.get('start') or 0)
+            if c_start and main_start and abs(c_start - main_start) > 60 * 1000:
+                continue
+            video_file = candidate_json.with_suffix(ext)
+            if not video_file.exists():
+                continue
+            povs.append({
+                'name': str(video_file.relative_to(record_dir)),
+                'start': pov_meta.get('start', 0),
+                'duration': pov_meta.get('duration', 0),
+                'player': pov_meta.get('player'),
+                'pov': pov_meta.get('pov', False),
+            })
+        except Exception:
+            continue
+
+    return jsonify({'povs': povs, 'main_start': main_start})
+
+
+@app.route('/api/cloud/povs')
+def get_available_povs():
+    """
+    Return POVs available for download, grouped by uniqueHash.
+
+    Response shape:
+      {
+        "enabled": bool,
+        "povs": {
+          "<uniqueHash>": [
+            { videoKey, videoName, encounterName, difficulty, result,
+              duration, player, category, start }, ...
+          ]
+        }
+      }
+    """
+    s = get_state()
+    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+        return jsonify({'enabled': False, 'povs': {}})
+
+    raw = s.cloud_manager.get_available_povs()
+    # Strip heavy/stale signed URLs before sending to the browser
+    safe = {}
+    for h, videos in raw.items():
+        safe[h] = [_safe_pov_video(v) for v in videos]
+
+    return jsonify({'enabled': True, 'povs': safe})
+
+
+def _safe_pov_video(v: dict) -> dict:
+    """Return a browser-safe subset of a cloud video object (no signed URLs)."""
+    return {
+        'videoKey':     v.get('videoKey', ''),
+        'videoName':    v.get('videoName', ''),
+        'uniqueHash':   v.get('uniqueHash', ''),
+        'encounterName': v.get('encounterName', ''),
+        'difficulty':   v.get('difficulty', ''),
+        'difficultyID': v.get('difficultyID'),
+        'result':       v.get('result', False),
+        'duration':     v.get('duration', 0),
+        'category':     v.get('category', ''),
+        'start':        v.get('start', 0),
+        'player':       v.get('player'),
+    }
+
+
+@app.route('/api/cloud/povs/<path:unique_hash>/download', methods=['POST'])
+def download_povs_for_hash(unique_hash: str):
+    """Queue all available POVs for a specific encounter uniqueHash."""
+    s = get_state()
+    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+        return jsonify({'error': 'POV sync not available'}), 503
+
+    count = s.cloud_manager.queue_all_povs_for_hash(unique_hash)
+    return jsonify({'success': True, 'queued': count})
+
+
+@app.route('/api/cloud/povs/download', methods=['POST'])
+def download_single_pov():
+    """Queue a single POV for download by videoKey. Body: {"videoKey": "..."}"""
+    s = get_state()
+    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+        return jsonify({'error': 'POV sync not available'}), 503
+
+    data = request.get_json(silent=True) or {}
+    video_key = (data.get('videoKey') or '').strip()
+    if not video_key:
+        return jsonify({'error': 'videoKey is required'}), 400
+
+    ok = s.cloud_manager.queue_pov_download(video_key)
+    if ok:
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': 'Video not found or already downloaded'}), 404
+
+
+@app.route('/api/cloud/pov-sync/status')
+def get_pov_sync_status():
+    """Return POV sync status (last sync time, queue size, etc.)."""
+    s = get_state()
+    if not s.cloud_manager:
+        return jsonify({'enabled': False})
+    return jsonify(s.cloud_manager.get_pov_status())
+
+
+@app.route('/api/cloud/pov-sync/trigger', methods=['POST'])
+def trigger_pov_sync():
+    """Force an immediate POV sync."""
+    s = get_state()
+    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+        return jsonify({'error': 'POV sync not available'}), 503
+    s.cloud_manager.trigger_pov_sync()
+    return jsonify({'success': True, 'message': 'Sync triggered'})
 
 
 @app.route('/api/cloud/test-connection', methods=['POST'])
@@ -796,6 +960,21 @@ def broadcast_upload_progress(progress: UploadProgress):
         'error': progress.error,
     }
     socketio.emit('upload_progress', data)
+
+
+def broadcast_download_progress(progress: DownloadProgress):
+    """Broadcast POV download progress to all clients."""
+    data = {
+        'video_key': progress.video_key,
+        'progress_percent': round(progress.progress_percent, 1),
+        'downloaded_mb': round(progress.downloaded_bytes / (1024**2), 1),
+        'total_mb': round(progress.total_bytes / (1024**2), 1),
+        'status': progress.status,
+        'error': progress.error,
+    }
+    socketio.emit('pov_download_progress', data)
+    if progress.status == 'completed':
+        socketio.emit('recordings_updated')
 
 
 def format_upload_speed(bytes_per_sec: float) -> str:
@@ -981,10 +1160,19 @@ async def init_cloud_manager():
         return
 
     try:
-        s.cloud_manager = await initialize_cloud_upload(s.config_manager)
+        def _is_recording() -> bool:
+            sm = get_state().state_manager
+            return bool(sm and sm.is_recording)
+
+        s.cloud_manager = await initialize_cloud_upload(
+            s.config_manager,
+            get_recording_dir_fn=get_recording_directory,
+            is_recording_fn=_is_recording,
+        )
 
         if s.cloud_manager:
             s.cloud_manager.set_progress_callback(broadcast_upload_progress)
+            s.cloud_manager.set_pov_progress_callback(broadcast_download_progress)
             print("[Cloud] ✅ Cloud manager initialized")
         else:
             print("[Cloud] ❌ Failed to initialize cloud manager")

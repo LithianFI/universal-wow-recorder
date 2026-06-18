@@ -117,7 +117,7 @@
 </head>
 
 <body class="min-h-screen">
-    <div x-data="recordingsPage()" class="container mx-auto px-4 py-8 max-w-6xl">
+    <div x-data="recordingsPage()" class="container mx-auto px-4 py-8 max-w-[1280px]">
 
         <!-- Header -->
         <header class="mb-6 flex items-start justify-between">
@@ -239,10 +239,10 @@
             </div>
         </section>
 
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div class="flex flex-col gap-5">
 
-            <!-- Recordings list -->
-            <section class="card lg:col-span-2 p-0">
+            <!-- Recordings list — rendered second (below player) via CSS order -->
+            <section class="card p-0 w-full order-2">
                 <div class="flex items-center justify-between p-4 border-b border-ink-500">
                     <h2 class="section-title">
                         <span x-text="filteredAndSorted.length"></span>
@@ -267,17 +267,18 @@
                 </div>
 
                 <div x-show="filteredAndSorted.length > 0"
-                    class="max-h-[700px] overflow-y-auto custom-scrollbar">
+                    class="max-h-[340px] overflow-y-auto custom-scrollbar">
                     <template x-for="(group, gi) in groupedByDate" :key="gi">
                         <div>
                             <!-- Date group header -->
-                            <div class="px-4 py-2 border-b border-ink-500 bg-ink-700/40 sticky top-0 z-10">
+                            <div class="px-4 py-1.5 border-b border-ink-500 bg-ink-700/40 sticky top-0 z-10">
                                 <span class="label-cap" x-text="group.label"></span>
                                 <span class="text-parchment-300 text-[10px] ml-2" x-text="'(' + group.items.length + ')'"></span>
                             </div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                             <template x-for="rec in group.items" :key="rec.name">
                                 <div @click="selectRecording(rec)"
-                                    class="px-3 py-2.5 border-b border-ink-500/60 cursor-pointer transition-colors flex items-start gap-2"
+                                    class="px-3 py-2 border-b border-r border-ink-500/60 cursor-pointer transition-colors flex items-start gap-2"
                                     :class="selectedRecording?.name === rec.name ? 'bg-gold-500/10' : 'hover:bg-ink-700/50'"
                                     :style="selectedRecording?.name === rec.name ? 'border-left: 2px solid #c9a961;' : 'border-left: 2px solid transparent;'">
 
@@ -296,6 +297,13 @@
                                                 :class="rec._parsed.result === 'KILL' ? 'tag-kill' : 'tag-wipe'"
                                                 x-show="rec._parsed.result"
                                                 x-text="rec._parsed.result"></span>
+                                            <!-- POV badge: shown when other players' POVs are available for this specific pull -->
+                                            <template x-if="rec._meta?.uniqueHash && povsForRecording(rec).length > 0">
+                                                <span class="shrink-0 text-[9px] px-1.5 py-0.5 rounded font-mono"
+                                                    style="background:rgba(51,147,127,0.18);color:#33937f;border:1px solid rgba(51,147,127,0.4);"
+                                                    :title="povsForRecording(rec).length + ' other POV(s) available'"
+                                                    x-text="'+' + povsForRecording(rec).length + ' POV'"></span>
+                                            </template>
                                             <span class="text-parchment-900 text-sm truncate"
                                                 x-text="rec._parsed.encounter || rec.name"></span>
                                         </div>
@@ -326,14 +334,14 @@
                                     </button>
                                 </div>
                             </template>
+                            </div>
                         </div>
                     </template>
                 </div>
             </section>
 
-            <!-- Preview panel -->
-            <section class="card lg:col-span-3">
-                <h2 class="section-title mb-3">Preview</h2>
+            <!-- Preview panel — rendered first (above list) via CSS order -->
+            <section class="card order-1">
 
                 <!-- Empty state -->
                 <div x-show="!selectedRecording" class="text-center py-16">
@@ -358,7 +366,10 @@
                             :class="isFullscreen ? 'h-screen w-screen object-contain' : ''"
                             :src="selectedRecording ? '/video/' + selectedRecording.name.split('/').map(encodeURIComponent).join('/') : ''"
                             @timeupdate="onTimeUpdate()" @loadedmetadata="onVideoLoaded()"
-                            @ended="isPlaying = false" @pause="isPlaying = false" @play="isPlaying = true"
+                            @ended="isPlaying = false; pauseAllPovs()"
+                            @pause="isPlaying = false; pauseAllPovs()"
+                            @play="isPlaying = true; playAllPovs()"
+                            @seeked="syncPovPlayers($refs.videoPlayer)"
                             @click="togglePlay()"
                             @dblclick.prevent="toggleFullscreen()"
                             style="cursor:pointer">
@@ -505,6 +516,34 @@
                         </div>
                     </div>
 
+                    <!-- Multi-POV strip -->
+                    <template x-if="multiPovMode && localPovs.length > 0">
+                        <div class="mt-1">
+                            <div class="grid gap-1"
+                                :style="localPovs.length === 1
+                                    ? 'grid-template-columns: 1fr'
+                                    : 'grid-template-columns: repeat(2, 1fr)'">
+                                <template x-for="(pov, i) in localPovs" :key="pov.name">
+                                    <div class="relative bg-black rounded overflow-hidden">
+                                        <video
+                                            :id="'pov-video-' + i"
+                                            :src="'/video/' + pov.name.split('/').map(encodeURIComponent).join('/')"
+                                            class="w-full aspect-video block"
+                                            preload="auto"
+                                            muted
+                                            playsinline
+                                            @loadedmetadata="syncPovPlayers($refs.videoPlayer)">
+                                        </video>
+                                        <div class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[11px] truncate"
+                                            style="background:rgba(0,0,0,0.72);color:#d4ccb6;"
+                                            x-text="pov.player?._name || pov.name.split('/').pop()">
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
                     <!-- Metadata panel -->
                     <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <!-- Encounter info -->
@@ -591,7 +630,78 @@
                             style="color:#e07070; border-color: rgba(224,112,112,0.4);">
                             Delete
                         </button>
+                        <button x-show="localPovs.length > 0"
+                            @click="multiPovMode = !multiPovMode"
+                            class="quick-btn flex-1 min-w-[100px]"
+                            :style="multiPovMode ? 'color:#33937f;border-color:rgba(51,147,127,0.4);' : ''"
+                            x-text="multiPovMode ? 'Hide POVs' : 'View POVs (' + localPovs.length + ')'">
+                        </button>
                     </div>
+
+                    <!-- Other POVs panel -->
+                    <template x-if="selectedPovs.length > 0">
+                        <div class="mt-4 pt-3 border-t border-ink-500">
+                            <div class="flex items-center gap-2 mb-2">
+                                <div class="label-cap" style="color:#33937f;">
+                                    Other POVs
+                                    <span class="font-mono normal-case tracking-normal"
+                                        x-text="'(' + selectedPovs.length + ')'"></span>
+                                </div>
+                            </div>
+                            <div class="space-y-1.5">
+                                <template x-for="pov in selectedPovs" :key="pov.videoKey">
+                                    <div class="flex items-center justify-between gap-3 px-2 py-1.5 rounded"
+                                        style="background:#111;border:1px solid #2a241c;">
+                                        <div class="min-w-0 flex-1">
+                                            <div class="text-xs text-parchment-700 truncate"
+                                                x-text="pov.player?._name
+                                                    ? pov.player._name + ' — ' + (pov.encounterName || pov.videoKey)
+                                                    : (pov.encounterName || pov.videoKey)">
+                                            </div>
+                                            <div class="flex items-center gap-2 mt-0.5 text-[10px] text-parchment-400">
+                                                <span x-show="pov.duration"
+                                                    class="font-mono"
+                                                    x-text="formatDuration(pov.duration)"></span>
+                                                <span x-show="pov.player?._realm"
+                                                    x-text="pov.player._realm"></span>
+                                            </div>
+                                            <!-- Download progress bar -->
+                                            <template x-if="povProgress[pov.videoKey]">
+                                                <div class="mt-1">
+                                                    <div class="h-1 rounded bg-white/10 overflow-hidden">
+                                                        <div class="h-full rounded transition-all duration-300"
+                                                            :style="'width:' + (povProgress[pov.videoKey].progress_percent || 0) + '%;'"
+                                                            :class="povProgress[pov.videoKey].status === 'failed'
+                                                                ? 'bg-red-500'
+                                                                : 'bg-teal-500'"></div>
+                                                    </div>
+                                                    <div class="text-[9px] mt-0.5"
+                                                        :style="povProgress[pov.videoKey].status === 'failed' ? 'color:#e07070' : 'color:#33937f;'"
+                                                        x-text="povProgress[pov.videoKey].status === 'completed'
+                                                            ? 'Downloaded'
+                                                            : povProgress[pov.videoKey].status === 'failed'
+                                                                ? 'Failed: ' + (povProgress[pov.videoKey].error || 'unknown')
+                                                                : povProgress[pov.videoKey].downloaded_mb + ' / ' + povProgress[pov.videoKey].total_mb + ' MB'">
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <button
+                                            x-show="!povProgress[pov.videoKey] || povProgress[pov.videoKey].status === 'failed'"
+                                            @click="downloadPov(pov.videoKey)"
+                                            class="quick-btn shrink-0 text-[10px]"
+                                            style="color:#33937f;border-color:rgba(51,147,127,0.4);">
+                                            Download
+                                        </button>
+                                        <span
+                                            x-show="povProgress[pov.videoKey]?.status === 'completed'"
+                                            class="text-[10px] shrink-0"
+                                            style="color:#33937f;">✓ Done</span>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </section>
         </div>
@@ -711,20 +821,39 @@
                 toasts: [],
                 _toastSeq: 0,
 
+                // POV state
+                availablePovs: {},     // uniqueHash → [cloud pov objects]
+                povProgress: {},       // videoKey → progress object
+                localPovs: [],         // local downloaded POV files for selected recording
+                multiPovMode: false,
+
                 init() {
                     this.fetchRecordings();
+                    this.fetchPovs();
                     this.connectSocket();
                 },
 
                 connectSocket() {
                     this.socket = io();
-                    this.socket.on('recordings_updated', () => this.fetchRecordings());
+                    this.socket.on('recordings_updated', () => {
+                        this.fetchRecordings();
+                        this.fetchPovs();
+                    });
                     this.socket.on('clip_complete', (data) => {
                         this.clipBusy = false;
                         if (data.error) {
                             this.toast('Clip export failed: ' + data.error, 'error');
                         } else {
                             this.toast('Clip exported successfully', 'success');
+                        }
+                    });
+                    this.socket.on('pov_download_progress', (data) => {
+                        this.povProgress = { ...this.povProgress, [data.video_key]: data };
+                        if (data.status === 'completed') {
+                            this.fetchPovs();
+                            this.fetchLocalPovs().then(() => {
+                                if (this.localPovs.length > 0) this.multiPovMode = true;
+                            });
                         }
                     });
                 },
@@ -767,6 +896,112 @@
                     } catch (e) {
                         console.error('Failed to fetch recordings:', e);
                     }
+                },
+
+                async fetchPovs() {
+                    try {
+                        const res = await fetch('/api/cloud/povs');
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        this.availablePovs = data.povs || {};
+                    } catch (_) {}
+                },
+
+                povsForRecording(rec) {
+                    const h = rec._meta?.uniqueHash;
+                    if (!h) return [];
+                    const recStart = rec._meta?.start || 0;
+                    return (this.availablePovs[h] || []).filter(pov => {
+                        const cStart = pov.start || 0;
+                        if (!cStart || !recStart) return true;
+                        return Math.abs(cStart - recStart) <= 60 * 1000;
+                    });
+                },
+
+                get selectedPovs() {
+                    const h = this.selectedRecording?._meta?.uniqueHash;
+                    if (!h) return [];
+                    const mainStart = this.selectedRecording?._meta?.start || 0;
+                    return (this.availablePovs[h] || []).filter(pov => {
+                        const cStart = pov.start || 0;
+                        if (!cStart || !mainStart) return true;
+                        return Math.abs(cStart - mainStart) <= 60 * 1000;
+                    });
+                },
+
+                async downloadPov(videoKey) {
+                    try {
+                        this.povProgress = {
+                            ...this.povProgress,
+                            [videoKey]: { video_key: videoKey, status: 'queued',
+                                          progress_percent: 0, downloaded_mb: 0, total_mb: 0 }
+                        };
+                        const res = await fetch('/api/cloud/povs/download', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ videoKey }),
+                        });
+                        if (!res.ok) {
+                            const d = await res.json().catch(() => ({}));
+                            this.toast('Download failed: ' + (d.error || res.statusText), 'error');
+                        }
+                    } catch (e) {
+                        this.toast('Download failed: ' + e.message, 'error');
+                    }
+                },
+
+                async fetchLocalPovs() {
+                    if (!this.selectedRecording) return;
+                    try {
+                        const url = '/api/recordings/' +
+                            this.selectedRecording.name.split('/').map(encodeURIComponent).join('/') +
+                            '/local-povs';
+                        const res = await fetch(url);
+                        if (res.ok) {
+                            const data = await res.json();
+                            this.localPovs = data.povs || [];
+                        }
+                    } catch (_) {}
+                },
+
+                _povVideoEl(i) {
+                    return document.getElementById('pov-video-' + i);
+                },
+
+                syncPovPlayers(primary) {
+                    if (!this.multiPovMode || !this.localPovs.length || !primary) return;
+                    const mainStart = this.selectedRecording?._meta?.start || 0;
+                    this.localPovs.forEach((pov, i) => {
+                        const el = this._povVideoEl(i);
+                        if (!el) return;
+                        // offset: +ve means POV started later, so its clock lags behind main
+                        const offsetSec = mainStart && pov.start
+                            ? (mainStart - pov.start) / 1000
+                            : 0;
+                        const target = primary.currentTime + offsetSec;
+                        // If outside this POV's timeline, pause it at a boundary
+                        if (target < 0 || (pov.duration > 0 && target > pov.duration + 1)) {
+                            if (!el.paused) el.pause();
+                            return;
+                        }
+                        if (Math.abs(el.currentTime - target) > 0.4) el.currentTime = target;
+                        if (!primary.paused && el.paused) el.play().catch(() => {});
+                        else if (primary.paused && !el.paused) el.pause();
+                    });
+                },
+
+                playAllPovs() {
+                    this.localPovs.forEach((_, i) => {
+                        const el = this._povVideoEl(i);
+                        if (el && el.paused) el.play().catch(() => {});
+                    });
+                },
+
+                pauseAllPovs() {
+                    this.localPovs.forEach((_, i) => {
+                        const el = this._povVideoEl(i);
+                        if (el && !el.paused) el.pause();
+                    });
                 },
 
                 async hydrateMetadata(recs) {
@@ -965,6 +1200,12 @@
                             this.buildDeathMarkers();
                         }
                     } catch (_) {}
+
+                    // Load local downloaded POVs for multi-panel playback.
+                    this.localPovs = [];
+                    this.multiPovMode = false;
+                    await this.fetchLocalPovs();
+                    if (this.localPovs.length > 0) this.multiPovMode = true;
                 },
                 confirmDelete(rec) {
                     this.deleteTarget = rec;
@@ -1077,6 +1318,7 @@
                     if (!v) return;
                     this.currentTime = v.currentTime;
                     this.playedPercent = this.duration ? (v.currentTime / this.duration) * 100 : 0;
+                    this.syncPovPlayers(v);
                 },
                 togglePlay() {
                     const v = this.$refs.videoPlayer;
