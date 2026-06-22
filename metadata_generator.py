@@ -36,6 +36,7 @@ class RecordingMetadata:
         self.deaths = []
         self.overrun = 0
         self.combatants = []
+        self.cooldown_casts = []
         self.start_timestamp = None
         self.unique_hash = None
         self.boss_percent = 0
@@ -117,6 +118,14 @@ class RecordingMetadata:
             "friendly": friendly,
         })
     
+    def add_cooldown_cast(self, cast: dict):
+        """Append a tracked cooldown cast event.
+
+        cast dict shape (produced by cooldown_scanner.collect_cooldown_casts):
+          spellId, name, casterName, casterGuid, offsetMs, class, spec, category, icon
+        """
+        self.cooldown_casts.append(cast)
+
     def set_result(self, is_kill: bool, duration: float, boss_percent: float = 0):
         """Set encounter result and recompute uniqueHash (result is part of the hash)."""
         self.result = is_kill
@@ -238,6 +247,7 @@ class RecordingMetadata:
             "deaths": self.deaths,
             "overrun": self.overrun,
             "combatants": self.combatants,
+            "cooldownCasts": self.cooldown_casts,
             "start": self.start_timestamp,
             "uniqueHash": self.unique_hash,
             "bossPercent": self.boss_percent,

@@ -312,6 +312,30 @@ def serve_video(filename: str):
     return send_file(file_path)
 
 
+@app.route('/api/log-files')
+def list_log_files():
+    """Return combat log files available in the configured log directory, newest first."""
+    s = get_state()
+    if not s.config_manager:
+        return jsonify({'error': 'Config not available'}), 500
+    log_dir = s.config_manager.LOG_DIR
+    if not log_dir.exists():
+        return jsonify({'files': [], 'log_dir': str(log_dir), 'error': 'Log directory not found'})
+    try:
+        pattern = s.config_manager.LOG_PATTERN
+        files = sorted(
+            [f for f in log_dir.iterdir() if f.is_file() and pattern.search(f.name)],
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        return jsonify({
+            'log_dir': str(log_dir),
+            'files': [{'name': f.name, 'path': str(f), 'mtime': f.stat().st_mtime} for f in files],
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/recordings/<path:filename>/metadata')
 def get_recording_metadata(filename: str):
     record_dir = get_recording_directory()
@@ -331,6 +355,66 @@ def get_recording_metadata(filename: str):
     except Exception as e:
         print(f"[RECORDINGS] Error reading metadata for {filename}: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/recordings/<path:filename>/scan-cooldowns', methods=['POST'])
+def scan_recording_cooldowns(filename: str):
+    """Retroactively scan a combat log file for cooldown casts for this recording.
+
+    Request body (JSON):
+      { "log_file": "/absolute/path/to/WoWCombatLog-XXXXXX_XXXXXX.txt" }
+
+    Reads start/duration from the recording's existing metadata JSON, runs the
+    scanner, patches cooldownCasts into the JSON, and returns the cast list.
+    """
+    from combat_parser.cooldown_scanner import scan_log_for_cooldowns
+
+    record_dir = get_recording_directory()
+    if not record_dir:
+        return jsonify({'error': 'Recording directory not available'}), 500
+    try:
+        video_path = _resolve_recording_path(record_dir, filename)
+    except _PathTraversalError:
+        return jsonify({'error': 'Invalid path'}), 403
+
+    json_path = video_path.with_suffix('.json')
+    if not json_path.exists():
+        return jsonify({'error': 'No metadata JSON found for this recording'}), 404
+
+    data = request.get_json() or {}
+    log_file = data.get('log_file', '').strip()
+    if not log_file:
+        return jsonify({'error': 'log_file is required'}), 400
+
+    log_path = Path(log_file)
+    if not log_path.is_file():
+        return jsonify({'error': f'Log file not found: {log_file}'}), 400
+
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+    except Exception as e:
+        return jsonify({'error': f'Could not read metadata: {e}'}), 500
+
+    start_ms = metadata.get('start')
+    duration_s = metadata.get('duration')
+    if not start_ms or not duration_s:
+        return jsonify({'error': 'Metadata missing start or duration fields'}), 400
+
+    try:
+        casts = scan_log_for_cooldowns(log_path, int(start_ms), int(duration_s))
+    except Exception as e:
+        return jsonify({'error': f'Scan failed: {e}'}), 500
+
+    metadata['cooldownCasts'] = casts
+    try:
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        return jsonify({'error': f'Could not write metadata: {e}'}), 500
+
+    print(f"[RECORDINGS] Retroactive cooldown scan: {len(casts)} casts written to {json_path.name}")
+    return jsonify({'cooldownCasts': casts, 'count': len(casts)})
 
 
 @app.route('/api/recordings/<path:filename>/clip', methods=['POST'])

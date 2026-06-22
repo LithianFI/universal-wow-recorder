@@ -16,6 +16,7 @@ from combat_parser.file_manager import RecordingFileManager
 from combat_parser.recording_processor import RecordingProcessor
 from combat_parser.dungeon_monitor import DungeonMonitor
 from combat_parser.events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
+from combat_parser.cooldown_scanner import collect_cooldown_casts
 from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
 
 from constants import LOG_PREFIXES
@@ -789,7 +790,21 @@ class CombatParser:
                 except (ValueError, IndexError):
                     continue
  
-        print(f"{LOG_PREFIXES['PARSER']} Scan complete: {deaths_found} deaths, {combatants_found} combatants found")
+        # Collect tracked cooldown casts from the same window lines.
+        # guid_to_name is already built above so caster names resolve cleanly.
+        if self.current_metadata.start_timestamp:
+            casts = collect_cooldown_casts(
+                window_lines,
+                self.current_metadata.start_timestamp,
+                guid_to_name,
+            )
+            for cast in casts:
+                self.current_metadata.add_cooldown_cast(cast)
+        else:
+            casts = []
+
+        print(f"{LOG_PREFIXES['PARSER']} Scan complete: {deaths_found} deaths, "
+              f"{combatants_found} combatants, {len(casts)} cooldown casts found")
 
         # Recompute uniqueHash now that combatants are fully populated.
         # _finalize_metadata() runs before this scan, so the hash it computed

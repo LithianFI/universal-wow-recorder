@@ -22,7 +22,7 @@ class ConfigManager:
         'lfr': [7, 17],
         'normal': [1, 14],
         'heroic': [2, 15],
-        'mythic': [3, 16, 22, 23],
+        'mythic': [3, 16, 22, 23, 233],
         'other': [4, 5, 8, 9, 24, 33],
     }
 
