@@ -7,7 +7,7 @@
     <title>WoW Recorder</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -17,12 +17,8 @@
                 extend: {
                     colors: {
                         ink: {
-                            900: '#0d0a07',
-                            800: '#13100c',
-                            700: '#1a1610',
-                            600: '#1d1812',
-                            500: '#2a241c',
-                            400: '#3a3328',
+                            900: '#0a0806', 800: '#0f0d0a', 700: '#141109',
+                            600: '#1a1610', 500: '#221d15', 400: '#2e271d', 300: '#3d3529'
                         },
                         parchment: {
                             900: '#f0e6cd',
@@ -45,8 +41,8 @@
                     },
                     fontFamily: {
                         display: ['"IM Fell English"', 'Georgia', 'serif'],
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+                        sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        mono: ['"Fira Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
                     },
                 },
             },
@@ -55,10 +51,15 @@
     <style>
         [x-cloak] { display: none !important; }
 
+        html, body { height: 100%; overflow: hidden; }
         body {
-            background: #13100c;
-            color: #e8e1d0;
+            background: #0a0806;
+            color: #c8bfa8;
+            font-family: 'Raleway', sans-serif;
+            font-size: 13px;
         }
+
+        .seam { border-color: #1c1710; }
 
         @keyframes pulse-recording {
             0% { box-shadow: 0 0 0 0 rgba(232,69,69,0.55); }
@@ -67,22 +68,22 @@
         }
         .pulse-rec { animation: pulse-recording 1.4s ease-in-out infinite; }
 
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #1d1812; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #3a3328; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #5a4f3e; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
 
         .card {
-            background: #1a1610;
-            border: 1px solid #2a241c;
-            border-radius: 6px;
+            background: #141109;
+            border: 1px solid #1c1710;
+            border-radius: 4px;
             padding: 14px 16px;
         }
         .card-accent {
-            background: #1a1610;
-            border: 1px solid #2a241c;
+            background: #141109;
+            border: 1px solid #1c1710;
             border-left: 3px solid #c9a961;
-            border-radius: 0 6px 6px 0;
+            border-radius: 0 4px 4px 0;
             padding: 14px 16px;
         }
         .pill {
@@ -90,25 +91,27 @@
             align-items: center;
             gap: 6px;
             font-size: 11px;
-            padding: 4px 10px;
+            padding: 3px 9px;
             border-radius: 999px;
-            background: #1d1812;
-            border: 1px solid #2a241c;
-            color: #a89c82;
+            background: #141109;
+            border: 1px solid #221d15;
+            color: #6e6552;
         }
         .label-cap {
             font-size: 10px;
-            letter-spacing: 1.5px;
+            letter-spacing: 1.8px;
             text-transform: uppercase;
-            color: #6e6552;
+            color: #5a5244;
+            font-family: 'Raleway', sans-serif;
+            font-weight: 600;
         }
         .section-title {
-            font-family: 'IM Fell English', Georgia, serif;
-            font-size: 13px;
-            font-weight: 500;
-            color: #c9a961;
-            letter-spacing: 1.5px;
+            font-size: 10px;
+            letter-spacing: 1.8px;
             text-transform: uppercase;
+            color: #5a5244;
+            font-family: 'Raleway', sans-serif;
+            font-weight: 600;
         }
         .diff-badge {
             display: inline-block;
@@ -146,45 +149,43 @@
         .c-warrior     { color: #c79c6e; }
 
         .quick-btn {
-            padding: 6px 10px;
+            padding: 5px 10px;
             font-size: 11px;
-            background: #1d1812;
-            border: 1px solid #2a241c;
-            border-radius: 4px;
-            color: #a89c82;
+            background: #141109;
+            border: 1px solid #221d15;
+            border-radius: 3px;
+            color: #8a8270;
             text-align: center;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.12s;
+            font-family: 'Raleway', sans-serif;
+            font-weight: 500;
         }
         .quick-btn:hover {
-            background: #2a241c;
-            color: #d4ccb6;
-            border-color: #3a3328;
+            background: #1c1710;
+            color: #c8bfa8;
+            border-color: #2e271d;
         }
         .quick-btn:disabled {
-            opacity: 0.4;
+            opacity: 0.35;
             cursor: not-allowed;
         }
-
-        h1, h2, h3, h4 { font-family: 'IM Fell English', Georgia, serif; font-weight: 500; }
     </style>
 </head>
 
-<body class="min-h-screen">
-    <div x-data="dashboard()" class="container mx-auto px-4 py-8 max-w-5xl">
+<body>
+    <div x-data="dashboard()" class="flex flex-col h-full">
 
-        <!-- Header -->
-        <header class="mb-6 flex items-start justify-between">
-            <div>
-                <h1 class="text-3xl font-display text-gold-500 tracking-wide">WoW Recorder</h1>
-                <p class="text-parchment-400 text-xs tracking-widest mt-1">⸻ keeper of pulls ⸻</p>
-            </div>
-            <div class="flex items-center gap-2">
+        <!-- Top bar -->
+        <header class="shrink-0 flex items-center gap-3 px-4 h-11 border-b seam" style="background:#0d0b08;">
+            <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0">WoW Recorder</h1>
+            <span class="w-px h-5 shrink-0" style="background:#221d15;"></span>
+            <div class="flex items-center gap-2 ml-auto">
                 <span class="pill" x-show="connected">
                     <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Server
                 </span>
                 <span class="pill" x-show="!connected" x-cloak>
-                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Server offline
+                    <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>Offline
                 </span>
                 <span class="pill" x-show="status.obs_connected">
                     <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>OBS
@@ -197,33 +198,36 @@
                 <span class="pill" x-show="status.log_monitor?.is_monitoring">
                     <span class="w-1.5 h-1.5 rounded-full"
                         :class="status.log_monitor?.is_tailing ? 'bg-green-500' : 'bg-yellow-500'"></span>
-                    Combat log
+                    Log
                 </span>
-                <a href="/stats" class="ml-1 w-8 h-8 inline-flex items-center justify-center rounded
-                    border border-ink-500 bg-ink-600 text-parchment-400 hover:text-gold-500 transition-colors"
-                    title="Statistics">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6">
+                <span class="w-px h-5 shrink-0" style="background:#221d15;"></span>
+                <a href="/recordings" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors" title="Recordings">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </a>
+                <a href="/stats" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors" title="Statistics">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
                 </a>
-                <a href="/clips" class="ml-1 w-8 h-8 inline-flex items-center justify-center rounded
-                    border border-ink-500 bg-ink-600 text-parchment-400 hover:text-gold-500 transition-colors"
-                    title="Clips">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6">
+                <a href="/clips" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors" title="Clips">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
                     </svg>
                 </a>
-                <a href="/config" class="ml-1 w-8 h-8 inline-flex items-center justify-center rounded
-                    border border-ink-500 bg-ink-600 text-parchment-400 hover:text-gold-500 transition-colors"
-                    title="Settings">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6">
+                <a href="/config" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors" title="Settings">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
                         <circle cx="12" cy="12" r="3"></circle>
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
                 </a>
             </div>
         </header>
+
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+        <div class="px-6 py-5 max-w-5xl mx-auto">
 
         <!-- Recorder not running warning -->
         <div x-show="status.recorder_running === false && connected" x-cloak
@@ -796,6 +800,9 @@
                 </div>
             </div>
         </div>
+
+        </div><!-- /max-w-5xl -->
+        </div><!-- /scrollable content -->
 
     </div>
 

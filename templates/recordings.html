@@ -393,7 +393,7 @@
         <!-- ════════════════════════════════════════════════ -->
         <!-- CENTER COLUMN — Player + Timeline              -->
         <!-- ════════════════════════════════════════════════ -->
-        <div class="flex-1 flex flex-col overflow-y-auto custom-scrollbar" style="background:#0f0d0a;">
+        <div class="flex-1 flex flex-col overflow-hidden" style="background:#0f0d0a;">
 
             <!-- Empty state -->
             <div x-show="!selectedRecording"
@@ -406,11 +406,14 @@
             </div>
 
             <!-- Player + analysis -->
-            <div x-show="selectedRecording" x-cloak class="flex flex-col">
+            <div x-show="selectedRecording" x-cloak class="flex-1 flex flex-col overflow-hidden">
+
+                <!-- Sticky: player + POV toggles -->
+                <div class="shrink-0">
 
                 <!-- ── Unified video grid + shared controls ── -->
                 <div x-ref="playerWrapper"
-                    class="relative bg-black group/player shrink-0"
+                    class="relative bg-black group/player"
                     @fullscreenchange="isFullscreen = !!document.fullscreenElement"
                     @mousemove="showControls()"
                     @mouseleave="showControls()"
@@ -419,13 +422,12 @@
                     <!-- Grid: 1 = full-width, 2–4 = 2-column -->
                     <div class="grid"
                         :class="totalVideoCount === 1 ? 'grid-cols-1' : 'grid-cols-2'"
-                        style="gap:2px; background:#060504;">
+                        :style="'gap:2px; background:#060504; grid-template-rows:1fr;' + (isFullscreen ? 'height:100%;' : 'height:' + playerHeight + 'px;')">
 
                         <!-- Main video -->
                         <div class="relative bg-black overflow-hidden">
                             <video x-ref="videoPlayer"
-                                class="w-full aspect-video block"
-                                :class="isFullscreen ? 'h-screen w-screen object-contain' : ''"
+                                class="w-full h-full object-contain block"
                                 :src="selectedRecording ? '/video/' + selectedRecording.name.split('/').map(encodeURIComponent).join('/') : ''"
                                 @timeupdate="onTimeUpdate()" @loadedmetadata="onVideoLoaded()"
                                 @ended="isPlaying = false; pauseAllPovs()"
@@ -452,9 +454,9 @@
                                     <video
                                         :id="'pov-video-' + i"
                                         :src="'/video/' + pov.name.split('/').map(encodeURIComponent).join('/')"
-                                        class="w-full aspect-video block"
+                                        class="w-full h-full object-contain block"
                                         preload="auto" muted playsinline
-                                        @loadedmetadata="syncPovPlayers($refs.videoPlayer)">
+                                        @loadedmetadata="$el.playbackRate = speed; syncPovPlayers($refs.videoPlayer)">
                                     </video>
                                     <div class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[11px] truncate pointer-events-none"
                                         style="background:rgba(0,0,0,0.7);color:#c8bfa8;"
@@ -629,7 +631,36 @@
                         </button>
                     </template>
                 </div>
+                </div><!-- /sticky: player + POV toggles -->
 
+                <!-- Resize handle -->
+                <div class="shrink-0 relative h-2 group/resize cursor-ns-resize select-none"
+                    style="background:#0a0806;"
+                    @mousedown.prevent="
+                        const startY = $event.clientY;
+                        const startH = playerHeight;
+                        const onMove = e => {
+                            playerHeight = Math.max(160, Math.min(window.innerHeight - 200, startH + (e.clientY - startY)));
+                        };
+                        const onUp = () => {
+                            localStorage.setItem('playerHeight', playerHeight);
+                            window.removeEventListener('mousemove', onMove);
+                            window.removeEventListener('mouseup', onUp);
+                        };
+                        window.addEventListener('mousemove', onMove);
+                        window.addEventListener('mouseup', onUp);
+                    ">
+                    <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px transition-colors group-hover/resize:bg-gold-500/60"
+                        style="background:#221d15;"></div>
+                    <div class="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover/resize:opacity-100 transition-opacity pointer-events-none">
+                        <span class="w-4 h-0.5 rounded-full bg-gold-500/70"></span>
+                        <span class="w-4 h-0.5 rounded-full bg-gold-500/70"></span>
+                        <span class="w-4 h-0.5 rounded-full bg-gold-500/70"></span>
+                    </div>
+                </div>
+
+                <!-- Scrollable: cooldown timeline -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar">
                 <!-- ── Cooldown Timeline ── -->
                 <template x-if="(recordingMetadata?.cooldownCasts || []).length > 0">
                     <div class="border-t seam">
@@ -650,7 +681,7 @@
                         </div>
 
                         <!-- Timeline viewport -->
-                        <div class="overflow-y-auto custom-scrollbar" style="max-height:440px; background:#0a0806;">
+                        <div style="background:#0a0806;">
 
                             <!-- Time ruler (sticky) -->
                             <div class="flex sticky top-0 z-10" style="height:18px; background:#080604;">
@@ -747,6 +778,7 @@
                         </div>
                     </div>
                 </template>
+                </div><!-- /scrollable: timeline -->
 
             </div><!-- /player section -->
         </div><!-- /center column -->
@@ -1099,6 +1131,7 @@
                 volume: 1,
                 speed: 1,
                 isFullscreen: false,
+                playerHeight: parseInt(localStorage.getItem('playerHeight') || '480'),
                 controlsVisible: true,
                 _controlsTimer: null,
                 currentTime: 0,
@@ -1756,6 +1789,10 @@
                 setSpeed(spd) {
                     this.speed = spd;
                     if (this.$refs.videoPlayer) this.$refs.videoPlayer.playbackRate = spd;
+                    this.localPovs.forEach((_, i) => {
+                        const el = this._povVideoEl(i);
+                        if (el) el.playbackRate = spd;
+                    });
                 },
                 toggleFullscreen() {
                     const w = this.$refs.playerWrapper;

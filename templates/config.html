@@ -7,7 +7,7 @@
     <title>Settings - WoW Recorder</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script>
@@ -15,14 +15,14 @@
             theme: {
                 extend: {
                     colors: {
-                        ink: { 900: '#0d0a07', 800: '#13100c', 700: '#1a1610', 600: '#1d1812', 500: '#2a241c', 400: '#3a3328' },
+                        ink: { 900: '#0a0806', 800: '#0f0d0a', 700: '#141109', 600: '#1a1610', 500: '#221d15', 400: '#2e271d', 300: '#3d3529' },
                         parchment: { 900: '#f0e6cd', 700: '#d4ccb6', 500: '#a89c82', 400: '#8a8270', 300: '#6e6552' },
                         gold: { 500: '#c9a961', 400: '#d6b975', 600: '#a88a45' },
                     },
                     fontFamily: {
                         display: ['"IM Fell English"', 'Georgia', 'serif'],
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+                        sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+                        mono: ['"Fira Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
                     },
                 },
             },
@@ -30,37 +30,48 @@
     </script>
     <style>
         [x-cloak] { display: none !important; }
-        body { background: #13100c; color: #e8e1d0; }
 
-        h1, h2, h3, h4 { font-family: 'IM Fell English', Georgia, serif; font-weight: 500; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            background: #0a0806;
+            color: #c8bfa8;
+            font-family: 'Raleway', sans-serif;
+            font-size: 13px;
+        }
 
-        .card { background: #1a1610; border: 1px solid #2a241c; border-radius: 6px; padding: 18px 20px; }
+        .seam { border-color: #1c1710; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
+
+        .card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 18px 20px; }
         .label-cap {
-            font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #6e6552;
+            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+            font-family: 'Raleway', sans-serif; font-weight: 600;
         }
         .section-title {
-            font-family: 'IM Fell English', Georgia, serif;
-            font-size: 13px; font-weight: 500; color: #c9a961;
-            letter-spacing: 1.5px; text-transform: uppercase;
+            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+            font-family: 'Raleway', sans-serif; font-weight: 600;
         }
 
         /* Inputs */
         .input {
             width: 100%;
-            background: #1d1812;
-            border: 1px solid #2a241c;
-            border-radius: 4px;
-            color: #d4ccb6;
-            padding: 8px 12px;
-            font-size: 13px;
-            font-family: inherit;
+            background: #141109;
+            border: 1px solid #1c1710;
+            border-radius: 3px;
+            color: #c8bfa8;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: 'Raleway', sans-serif;
         }
         .input:focus {
             outline: none;
-            border-color: #c9a961;
-            box-shadow: 0 0 0 2px rgba(201,169,97,0.15);
+            border-color: rgba(201,169,97,0.5);
         }
-        .input::placeholder { color: #6e6552; }
+        .input::placeholder { color: #4a4338; }
         .input-mono { font-family: ui-monospace, monospace; font-size: 12px; }
         select.input {
             appearance: none;
@@ -72,10 +83,10 @@
         }
 
         .field-label {
-            display: block; font-size: 12px; font-weight: 500;
-            color: #d4ccb6; margin-bottom: 4px;
+            display: block; font-size: 11px; font-weight: 600;
+            color: #a89c82; margin-bottom: 4px; letter-spacing: 0.3px;
         }
-        .field-help { font-size: 11px; color: #8a8270; margin-top: 4px; }
+        .field-help { font-size: 11px; color: #5a5244; margin-top: 4px; }
 
         /* Toggles */
         .toggle {
@@ -89,7 +100,7 @@
             transition: background-color 0.15s;
         }
         .toggle.on  { background: #c9a961; }
-        .toggle.off { background: #3a3328; }
+        .toggle.off { background: #2e271d; }
         .toggle-thumb {
             pointer-events: none;
             display: inline-block;
@@ -105,18 +116,19 @@
 
         /* Tabs */
         .tab-btn {
-            padding: 8px 16px;
-            font-size: 12px;
-            font-weight: 500;
-            color: #8a8270;
+            padding: 7px 14px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #5a5244;
             border-bottom: 2px solid transparent;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.12s;
             white-space: nowrap;
             background: transparent;
             border-top: none; border-left: none; border-right: none;
+            letter-spacing: 0.5px;
         }
-        .tab-btn:hover { color: #d4ccb6; }
+        .tab-btn:hover { color: #a89c82; }
         .tab-btn.active {
             color: #c9a961;
             border-bottom-color: #c9a961;
@@ -125,41 +137,42 @@
         /* Buttons */
         .btn {
             display: inline-flex; align-items: center; gap: 6px;
-            padding: 8px 14px;
-            font-size: 12px;
-            font-weight: 500;
-            border-radius: 4px;
+            padding: 5px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 3px;
             border: 1px solid;
             cursor: pointer;
-            transition: all 0.15s;
-            font-family: inherit;
+            transition: all 0.12s;
+            font-family: 'Raleway', sans-serif;
         }
         .btn-primary {
-            background: #c9a961; color: #13100c; border-color: #c9a961;
+            background: #c9a961; color: #0a0806; border-color: #c9a961;
         }
         .btn-primary:hover { background: #d6b975; border-color: #d6b975; }
         .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-secondary {
-            background: #1d1812; color: #a89c82; border-color: #2a241c;
+            background: #141109; color: #8a8270; border-color: #1c1710;
         }
-        .btn-secondary:hover { background: #2a241c; color: #d4ccb6; border-color: #3a3328; }
+        .btn-secondary:hover { background: #1c1710; color: #c8bfa8; border-color: #2e271d; }
 
         /* Difficulty tile */
         .diff-tile {
             padding: 10px 14px;
-            font-size: 13px;
-            font-weight: 500;
-            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 3px;
             border: 1px solid;
             cursor: pointer;
-            transition: all 0.15s;
+            transition: all 0.12s;
             text-align: center;
-            background: #1d1812;
-            color: #8a8270;
-            border-color: #2a241c;
-            font-family: inherit;
+            background: #141109;
+            color: #6e6552;
+            border-color: #1c1710;
+            font-family: 'Raleway', sans-serif;
+            letter-spacing: 0.5px;
         }
-        .diff-tile:hover { border-color: #3a3328; color: #d4ccb6; }
+        .diff-tile:hover { border-color: #2e271d; color: #a89c82; }
         .diff-tile.on-mythic  { background: rgba(255,128,0,0.15);  color: #ff8c1a; border-color: rgba(255,128,0,0.5); }
         .diff-tile.on-heroic  { background: rgba(115,173,255,0.12); color: #73adff; border-color: rgba(115,173,255,0.45); }
         .diff-tile.on-normal  { background: rgba(135,207,99,0.12); color: #87cf63; border-color: rgba(135,207,99,0.45); }
@@ -168,32 +181,29 @@
 
         .pill {
             display: inline-flex; align-items: center; gap: 6px;
-            font-size: 11px; padding: 4px 10px; border-radius: 999px;
-            background: #1d1812; border: 1px solid #2a241c; color: #a89c82;
+            font-size: 11px; padding: 3px 9px; border-radius: 999px;
+            background: #141109; border: 1px solid #221d15; color: #6e6552;
         }
     </style>
 </head>
 
-<body class="min-h-screen">
-    <div x-data="configApp()" x-init="loadConfig()" class="container mx-auto px-4 py-8 max-w-4xl">
+<body>
+    <div x-data="configApp()" x-init="loadConfig()" class="flex flex-col h-full">
 
-        <!-- Header -->
-        <header class="mb-6 flex items-start justify-between">
-            <div class="flex items-center gap-3">
-                <a href="/" class="w-9 h-9 inline-flex items-center justify-center rounded
-                    border border-ink-500 bg-ink-600 text-parchment-400 hover:text-gold-500 transition-colors"
-                    title="Back to dashboard">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                    </svg>
-                </a>
-                <div>
-                    <h1 class="text-3xl font-display text-gold-500 tracking-wide">Settings</h1>
-                    <p class="text-parchment-400 text-xs mt-1">Configuration manager</p>
-                </div>
-            </div>
+        <!-- Top bar -->
+        <header class="shrink-0 flex items-center gap-3 px-4 h-11 border-b seam" style="background:#0d0b08;">
+            <a href="/" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors shrink-0" title="Dashboard">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                </svg>
+            </a>
+            <span class="w-px h-5 shrink-0" style="background:#221d15;"></span>
+            <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0">Settings</h1>
         </header>
+
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar">
+        <div class="px-6 py-5 max-w-4xl mx-auto">
 
         <!-- Flash message -->
         <div x-show="message" x-cloak
@@ -727,6 +737,8 @@
                 </div>
             </div>
         </form>
+        </div><!-- /max-w-4xl -->
+        </div><!-- /scrollable content -->
     </div>
 
     <script>
