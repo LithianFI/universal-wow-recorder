@@ -86,7 +86,12 @@ def get_state() -> AppState:
 
 @app.route('/')
 def index():
-    """Serve the main dashboard page."""
+    return render_template('recordings.html')
+
+
+@app.route('/dashboard')
+def dashboard_page():
+    """Serve the live status dashboard."""
     return render_template('index.html')
 
 

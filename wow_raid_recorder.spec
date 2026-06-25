@@ -12,16 +12,10 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        # Bundle all HTML templates (served directly from project root)
-        ('index.html', '.'),
-        ('config.html', '.'),
-        ('recordings.html', '.'),
-        ('stats.html', '.'),
-        ('clips.html', '.'),
+        # Bundle all HTML templates
+        ('templates', 'templates'),
         # Bundle example config
         ('config.ini.example', '.'),
-        # Linux terminal launcher (sits next to the binary)
-        ('WoWRaidRecorder.sh', '.'),
     ],
     hiddenimports=[
         # Flask + SocketIO internals that PyInstaller misses

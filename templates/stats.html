@@ -100,27 +100,31 @@
             to   { opacity: 1; transform: translateY(0); }
         }
         .fade-in { animation: fade-in 0.3s ease forwards; }
+
+        .nav-tab {
+            display: inline-flex; align-items: center; height: 100%;
+            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+            color: #5a5244; border-bottom: 2px solid transparent;
+            transition: color 0.12s, border-color 0.12s;
+            text-decoration: none; font-family: 'Raleway', sans-serif;
+        }
+        .nav-tab:hover { color: #a89c82; }
+        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
     </style>
 </head>
 <body>
 <div x-data="statsPage()" x-init="init()" class="flex flex-col h-full">
 
     <!-- Top bar -->
-    <header class="shrink-0 flex items-center gap-3 px-4 h-11 border-b seam" style="background:#0d0b08;">
-        <a href="/" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors shrink-0" title="Dashboard">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-            </svg>
-        </a>
-        <span class="w-px h-5 shrink-0" style="background:#221d15;"></span>
-        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0">Statistics</h1>
-        <div class="flex items-center gap-2 ml-auto">
-            <a href="/recordings" class="w-7 h-7 inline-flex items-center justify-center rounded border seam text-parchment-400 hover:text-gold-500 transition-colors" title="Recordings">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-            </a>
-        </div>
+    <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
+        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
+        <nav class="flex items-center h-full">
+            <a href="/dashboard" class="nav-tab">Dashboard</a>
+            <a href="/" class="nav-tab">Recordings</a>
+            <a href="/stats" class="nav-tab nav-tab-active">Stats</a>
+            <a href="/clips" class="nav-tab">Clips</a>
+            <a href="/config" class="nav-tab">Config</a>
+        </nav>
     </header>
 
     <!-- Scrollable content -->

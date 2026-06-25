@@ -193,7 +193,7 @@ class ConfigManager:
     def _generate_default_config_content(self) -> str:
         """Generate content for default configuration file."""
         recording_path = self._get_default_recording_path()
-        log_dir = str(Path.home() / "Games" / "World of Warcraft" / "_retail_" / "Logs")
+        log_dir = "/path/to/World of Warcraft/_retail_/Logs"
 
         return f"""# WoW Raid Recorder Configuration
 # ============================================

@@ -168,6 +168,17 @@
             font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase;
             color: #5a5244; font-family: 'Raleway', sans-serif; font-weight: 600;
         }
+
+        /* ─── Top nav tabs ───────────────────────────────────────── */
+        .nav-tab {
+            display: inline-flex; align-items: center; height: 100%;
+            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+            color: #5a5244; border-bottom: 2px solid transparent;
+            transition: color 0.12s, border-color 0.12s;
+            text-decoration: none; font-family: 'Raleway', sans-serif;
+        }
+        .nav-tab:hover { color: #a89c82; }
+        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
     </style>
 </head>
 
@@ -177,20 +188,17 @@
     <!-- ══════════════════════════════════════════════════════ -->
     <!-- TOP BAR                                               -->
     <!-- ══════════════════════════════════════════════════════ -->
-    <header class="shrink-0 flex items-center gap-3 px-4 h-11 border-b seam" style="background:#0d0b08;">
-        <a href="/" class="w-7 h-7 inline-flex items-center justify-center rounded
-            border seam text-parchment-400 hover:text-gold-500 transition-colors shrink-0"
-            title="Back">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-            </svg>
-        </a>
+    <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
+        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
 
-        <span class="w-px h-5 shrink-0" style="background:#221d15;"></span>
-
-        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0">Recordings</h1>
-        <span class="text-parchment-300 text-[11px] truncate hidden md:block"
-            x-text="directory || ''"></span>
+        <!-- Primary nav -->
+        <nav class="flex items-center h-full">
+            <a href="/dashboard" class="nav-tab">Dashboard</a>
+            <a href="/" class="nav-tab nav-tab-active">Recordings</a>
+            <a href="/stats" class="nav-tab">Stats</a>
+            <a href="/clips" class="nav-tab">Clips</a>
+            <a href="/config" class="nav-tab">Config</a>
+        </nav>
 
         <!-- Inline stat chips -->
         <div class="flex items-center gap-2 ml-auto flex-wrap" x-show="recordings.length > 0" x-cloak>
@@ -606,7 +614,7 @@
                     </div>
                 </div>
 
-                <!-- ── POV source toggles ── -->
+                <!-- ── POV source toggles + offset sync ── -->
                 <div x-show="multiPovMode && localPovs.length > 0" x-cloak
                     class="flex items-center gap-1.5 px-3 py-2 flex-wrap border-b seam shrink-0"
                     style="background:#0a0806;">
@@ -624,9 +632,7 @@
                                 ? 'background:transparent; color:#3a3530; border-color:#1c1710;'
                                 : 'background:rgba(201,169,97,0.08); color:#a89c82; border-color:rgba(201,169,97,0.25);'">
                             <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors"
-                                :style="disabledPovNames.has(pov.name)
-                                    ? 'background:#2a2520;'
-                                    : 'background:#c9a961;'"></span>
+                                :style="disabledPovNames.has(pov.name) ? 'background:#2a2520;' : 'background:#c9a961;'"></span>
                             <span x-text="pov.player?._name || 'POV ' + (i + 1)"></span>
                         </button>
                     </template>
@@ -1319,21 +1325,11 @@
 
                 syncPovPlayers(primary) {
                     if (!this.multiPovMode || !this.localPovs.length || !primary) return;
-                    const mainStart = this.selectedRecording?._meta?.start || 0;
                     this.localPovs.forEach((pov, i) => {
                         const el = this._povVideoEl(i);
-                        if (!el) return;
-                        // offset: +ve means POV started later, so its clock lags behind main
-                        const offsetSec = mainStart && pov.start
-                            ? (mainStart - pov.start) / 1000
-                            : 0;
-                        const target = primary.currentTime + offsetSec;
-                        // If outside this POV's timeline, pause it at a boundary
-                        if (target < 0 || (pov.duration > 0 && target > pov.duration + 1)) {
-                            if (!el.paused) el.pause();
-                            return;
-                        }
-                        if (Math.abs(el.currentTime - target) > 0.4) el.currentTime = target;
+                        if (!el || this.disabledPovNames.has(pov.name)) return;
+                        if (Math.abs(el.currentTime - primary.currentTime) > 0.4)
+                            el.currentTime = primary.currentTime;
                         if (!primary.paused && el.paused) el.play().catch(() => {});
                         else if (primary.paused && !el.paused) el.pause();
                     });
