@@ -4,6 +4,7 @@ Tracks the current state of encounters and recordings.
 """
 
 import time
+import threading
 from typing import Optional
 
 from constants import LOG_PREFIXES
@@ -18,72 +19,78 @@ class RecordingState:
     
     def __init__(self):
         """Initialize a fresh recording state."""
+        self._lock = threading.Lock()
         self._reset_all()
     
     # ---------------------------------------------------------------------
     # State Management
     # ---------------------------------------------------------------------
     
-    def start_encounter(self, boss_id: int, boss_name: str, 
+    def start_encounter(self, boss_id: int, boss_name: str,
                        difficulty_id: int, instance_id: int):
         """Start tracking a new encounter.
-        
+
         Args:
             boss_id: Unique identifier for the boss
             boss_name: Name of the boss
             difficulty_id: Difficulty level ID
             instance_id: Instance/raid ID
         """
-        self.encounter_active = True
-        self.boss_id = boss_id
-        self.boss_name = boss_name
-        self.difficulty_id = difficulty_id
-        self.instance_id = instance_id
-        self.encounter_start_time = time.time()
-        
+        with self._lock:
+            self.encounter_active = True
+            self.boss_id = boss_id
+            self.boss_name = boss_name
+            self.difficulty_id = difficulty_id
+            self.instance_id = instance_id
+            self.encounter_start_time = time.time()
+
         print(f"{LOG_PREFIXES['STATE']} 🏁 Encounter started: {boss_name} (ID: {boss_id})")
     
-    def start_dungeon(self, dungeon_id: int, dungeon_name: str, 
+    def start_dungeon(self, dungeon_id: int, dungeon_name: str,
                      dungeon_level: int, timestamp: str = ""):
         """Start tracking a Mythic+ dungeon run.
-        
+
         Args:
             dungeon_id: Dungeon ID
             dungeon_name: Dungeon name
             dungeon_level: Key level
             timestamp: Log timestamp when dungeon started
         """
-        self.dungeon_active = True
-        self.dungeon_id = dungeon_id
-        self.dungeon_name = dungeon_name
-        self.dungeon_level = dungeon_level
-        self.dungeon_start_time = time.time()
-        self.dungeon_start_timestamp = timestamp
-        self.last_activity_time = time.time()
-        
+        with self._lock:
+            self.dungeon_active = True
+            self.dungeon_id = dungeon_id
+            self.dungeon_name = dungeon_name
+            self.dungeon_level = dungeon_level
+            self.dungeon_start_time = time.time()
+            self.dungeon_start_timestamp = timestamp
+            self.last_activity_time = time.time()
+
         print(f"{LOG_PREFIXES['STATE']} 🏁 M+ Dungeon started: {dungeon_name} (+{dungeon_level})")
     
     def start_recording(self):
         """Mark recording as started."""
-        self.recording = True
-        self.recording_start_time = time.time()
+        with self._lock:
+            self.recording = True
+            self.recording_start_time = time.time()
         print(f"{LOG_PREFIXES['STATE']} ⏺️ Recording marked as started")
-    
+
     def start_manual_recording(self):
         """Mark a manual recording as started (triggered by the user)."""
-        self.manual_recording = True
-        self.encounter_active = True
-        self.boss_name = "Manual"
-        self.difficulty_id = 0
-        self.boss_id = 0
-        self.instance_id = 0
-        self.encounter_start_time = time.time()
+        with self._lock:
+            self.manual_recording = True
+            self.encounter_active = True
+            self.boss_name = "Manual"
+            self.difficulty_id = 0
+            self.boss_id = 0
+            self.instance_id = 0
+            self.encounter_start_time = time.time()
         print(f"{LOG_PREFIXES['STATE']} 🔴 Manual recording started")
-    
+
     def reset(self):
         """Reset state to default (encounter ended)."""
         print(f"{LOG_PREFIXES['STATE']} 🔄 Resetting state")
-        self._reset_all()
+        with self._lock:
+            self._reset_all()
     
     def _reset_all(self):
         """Reset all state variables to defaults."""
@@ -112,7 +119,8 @@ class RecordingState:
     
     def update_activity(self):
         """Update last activity timestamp."""
-        self.last_activity_time = time.time()
+        with self._lock:
+            self.last_activity_time = time.time()
     
     def is_dungeon_idle(self, timeout_seconds: int) -> bool:
         """Check if dungeon has been idle for too long.
@@ -135,7 +143,8 @@ class RecordingState:
     
     @property
     def is_recording(self) -> bool:
-        return self.recording and (self.encounter_active or self.dungeon_active or self.manual_recording)
+        with self._lock:
+            return self.recording and (self.encounter_active or self.dungeon_active or self.manual_recording)
     
     @property
     def has_boss_info(self) -> bool:

@@ -69,7 +69,7 @@ class AppState:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = FLASK_SECRET_KEY
 app.config['state'] = AppState()
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins=f"http://127.0.0.1:{DEFAULT_WEB_PORT}")
 
 # Single process-level event — legitimately not part of AppState
 shutdown_event = threading.Event()
@@ -165,7 +165,7 @@ def get_config():
         'obs': {
             'host': cm.OBS_HOST,
             'port': cm.OBS_PORT,
-            'password': cm.OBS_PASSWORD,
+            'password': '[set]' if cm.OBS_PASSWORD else '',
         },
         'recording': {
             'auto_rename': cm.AUTO_RENAME,
@@ -198,7 +198,7 @@ def get_config():
             'delete_after_upload': cm.CLOUD_DELETE_AFTER_UPLOAD,
             'upload_on_startup': cm.CLOUD_UPLOAD_ON_STARTUP,
             'wcr_username': cm.WCR_USERNAME,
-            'wcr_password': cm.WCR_PASSWORD,
+            'wcr_password': '[set]' if cm.WCR_PASSWORD else '',
             'wcr_guild': cm.WCR_GUILD,
         },
     }
@@ -314,7 +314,7 @@ def serve_video(filename: str):
         abort(403)
     if not file_path.exists() or not file_path.is_file():
         abort(404)
-    return send_file(file_path)
+    return send_file(file_path, conditional=True)
 
 
 @app.route('/api/log-files')
@@ -391,9 +391,15 @@ def scan_recording_cooldowns(filename: str):
     if not log_file:
         return jsonify({'error': 'log_file is required'}), 400
 
-    log_path = Path(log_file)
+    log_path = Path(log_file).resolve()
     if not log_path.is_file():
         return jsonify({'error': f'Log file not found: {log_file}'}), 400
+
+    s = get_state()
+    if s.config_manager:
+        log_dir = s.config_manager.LOG_DIR.resolve()
+        if not log_path.is_relative_to(log_dir):
+            return jsonify({'error': 'Invalid log file path'}), 403
 
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -707,19 +713,27 @@ def list_recording_files() -> list:
         if not file.is_file():
             continue
         json_path = file.with_suffix('.json')
+        summary = None
         if json_path.exists():
             try:
                 with open(json_path, 'r', encoding='utf-8') as f:
                     meta = json.load(f)
                 if meta.get('pov'):
                     continue
+                summary = {
+                    'result': meta.get('result'),
+                    'duration': meta.get('duration'),
+                    'deaths': meta.get('deaths', []),
+                    'uniqueHash': meta.get('uniqueHash'),
+                }
             except Exception:
-                pass
+                continue
         stat = file.stat()
         recordings.append({
             'name': str(file.relative_to(record_dir)),
             'size': stat.st_size,
             'modified': stat.st_mtime,
+            'meta': summary,
         })
 
     recordings.sort(key=lambda x: x['modified'], reverse=True)

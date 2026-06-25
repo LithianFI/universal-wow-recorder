@@ -78,7 +78,7 @@ DEFAULT_OBS_PORT = 4455                     # Used by OBSClient
 DEFAULT_OBS_TIMEOUT = 3                     # Used by OBSClient
 
 # Web server defaults
-DEFAULT_WEB_HOST = '0.0.0.0'                # Used by run.py
+DEFAULT_WEB_HOST = '127.0.0.1'              # Used by run.py
 DEFAULT_WEB_PORT = 5001                     # Used by run.py
 FLASK_SECRET_KEY = os.environ.get('WOW_RECORDER_SECRET') or secrets.token_hex(32)   # Used by run.py
 

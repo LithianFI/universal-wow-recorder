@@ -1234,7 +1234,7 @@
                         const recs = data.recordings || [];
                         for (const r of recs) {
                             r._parsed = this.parseFilename(r.name);
-                            r._meta = null;
+                            r._meta = r.meta || null;
                         }
                         this.recordings = recs;
                         this.directory = data.directory;
@@ -1244,10 +1244,6 @@
                             const stillExists = this.recordings.find(r => r.name === this.selectedRecording.name);
                             if (!stillExists) this.selectedRecording = null;
                         }
-
-                        // Lazy-load metadata for the most recent recordings so
-                        // we can show duration + death count inline.
-                        this.hydrateMetadata(this.recordings.slice(0, 50));
                     } catch (e) {
                         console.error('Failed to fetch recordings:', e);
                     }

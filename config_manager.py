@@ -91,7 +91,7 @@ class ConfigManager:
         'obs': ('OBS', {
             'host':     str,
             'port':     str,
-            'password': str,
+            'password': lambda v: None if v == '[set]' else str(v),
         }),
         'recording': ('Recording', {
             'auto_rename':             lambda v: str(v).lower(),
@@ -122,7 +122,7 @@ class ConfigManager:
             'delete_after_upload': lambda v: str(v).lower(),
             'upload_on_startup':   lambda v: str(v).lower(),
             'wcr_username':        str,
-            'wcr_password':        str,
+            'wcr_password':        lambda v: None if v == '[set]' else str(v),
             'wcr_guild':           str,
             'gdrive_credentials_file': str,
             'gdrive_folder_id':        str,
@@ -611,7 +611,9 @@ proton_folder =
                 self.config.add_section(ini_section)
             for key, value in section_data.items():
                 if key in key_map:
-                    self.config.set(ini_section, key, key_map[key](value))
+                    converted = key_map[key](value)
+                    if converted is not None:
+                        self.config.set(ini_section, key, converted)
         self.save()
 
     def validate(self) -> Dict[str, List[str]]:
