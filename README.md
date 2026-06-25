@@ -79,7 +79,7 @@ ffmpeg -version
 
 ## Running from source
 
-### Linux / macOS
+### Browser mode (no extra dependencies)
 
 ```bash
 # Make the launcher executable (first time only)
@@ -89,13 +89,11 @@ chmod +x launch.sh
 ./launch.sh
 ```
 
-The launcher creates a virtual environment, installs dependencies, and opens your browser automatically. Use `--no-browser` to skip the browser open.
+The launcher creates a virtual environment, installs Python dependencies, and opens your browser automatically. Use `--no-browser` to skip the browser open.
 
-### Windows
+On Windows, double-click `launch.bat`.
 
-Double-click `launch.bat`.
-
-### Command line options
+#### Command line options
 
 ```
 --config PATH    Path to config file (default: config.ini)
@@ -105,59 +103,60 @@ Double-click `launch.bat`.
 --debug          Enable debug mode
 ```
 
----
+### Desktop client mode (Electron)
 
-## Running the pre-built executable (Linux)
+Runs the app as a standalone window — no browser required. Requires [Node.js](https://nodejs.org/).
 
-A pre-built binary requires no Python installation.
+```bash
+# First time only: install dependencies
+npm install
 
-1. Extract the archive:
-   ```bash
-   tar -xzf WoWRaidRecorder-linux-x86_64.tar.gz
-   cd WoWRaidRecorder
-   ```
-
-2. Make the launcher executable (first time only):
-   ```bash
-   chmod +x WoWRaidRecorder.sh
-   ```
-
-3. Run via the launcher script — not the binary directly:
-   ```bash
-   ./WoWRaidRecorder.sh
-   ```
-
-   The script detects whether it's running in a terminal. If you double-click it from a file manager it will automatically open a terminal window (gnome-terminal, konsole, xfce4-terminal, xterm, kitty, alacritty, and others are supported). The terminal stays open so you can see log output and spot any errors.
-
-4. On first run, a `config.ini` will need to be created. The app will guide you through this via the web interface at `http://localhost:5001`. A `config.ini.example` is included as a reference.
-
-> **Note:** The binary is built against a specific glibc version. If you get a glibc error on an older distribution, run from source instead.
+# Launch
+npm start
+```
 
 ---
 
-## Building the executable yourself
+## Running the pre-built AppImage (Linux)
 
-You need to build on Linux to produce a Linux binary.
-
-```bash
-# Activate your virtual environment
-source venv/bin/activate
-
-# Install PyInstaller
-pip install pyinstaller
-
-# Build
-pyinstaller wow_raid_recorder.spec
-```
-
-The distributable output lands in `dist/WoWRaidRecorder/`. Package it:
+A pre-built AppImage requires no Python or Node.js installation — double-click to run, or:
 
 ```bash
-cd dist
-tar -czf WoWRaidRecorder-linux-x86_64.tar.gz WoWRaidRecorder/
+chmod +x "WoW Raid Recorder-1.0.0.AppImage"
+./"WoW Raid Recorder-1.0.0.AppImage"
 ```
 
-> ffmpeg is **not** bundled in the executable — it must be installed separately on the target machine if clip export is needed.
+On first launch, a `config.ini` is created at `~/.config/wow-raid-recorder/config.ini`. Edit it to set your WoW log directory and OBS connection before starting.
+
+> **Note:** The AppImage is built against a specific glibc version. If you get a glibc error on an older distribution, run from source instead.
+
+---
+
+## Building the AppImage yourself
+
+Requires Python 3.10+, Node.js, and the project's Python venv set up.
+
+```bash
+# Install build dependencies (first time only)
+source venv/bin/activate && pip install pyinstaller
+npm install
+
+# Build everything (PyInstaller + Electron AppImage)
+npm run build
+```
+
+This runs two steps in sequence:
+1. **PyInstaller** bundles the Python backend into `dist/WoWRaidRecorder/`
+2. **electron-builder** wraps it with Electron into `dist/WoW Raid Recorder-1.0.0.AppImage`
+
+You can also run the steps individually:
+
+```bash
+npm run build:python    # PyInstaller only
+npm run build:electron  # Electron packaging only (requires build:python first)
+```
+
+> ffmpeg is **not** bundled — it must be installed separately on the target machine if clip export is needed.
 
 ---
 

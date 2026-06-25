@@ -1,0 +1,36 @@
+{
+  "name": "wow-raid-recorder",
+  "version": "1.0.0",
+  "description": "WoW Raid Recorder desktop client",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:python": "venv/bin/pyinstaller wow_raid_recorder.spec --noconfirm",
+    "build:electron": "electron-builder",
+    "build": "npm run build:python && npm run build:electron"
+  },
+  "build": {
+    "appId": "com.wowraidrecorder",
+    "productName": "WoW Raid Recorder",
+    "extraResources": [
+      {
+        "from": "dist/WoWRaidRecorder",
+        "to": "backend"
+      }
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility"
+    },
+    "win": {
+      "target": ["nsis"]
+    }
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "allowScripts": {
+    "electron@32.3.3": true
+  }
+}
