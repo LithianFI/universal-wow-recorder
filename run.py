@@ -74,6 +74,45 @@ socketio = SocketIO(app, cors_allowed_origins=f"http://127.0.0.1:{DEFAULT_WEB_PO
 # Single process-level event — legitimately not part of AppState
 shutdown_event = threading.Event()
 
+# Rolling console log buffer — captures all print()/stderr output
+MAX_CONSOLE_LOG = 2000
+console_log: deque = deque(maxlen=MAX_CONSOLE_LOG)
+
+
+class LogCapture:
+    """Wraps stdout/stderr to capture output into the console_log buffer."""
+    def __init__(self, real_stream, tag: str = ''):
+        self._real = real_stream
+        self._tag = tag
+        self._buf = ''
+
+    def write(self, text: str):
+        self._real.write(text)
+        self._buf += text
+        while '\n' in self._buf:
+            line, self._buf = self._buf.split('\n', 1)
+            if line:
+                entry = {'ts': time.time(), 'stream': self._tag, 'line': line}
+                console_log.append(entry)
+                try:
+                    socketio.emit('log_line', entry)
+                except Exception:
+                    pass
+
+    def flush(self):
+        self._real.flush()
+
+    def fileno(self):
+        return self._real.fileno()
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+def install_log_capture():
+    sys.stdout = LogCapture(sys.stdout, 'stdout')
+    sys.stderr = LogCapture(sys.stderr, 'stderr')
+
 
 def get_state() -> AppState:
     """Accessor for the application state stored on the Flask app."""
@@ -99,6 +138,18 @@ def dashboard_page():
 def config_page():
     """Serve the configuration page."""
     return render_template('config.html')
+
+
+@app.route('/debug')
+def debug_page():
+    """Serve the debug console page."""
+    return render_template('debug.html')
+
+
+@app.route('/api/logs')
+def get_logs():
+    """Return the buffered console log as JSON."""
+    return jsonify(list(console_log))
 
 
 @app.route('/api/status')
@@ -973,6 +1024,7 @@ def handle_connect(auth=None):
     status = build_status()
     emit('status', status)
     emit('event_log', list(s.event_log))
+    emit('console_log_init', list(console_log))
 
 
 @socketio.on('request_status')
@@ -1393,6 +1445,8 @@ def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    install_log_capture()
 
     if not args.no_recorder:
         if not init_recorder(args.config):

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron')
+const { app, BrowserWindow, dialog, Menu } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -58,8 +58,8 @@ function getDevPython() {
 
 function startBackend() {
   pythonProcess = spawnBackend()
-  pythonProcess.stdout.on('data', d => process.stdout.write(d))
-  pythonProcess.stderr.on('data', d => process.stderr.write(d))
+  pythonProcess.stdout.on('data', d => { try { process.stdout.write(d) } catch (_) {} })
+  pythonProcess.stderr.on('data', d => { try { process.stderr.write(d) } catch (_) {} })
   pythonProcess.on('exit', (code) => {
     if (!appIsQuitting) {
       dialog.showErrorBox(
@@ -188,6 +188,7 @@ async function createWindow() {
 // ---------------------------------------------------------------------------
 
 app.on('ready', () => {
+  Menu.setApplicationMenu(null)
   startBackend()
   createWindow()
 })
