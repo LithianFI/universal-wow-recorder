@@ -212,6 +212,8 @@ Recordings can optionally be uploaded to the cloud. Two providers are supported 
 
 Proton Drive is a planned provider (Proton has recently improved their Linux tooling) but isn't supported yet.
 
+If using Warcraft Recorder Cloud, enable **Auto rename**, **Generate metadata JSON**, and **Track player deaths** in the Recording settings, and set **Naming scheme** to **Warcraft Recorder**. Also set OBS to record in **MPEG-4 (.mp4)** — other containers have been unreliable playing back on the Warcraft Recorder website in testing.
+
 ---
 
 ## OBS encoder settings
