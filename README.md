@@ -129,6 +129,8 @@ npm start
 
 Download `WoW Raid Recorder Setup 1.0.0.exe` from the [Releases page](https://github.com/LithianFI/universal-wow-recorder/releases) and run it. It's unsigned, so Windows SmartScreen may warn about it — click **More info → Run anyway**.
 
+On first launch, a `config.ini` is created at `%APPDATA%\wow-raid-recorder\config.ini`. Edit it to set your WoW log directory and OBS connection before starting.
+
 ---
 
 ## Running the pre-built AppImage (Linux)
@@ -160,6 +162,8 @@ To run it anyway:
    ```
 
 You only need to do this on first launch.
+
+On first launch, a `config.ini` is created at `~/Library/Application Support/wow-raid-recorder/config.ini`. Edit it to set your WoW log directory and OBS connection before starting.
 
 ---
 
@@ -239,7 +243,7 @@ To confirm the GPU is actually doing the encoding: `radeontop` / `nvtop` / `inte
 
 ## Contributing
 
-PRs and issues welcome. The project is intentionally simple — a thin Python backend talking to OBS over WebSocket and serving a vanilla HTML/Alpine.js frontend. No build step required for the web UI.
+PRs and issues welcome. The core is a Python backend talking to OBS over WebSocket and serving a vanilla HTML/Alpine.js frontend (no build step required for the web UI), wrapped in an optional Electron desktop client.
 
 ---
 
