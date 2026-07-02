@@ -37,7 +37,7 @@ TRACKED_SPELLS = {
     # Discipline Priest
     62618:  {"name": "Power Word: Barrier", "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_holy_powerwordbarrier"},
     246287: {"name": "Evangelism",          "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_holy_divineillumination"},
-    421453: {"name": "Ultimate Penitence",  "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_priest_ultimatepenitence"},  # ?
+    421453: {"name": "Ultimate Penitence",  "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "ability_priest_ascendance"},
 
     # Holy Priest
     64843:  {"name": "Divine Hymn",         "class": "Priest",       "spec": "Holy",       "category": "healer_cd", "icon": "spell_holy_divinehymn"},
@@ -102,7 +102,7 @@ TRACKED_SPELLS = {
     102558: {"name": "Incarnation: Guardian of Ursoc","class": "Druid","spec": "Guardian", "category": "tank_cd",   "icon": "spell_druid_incarnation"},
 
     # Brewmaster Monk
-    115203: {"name": "Fortifying Brew",     "class": "Monk",         "spec": "Brewmaster", "category": "tank_cd",   "icon": "monk_ability_desperategrasp"},
+    115203: {"name": "Fortifying Brew",     "class": "Monk",         "spec": "Brewmaster", "category": "tank_cd",   "icon": "ability_monk_fortifyingale_new"},
     115176: {"name": "Zen Meditation",      "class": "Monk",         "spec": "Brewmaster", "category": "tank_cd",   "icon": "ability_monk_zenmeditation"},
 
     # Vengeance Demon Hunter
@@ -115,8 +115,8 @@ TRACKED_SPELLS = {
     51052:  {"name": "Anti-Magic Zone",     "class": "Death Knight", "spec": "Blood",      "category": "raid_cd",   "icon": "spell_deathknight_antimagiczone"},
     196718: {"name": "Darkness",            "class": "Demon Hunter", "spec": "Havoc",      "category": "raid_cd",   "icon": "ability_demonhunter_darkness"},
     106898: {"name": "Stampeding Roar",     "class": "Druid",        "spec": None,         "category": "raid_cd",   "icon": "spell_druid_stampedingroar_cat"},
-    192077: {"name": "Wind Rush Totem",     "class": "Shaman",       "spec": "Restoration","category": "raid_cd",   "icon": "ability_shaman_windrushtotem"},
-    132578: {"name": "Invoke Niuzao",       "class": "Monk",         "spec": "Brewmaster", "category": "raid_cd",   "icon": "ability_monk_niuzaostance"},
+    192077: {"name": "Wind Rush Totem",     "class": "Shaman",       "spec": "Restoration","category": "raid_cd",   "icon": "ability_shaman_windwalktotem"},
+    132578: {"name": "Invoke Niuzao",       "class": "Monk",         "spec": "Brewmaster", "category": "raid_cd",   "icon": "spell_monk_brewmaster_spec"},
 
     # ── OFFENSIVE DPS COOLDOWNS ──────────────────────────────────────────────
 
@@ -125,6 +125,9 @@ TRACKED_SPELLS = {
 
     # Havoc Demon Hunter
     162264: {"name": "Metamorphosis",       "class": "Demon Hunter", "spec": "Havoc",      "category": "dps_cd",    "icon": "ability_demonhunter_metamorphasis"},
+
+    # Devourer Demon Hunter
+    471306: {"name": "Void Metamorphosis",  "class": "Demon Hunter", "spec": "Devourer",   "category": "dps_cd",    "icon": "inv_112_ability_demonhunter_metamorphasisvoid"},
 
     # Druid
     194223: {"name": "Celestial Alignment", "class": "Druid",        "spec": "Balance",    "category": "dps_cd",    "icon": "ability_druid_celestialalignment"},
@@ -150,12 +153,12 @@ TRACKED_SPELLS = {
     343721: {"name": "Final Reckoning",     "class": "Paladin",      "spec": "Retribution","category": "dps_cd",    "icon": "spell_paladin_finalreckoning"},
 
     # Shadow Priest
-    228260: {"name": "Void Eruption",       "class": "Priest",       "spec": "Shadow",     "category": "dps_cd",    "icon": "spell_shadow_void_eruption"},
+    228361: {"name": "Void Eruption",       "class": "Priest",       "spec": "Shadow",     "category": "dps_cd",    "icon": "spell_priest_void-blast"},
     391109: {"name": "Dark Ascension",      "class": "Priest",       "spec": "Shadow",     "category": "dps_cd",    "icon": "spell_shadow_shadowwordpain"},        # ?
 
     # Rogue
     13750:  {"name": "Adrenaline Rush",     "class": "Rogue",        "spec": "Outlaw",     "category": "dps_cd",    "icon": "ability_rogue_adrenalinrush"},
-    121471: {"name": "Shadow Blades",       "class": "Rogue",        "spec": "Subtlety",   "category": "dps_cd",    "icon": "ability_rogue_shadowblades"},
+    121471: {"name": "Shadow Blades",       "class": "Rogue",        "spec": "Subtlety",   "category": "dps_cd",    "icon": "inv_knife_1h_grimbatolraid_d_03"},
     360194: {"name": "Deathmark",           "class": "Rogue",        "spec": "Assassination","category": "dps_cd",  "icon": "ability_rogue_deathmark"},            # ?
 
     # Shaman
