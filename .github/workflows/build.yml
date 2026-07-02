@@ -13,13 +13,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: WoWRaidRecorder-linux
-            asset_name: WoWRaidRecorder-linux.tar.gz
           - os: windows-latest
             artifact_name: WoWRaidRecorder-windows
-            asset_name: WoWRaidRecorder-windows.zip
           - os: macos-latest
             artifact_name: WoWRaidRecorder-macos
-            asset_name: WoWRaidRecorder-macos.tar.gz
 
     runs-on: ${{ matrix.os }}
 
@@ -33,47 +30,70 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install dependencies
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build executable (Linux/macOS)
-        if: runner.os != 'Windows'
-        run: pyinstaller wow_raid_recorder.spec --clean
+      - name: Bundle Python backend with PyInstaller
+        run: pyinstaller wow_raid_recorder.spec --noconfirm --clean
 
-      - name: Build executable (Windows)
-        if: runner.os == 'Windows'
-        run: pyinstaller wow_raid_recorder.spec --clean
+      - name: Install Node dependencies
+        run: npm ci
 
-      # ── Package ──────────────────────────────────────────────────────────────
+      # ── Package the Electron app ────────────────────────────────────────────
+      # extraResources in package.json pulls the PyInstaller output from
+      # dist/WoWRaidRecorder into the packaged app, so build:python must run first.
 
-      - name: Package (Linux)
+      - name: Package Electron app (Linux)
         if: runner.os == 'Linux'
-        run: |
-          cd dist
-          tar -czf ../${{ matrix.asset_name }} WoWRaidRecorder/
+        run: npx electron-builder --linux --publish=never
 
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd dist
-          tar -czf ../${{ matrix.asset_name }} WoWRaidRecorder/
-
-      - name: Package (Windows)
+      - name: Package Electron app (Windows)
         if: runner.os == 'Windows'
-        run: |
-          cd dist
-          Compress-Archive -Path WoWRaidRecorder\ -DestinationPath ..\${{ matrix.asset_name }}
-        shell: powershell
+        run: npx electron-builder --win --publish=never
 
-      # ── Upload build artifact (always, so you can download from Actions tab) ─
+      - name: Package Electron app (macOS)
+        if: runner.os == 'macOS'
+        env:
+          # No Apple Developer certificate configured — skip codesigning/notarization
+          # so the build doesn't fail trying to discover one. The app will only be
+          # ad-hoc signed, so first launch requires right-click > Open on macOS.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac --publish=never
 
-      - name: Upload build artifact
+      # ── Upload build artifacts (always, so you can download from Actions tab) ─
+
+      - name: Upload build artifact (Linux)
+        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.asset_name }}
+          path: dist/*.AppImage
+          retention-days: 14
+
+      - name: Upload build artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/*.exe
+          retention-days: 14
+
+      - name: Upload build artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
           retention-days: 14
 
   # ── Attach to GitHub Release (only on tag pushes) ──────────────────────────
@@ -95,10 +115,7 @@ jobs:
       - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/WoWRaidRecorder-linux/WoWRaidRecorder-linux.tar.gz
-            artifacts/WoWRaidRecorder-windows/WoWRaidRecorder-windows.zip
-            artifacts/WoWRaidRecorder-macos/WoWRaidRecorder-macos.tar.gz
+          files: artifacts/**/*
           generate_release_notes: true
           draft: false
           prerelease: false

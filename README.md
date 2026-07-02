@@ -132,6 +132,23 @@ On first launch, a `config.ini` is created at `~/.config/wow-raid-recorder/confi
 
 ---
 
+## Running the pre-built app (macOS)
+
+The `.dmg`/`.zip` releases are **not notarized or signed with an Apple Developer certificate** — that costs $99/year and this is a free hobby project, so it's not happening. macOS Gatekeeper will refuse to open the app normally and just says it's "damaged" or from an "unidentified developer."
+
+To run it anyway:
+
+1. Open the `.dmg` and drag the app to `Applications` (or unzip the `.zip`).
+2. Right-click (or Control-click) the app in Finder and choose **Open**, then confirm in the dialog that appears.
+3. If macOS still refuses, run the following once to remove the quarantine flag, then try opening it again:
+   ```bash
+   xattr -cr "/Applications/WoW Raid Recorder.app"
+   ```
+
+You only need to do this on first launch.
+
+---
+
 ## Building the AppImage yourself
 
 Requires Python 3.10+, Node.js, and the project's Python venv set up.
