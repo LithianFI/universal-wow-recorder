@@ -161,20 +161,36 @@ class ConfigManager:
     def _load_configuration(self):
         """Load configuration from file, creating default if needed."""
         self.config.read_dict(self.DEFAULT_CONFIG)
+        self._explicit_options: Set[tuple] = set()
 
         if self.config_path.exists():
             try:
                 self.config.read(self.config_path)
+                self._record_explicit_options()
                 print(f"[CONFIG] Loaded configuration from: {self.config_path}")
             except configparser.Error as e:
                 print(f"[CONFIG] Error parsing config file: {e}")
                 print("[CONFIG] Creating fresh configuration...")
                 self._create_default_config()
                 self.config.read(self.config_path)
+                self._record_explicit_options()
         else:
             print(f"[CONFIG] Configuration file not found.")
             self._create_default_config()
             self.config.read(self.config_path)
+            self._record_explicit_options()
+
+    def _record_explicit_options(self):
+        """Record which (section, option) pairs are actually present on disk,
+        as opposed to only existing in DEFAULT_CONFIG. Lets properties like
+        POV_SYNC_ENABLED distinguish "user chose false" from "never set"."""
+        raw = configparser.ConfigParser(interpolation=None)
+        raw.read(self.config_path)
+        self._explicit_options = {
+            (section, option)
+            for section in raw.sections()
+            for option in raw.options(section)
+        }
 
     def _create_default_config(self):
         """Create a default configuration file."""
@@ -514,6 +530,11 @@ proton_folder =
 
     @property
     def POV_SYNC_ENABLED(self) -> bool:
+        # Defaults to on for Warcraft Recorder: downloads still require a manual
+        # trigger, so auto-checking for guildmates' POVs is harmless until the
+        # user explicitly opts out.
+        if ('CloudUpload', 'pov_sync_enabled') not in self._explicit_options:
+            return self.CLOUD_UPLOAD_PROVIDER == 'warcraft_recorder'
         return self.config.getboolean('CloudUpload', 'pov_sync_enabled', fallback=False)
 
     @property
@@ -594,6 +615,7 @@ proton_folder =
         if section not in self.config:
             self.config.add_section(section)
         self.config.set(section, key, value)
+        self._explicit_options.add((section, key))
         self.save()
 
     def update_from_dict(self, data: dict):
@@ -614,6 +636,7 @@ proton_folder =
                     converted = key_map[key](value)
                     if converted is not None:
                         self.config.set(ini_section, key, converted)
+                        self._explicit_options.add((ini_section, key))
         self.save()
 
     def validate(self) -> Dict[str, List[str]]:

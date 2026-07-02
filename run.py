@@ -251,6 +251,12 @@ def get_config():
             'wcr_username': cm.WCR_USERNAME,
             'wcr_password': '[set]' if cm.WCR_PASSWORD else '',
             'wcr_guild': cm.WCR_GUILD,
+            'gdrive_credentials_file': cm.GDRIVE_CREDENTIALS_FILE,
+            'gdrive_folder_id': cm.GDRIVE_FOLDER_ID,
+            'pov_sync_enabled': cm.POV_SYNC_ENABLED,
+            'pov_sync_interval': cm.POV_SYNC_INTERVAL,
+            'pov_auto_download': cm.POV_AUTO_DOWNLOAD,
+            'pov_download_dir': cm.POV_DOWNLOAD_DIR,
         },
     }
 
