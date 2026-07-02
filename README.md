@@ -1,10 +1,10 @@
 # WoW Raid Recorder
 
-A World of Warcraft encounter recorder for Linux and Mac. Monitors your combat log, automatically starts and stops OBS recordings on boss pulls, and provides a web dashboard for reviewing VODs, clips, and session statistics.
+A World of Warcraft encounter recorder for Windows, Linux, and Mac. Monitors your combat log, automatically starts and stops OBS recordings on boss pulls, and provides a web dashboard for reviewing VODs, clips, and session statistics.
 
 Built with AI assistance. While the code has been reviewed, mistakes happen — if AI-generated code is a concern for you, this project isn't for you.
 
-> **Windows users:** [Warcraft Recorder](https://warcraftrecorder.com/) is a mature, purpose-built tool that does everything this does and more. This project exists specifically for players on systems Warcraft Recorder doesn't support.
+> **Windows users:** this project does run on Windows, but [Warcraft Recorder](https://warcraftrecorder.com/) is a mature, purpose-built tool for Windows that does everything this does and more — use that instead if you can. This project exists primarily for players on systems Warcraft Recorder doesn't support.
 
 ---
 
@@ -21,9 +21,11 @@ Built with AI assistance. While the code has been reviewed, mistakes happen — 
   - **Recordings page** — full library with search, filters, and sort
   - **Clips page** — manage exported highlight clips (rename, delete, download)
   - **Statistics page** — per-boss breakdown across all recordings: pull count, kill rate, best/average time, boss HP% progression on wipes, death leaderboard
+  - **Debug page** (Electron client) — live-streamed backend log output, for troubleshooting
 - Video player with timeline scrubbing, death markers, volume control, playback speed (0.5×–2×), fullscreen, and keyboard shortcuts
+- **Cooldown timeline** — per-player row of tracked cooldowns (healer/tank/raid/DPS/utility) plotted against the fight, with class-colored spell icons and category filters
 - Clip export (requires ffmpeg — see below)
-- Optional cloud upload (Google Drive)
+- Optional cloud upload — Google Drive, or Warcraft Recorder Cloud (which also enables **POV sync**: automatically fetch guildmates' recordings of the same pull)
 
 ---
 
@@ -77,6 +79,12 @@ ffmpeg -version
 
 ---
 
+## Downloads
+
+Pre-built releases for Windows, macOS, and Linux are on the [Releases page](https://github.com/LithianFI/universal-wow-recorder/releases) — see below for platform-specific run instructions. Otherwise, run from source (next section).
+
+---
+
 ## Running from source
 
 ### Browser mode (no extra dependencies)
@@ -114,6 +122,12 @@ npm install
 # Launch
 npm start
 ```
+
+---
+
+## Running the pre-built installer (Windows)
+
+Download `WoW Raid Recorder Setup 1.0.0.exe` from the [Releases page](https://github.com/LithianFI/universal-wow-recorder/releases) and run it. It's unsigned, so Windows SmartScreen may warn about it — click **More info → Run anyway**.
 
 ---
 
@@ -185,6 +199,15 @@ On first run the app starts without a recorder and opens the configuration page.
 - **OBS connection** — host (usually `localhost`), port (default `4455`), and password if you set one
 - **Recording output path** — where OBS saves recordings; must match the path set in OBS
 
+### Cloud upload & POV sync
+
+Recordings can optionally be uploaded to the cloud. Two providers are supported today:
+
+- **Warcraft Recorder Cloud** — also enables **POV sync**, which automatically checks for and downloads guildmates' recordings of the same pull, so you can compare POVs without manually sharing files.
+- **Google Drive**
+
+Proton Drive is a planned provider (Proton has recently improved their Linux tooling) but isn't supported yet.
+
 ---
 
 ## OBS encoder settings
@@ -217,3 +240,9 @@ To confirm the GPU is actually doing the encoding: `radeontop` / `nvtop` / `inte
 ## Contributing
 
 PRs and issues welcome. The project is intentionally simple — a thin Python backend talking to OBS over WebSocket and serving a vanilla HTML/Alpine.js frontend. No build step required for the web UI.
+
+---
+
+## License
+
+[MIT](LICENSE)
