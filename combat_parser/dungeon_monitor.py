@@ -54,11 +54,3 @@ class DungeonMonitor:
     def is_running(self) -> bool:
         """Check if monitor is running."""
         return self._running
-    
-    def get_status(self) -> dict:
-        """Get monitor status."""
-        return {
-            'running': self._running,
-            'check_interval': self._check_interval,
-            'thread_alive': self._monitor_thread.is_alive() if self._monitor_thread else False,
-        }

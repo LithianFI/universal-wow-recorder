@@ -1150,7 +1150,6 @@
                 deathMarkerPositions: [],
                 deathTimesSeconds: [],
                 deathNames: [],
-                deathSpecIds: [],
 
                 clipInSecs: null,
                 clipOutSecs: null,
@@ -1456,19 +1455,6 @@
                     }
                 },
 
-                async hydrateMetadata(recs) {
-                    await Promise.all(recs.map(async (r) => {
-                        if (r._meta) return;
-                        try {
-                            const url = '/api/recordings/' +
-                                r.name.split('/').map(encodeURIComponent).join('/') +
-                                '/metadata';
-                            const res = await fetch(url);
-                            if (res.ok) r._meta = await res.json();
-                        } catch (_) {}
-                    }));
-                },
-
                 // ── Computed: stats ──────────────────────────────────
                 get totalBytes() {
                     return this.recordings.reduce((sum, r) => sum + (r.size || 0), 0);
@@ -1626,7 +1612,6 @@
                     this.deathMarkerPositions = [];
                     this.deathTimesSeconds = [];
                     this.deathNames = [];
-                    this.deathSpecIds = [];
                     this.currentTime = 0;
                     this.duration = 0;
                     this.playedPercent = 0;
@@ -1694,17 +1679,6 @@
                     const c = SPEC_TO_CLASS[specId];
                     return c ? 'c-' + c : 'text-parchment-700';
                 },
-                className(specId) {
-                    const c = SPEC_TO_CLASS[specId];
-                    if (!c) return '';
-                    return ({
-                        deathknight: 'Death Knight', demonhunter: 'Demon Hunter',
-                        druid: 'Druid', evoker: 'Evoker', hunter: 'Hunter',
-                        mage: 'Mage', monk: 'Monk', paladin: 'Paladin',
-                        priest: 'Priest', rogue: 'Rogue', shaman: 'Shaman',
-                        warlock: 'Warlock', warrior: 'Warrior',
-                    })[c] || '';
-                },
                 getDifficultyName(id) { return DIFFICULTY_NAMES[id] || ''; },
                 diffClassFromShort(s) {
                     if (s === 'M') return 'diff-mythic';
@@ -1727,11 +1701,6 @@
                     const sec = s % 60;
                     return `${m}:${sec.toString().padStart(2, '0')}`;
                 },
-                formatTime(timestamp) {
-                    if (!timestamp) return '';
-                    const date = new Date(timestamp * 1000);
-                    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                },
                 formatFullDate(timestamp) {
                     if (!timestamp) return '';
                     return new Date(timestamp * 1000).toLocaleString();
@@ -1753,7 +1722,6 @@
                     this.deathMarkerPositions = [];
                     this.deathTimesSeconds = [];
                     this.deathNames = [];
-                    this.deathSpecIds = [];
                     const meta = this.recordingMetadata;
                     if (!meta || !meta.deaths || meta.deaths.length === 0) return;
                     const durationSecs = meta.duration || this.duration;
@@ -1764,7 +1732,6 @@
                         this.deathMarkerPositions.push((offset / durationSecs) * 100);
                         this.deathTimesSeconds.push(offset);
                         this.deathNames.push(typeof death === 'object' ? (death.name || '') : '');
-                        this.deathSpecIds.push(typeof death === 'object' ? (death.specId || 0) : 0);
                     });
                 },
                 onTimeUpdate() {

@@ -15,11 +15,6 @@ from combat_parser.parser import CombatParser
 from log_watcher import LogMonitor
 
 from constants import (
-    DEFAULT_OBS_HOST,
-    DEFAULT_OBS_PORT,
-    DEFAULT_RENAME_DELAY,
-    DEFAULT_MIN_RECORDING_DURATION,
-    DEFAULT_DUNGEON_TIMEOUT,
     LOG_PREFIXES,
     ERROR_MESSAGES,
 )
@@ -215,14 +210,7 @@ def main():
     try:
         while True:
             time.sleep(1)
-            
-            # Optional: Print periodic status (every 30 seconds)
-            # You can enable this for debugging
-            # if int(time.time()) % 30 == 0:
-            #     status = log_monitor.get_status()
-            #     print(f"{LOG_PREFIXES['STATUS']} Monitoring: {status['is_monitoring']}, "
-            #           f"Tailing: {status['is_tailing']}")
-            
+
     except KeyboardInterrupt:
         print(f"\n\n{LOG_PREFIXES['RECORDER']} 🛑 Shutdown requested...")
     finally:

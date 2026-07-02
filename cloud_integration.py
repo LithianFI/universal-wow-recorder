@@ -257,20 +257,6 @@ class CloudUploadManager:
 # Integration Helper Functions
 # =============================================================================
 
-def create_cloud_manager(config) -> CloudUploadManager:
-    """
-    Factory function to create and initialize cloud upload manager.
-    
-    Args:
-        config: ConfigManager instance
-        
-    Returns:
-        CloudUploadManager instance
-    """
-    manager = CloudUploadManager(config)
-    return manager
-
-
 async def initialize_cloud_upload(
     config,
     get_recording_dir_fn: Optional[Callable] = None,
@@ -328,51 +314,3 @@ def should_auto_upload(config, recording_duration: float) -> bool:
         return False
     
     return True
-
-
-# =============================================================================
-# Example Integration with CombatParser
-# =============================================================================
-
-def integrate_with_combat_parser(parser, cloud_manager: CloudUploadManager):
-    """
-    Example integration with the combat parser.
-    
-    This shows how to hook cloud upload into the existing recording flow.
-    Add this to your CombatParser initialization or RecordingProcessor.
-    """
-    
-    def on_recording_completed(file_path: Path, metadata: dict):
-        """
-        Callback when a recording is completed and renamed.
-        
-        Args:
-            file_path: Path to the final recording file
-            metadata: Dictionary with recording metadata
-        """
-        if not cloud_manager.is_ready():
-            return
-        
-        # Check if we should auto-upload
-        duration = metadata.get('duration', 0)
-        if not should_auto_upload(parser.config, duration):
-            return
-        
-        # Queue for upload
-        cloud_manager.queue_upload(
-            file_path=file_path,
-            boss_name=metadata.get('boss_name'),
-            difficulty=metadata.get('difficulty'),
-            duration=duration,
-            encounter_id=metadata.get('encounter_id'),
-            start_time=metadata.get('start_time'),
-            result=metadata.get('result'),  # 'kill' or 'wipe'
-            category=metadata.get('category', 'raid'),
-        )
-        
-        print(f"[Integration] Queued for cloud upload: {file_path.name}")
-    
-    # Register callback with parser
-    # parser.on_recording_completed = on_recording_completed
-    
-    return on_recording_completed

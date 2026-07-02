@@ -3,7 +3,6 @@ Cloud Upload Module for WoW Raid Recorder.
 Provides automated upload to cloud storage services after recording completion.
 """
 
-import os
 import time
 import base64
 import asyncio
@@ -11,7 +10,7 @@ import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime
 
 import requests
@@ -591,24 +590,6 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             print(f"[WCR Cloud] POST /download error: {exc}")
 
         return None
-
-    def get_guild_videos(self) -> List[dict]:
-        """
-        Fetch the full video list for the guild.
-        Returns the raw list of cloud video objects (each includes a signed
-        download URL embedded by the WCR API).
-        """
-        if not self.is_authenticated():
-            return []
-        g = requests.utils.quote(self.guild_name)
-        resp = requests.get(
-            f"{self.API_BASE}/guild/{g}/video",
-            headers=self._headers, timeout=15)
-        if resp.status_code == 401:
-            print("[WCR Cloud] 401 fetching video list")
-            return []
-        resp.raise_for_status()
-        return resp.json()
 
     def _run_housekeeping(self, encoded_guild: str):
         """POST /guild/{g}/housekeeper — fire-and-forget after each upload.

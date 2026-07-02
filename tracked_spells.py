@@ -5,23 +5,6 @@ Spell IDs sourced from WoWAnalyzer and Wowhead. Verify flagged entries (# ?)
 on major patches. Icon names resolve via: https://wow.zamimg.com/images/wow/icons/medium/{icon}.jpg
 """
 
-# WoW class colors (official)
-CLASS_COLORS = {
-    "Death Knight":  "#C41E3A",
-    "Demon Hunter":  "#A330C9",
-    "Druid":         "#FF7C0A",
-    "Evoker":        "#33937F",
-    "Hunter":        "#AAD372",
-    "Mage":          "#3FC7EB",
-    "Monk":          "#00FF98",
-    "Paladin":       "#F48CBA",
-    "Priest":        "#FFFFFF",
-    "Rogue":         "#FFF468",
-    "Shaman":        "#0070DD",
-    "Warlock":       "#8788EE",
-    "Warrior":       "#C69B3A",
-}
-
 # category values used for UI filtering:
 #   healer_cd  — major healing throughput cooldowns
 #   external   — single-target defensive casts on others
@@ -192,58 +175,3 @@ TRACKED_SPELLS = {
     20707:  {"name": "Soulstone",           "class": "Warlock",      "spec": None,         "category": "utility",   "icon": "spell_shadow_soulgem"},
     61999:  {"name": "Raise Ally",          "class": "Death Knight", "spec": None,         "category": "utility",   "icon": "spell_shadow_deadofnight"},
 }
-
-
-def get_spell(spell_id: int) -> dict | None:
-    """Return spell info dict for a given ID, or None if not tracked."""
-    return TRACKED_SPELLS.get(spell_id)
-
-
-def get_icon_url(icon_name: str) -> str:
-    """Return Wowhead CDN URL for a spell icon."""
-    return f"https://wow.zamimg.com/images/wow/icons/medium/{icon_name}.jpg"
-
-
-# Pre-built lookup: (class, spec) -> [spell_id, ...]
-# spec=None entries (e.g. Bloodlust) appear under every spec for that class.
-def _build_class_spec_index() -> dict[tuple[str, str | None], list[int]]:
-    index: dict[tuple[str, str | None], list[int]] = {}
-    for spell_id, info in TRACKED_SPELLS.items():
-        key = (info["class"], info["spec"])
-        index.setdefault(key, []).append(spell_id)
-    return index
-
-_CLASS_SPEC_INDEX = _build_class_spec_index()
-
-
-def spells_for(class_name: str, spec: str | None = None) -> list[int]:
-    """
-    Return tracked spell IDs for a class/spec combination.
-
-    - spells_for("Shaman", "Restoration") → Resto-specific + spec=None Shaman spells
-    - spells_for("Shaman")                → all Shaman spells regardless of spec
-    - spells_for("Priest", "Discipline")  → Disc + spec=None Priest spells
-    """
-    if spec is None:
-        # All spells for the class, every spec
-        return [
-            sid for (cls, _), sids in _CLASS_SPEC_INDEX.items()
-            if cls == class_name
-            for sid in sids
-        ]
-
-    # Spec-specific + cross-spec (spec=None) entries for this class
-    specific = _CLASS_SPEC_INDEX.get((class_name, spec), [])
-    cross_spec = _CLASS_SPEC_INDEX.get((class_name, None), [])
-    return specific + cross_spec
-
-
-def spells_for_category(*categories: str) -> list[int]:
-    """
-    Return tracked spell IDs matching any of the given categories.
-
-    Categories: healer_cd, external, tank_cd, raid_cd, dps_cd, utility
-    Example: spells_for_category("healer_cd", "external")
-    """
-    cat_set = set(categories)
-    return [sid for sid, info in TRACKED_SPELLS.items() if info["category"] in cat_set]

@@ -230,72 +230,22 @@ class OBSClient:
                 return {'record_directory': self._cached_record_directory}
             return None
     
-    def get_last_recording_info(self) -> dict:
-        """Get information about the last recording.
-        
-        Returns:
-            Dictionary with last recording information
-        """
-        settings = self.get_recording_settings()
-        if not settings or 'record_directory' not in settings:
-            return {}
-        
-        record_dir = settings['record_directory']
-        if not record_dir:
-            return {}
-        
-        return self._find_latest_recording(record_dir)
-    
     # ---------------------------------------------------------------------
     # Helper Methods
     # ---------------------------------------------------------------------
-    
+
     def _ensure_connection(self) -> bool:
         """Ensure client is connected to OBS.
-        
+
         Returns:
             True if connected, False otherwise
         """
         if self.is_connected:
             return True
-        
+
         print("[OBS] 🔌 Not connected to OBS, attempting to reconnect...")
         return self.connect()
-    
-    def _find_latest_recording(self, directory: str) -> dict:
-        """Find the most recent recording file in a directory (including date subfolders)."""
-        from pathlib import Path
 
-        try:
-            record_path = Path(directory)
-            if not record_path.exists():
-                return {}
-
-            video_extensions = {'.mp4', '.mkv', '.flv', '.mov', '.ts',
-                                 '.m3u8', '.avi', '.wmv'}
-
-            # rglob descends into date subfolders automatically
-            video_files = [
-                f for f in record_path.rglob('*')
-                if f.is_file() and f.suffix.lower() in video_extensions
-            ]
-
-            if not video_files:
-                return {}
-
-            latest_file = max(video_files, key=lambda f: f.stat().st_mtime)
-
-            return {
-                'path': str(latest_file),
-                'name': latest_file.name,
-                'size': latest_file.stat().st_size,
-                'modified': latest_file.stat().st_mtime,
-            }
-
-        except Exception as e:
-            print(f"[OBS] ⚠️ Error finding recordings: {e}")
-            return {}
-    
     # ---------------------------------------------------------------------
     # Context Manager Support
     # ---------------------------------------------------------------------

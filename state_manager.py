@@ -5,7 +5,6 @@ Tracks the current state of encounters and recordings.
 
 import time
 import threading
-from typing import Optional
 
 from constants import LOG_PREFIXES
 
@@ -122,40 +121,15 @@ class RecordingState:
         with self._lock:
             self.last_activity_time = time.time()
     
-    def is_dungeon_idle(self, timeout_seconds: int) -> bool:
-        """Check if dungeon has been idle for too long.
-        
-        Args:
-            timeout_seconds: Maximum idle time in seconds
-            
-        Returns:
-            True if dungeon is idle beyond timeout, False otherwise
-        """
-        if not self.dungeon_active or not self.last_activity_time:
-            return False
-        
-        idle_time = time.time() - self.last_activity_time
-        return idle_time > timeout_seconds
-    
     # ---------------------------------------------------------------------
     # State Queries
     # ---------------------------------------------------------------------
-    
+
     @property
     def is_recording(self) -> bool:
         with self._lock:
             return self.recording and (self.encounter_active or self.dungeon_active or self.manual_recording)
-    
-    @property
-    def has_boss_info(self) -> bool:
-        """Check if boss information is available."""
-        return self.boss_name is not None and self.difficulty_id is not None
-    
-    @property
-    def has_dungeon_info(self) -> bool:
-        """Check if dungeon information is available."""
-        return self.dungeon_name is not None and self.dungeon_level is not None
-    
+
     def get_encounter_duration(self) -> float:
         """Get current encounter duration in seconds.
         

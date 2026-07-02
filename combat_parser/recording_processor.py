@@ -200,14 +200,3 @@ class RecordingProcessor:
             return self.file_manager.delete_recording(recording_path, reason)
         
         return False
-    
-    def force_stop_recording(self) -> bool:
-        """Force stop any active recording."""
-        print(f"{LOG_PREFIXES['PROC']} Force stopping recording")
-        
-        # Stop OBS recording
-        if not self.obs.stop_recording():
-            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
-            return False
-        
-        return True

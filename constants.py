@@ -11,15 +11,6 @@ Application-wide constants for WoW Raid Recorder.
 # Video file extensions (used by RecordingFileManager)
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.flv', '.mov', '.ts', '.m3u8', '.avi', '.wmv'}
 
-# Default file patterns
-DEFAULT_LOG_PATTERN = r'WoWCombatLog-\d{6}_\d{6}\.txt$'
-DEFAULT_RECORDING_EXTENSION = '.mp4'
-
-# Default configuration paths
-DEFAULT_CONFIG_NAME = 'config.ini'
-DEFAULT_CREDENTIALS_NAME = 'credentials.json'
-DEFAULT_TOKEN_NAME = 'token.json'
-
 # ============================================================================
 # WOW GAME CONSTANTS
 # ============================================================================
@@ -52,24 +43,11 @@ DIFFICULTY_NAMES = {
     33: "Timewalking",
 }
 
-# Combat log event types (used by combat_parser/events.py)
-EVENT_TYPES = {
-    'ENCOUNTER_START': 'ENCOUNTER_START',
-    'ENCOUNTER_END': 'ENCOUNTER_END',
-    'CHALLENGE_MODE_START': 'CHALLENGE_MODE_START',
-    'CHALLENGE_MODE_END': 'CHALLENGE_MODE_END',
-    'ZONE_CHANGE': 'ZONE_CHANGE',
-}
-
 # ============================================================================
 # APPLICATION CONSTANTS
 # ============================================================================
 
 # Default timeouts and delays (in seconds)
-DEFAULT_RENAME_DELAY = 3                    # Used by RecordingProcessor
-DEFAULT_DUNGEON_TIMEOUT = 120               # Used by DungeonMonitor
-DEFAULT_MIN_RECORDING_DURATION = 5          # Used by RecordingProcessor
-DEFAULT_MAX_RENAME_ATTEMPTS = 10            # Used by RecordingFileManager
 DEFAULT_FILE_STABILITY_CHECK_INTERVAL = 1.0 # Used by RecordingFileManager
 
 # OBS WebSocket defaults
@@ -105,18 +83,6 @@ LOG_PREFIXES = {
     'DUNGEON': '[DUNGEON]',
     'PROC': '[PROC]',  # RecordingProcessor
     'WATCHER': '[WATCHER]',  # LogWatcher
-}
-
-# ============================================================================
-# STATUS CONSTANTS
-# ============================================================================
-
-# Recording statuses
-RECORDING_STATUS = {
-    'IDLE': 'idle',
-    'RECORDING': 'recording',
-    'ENCOUNTER_ACTIVE': 'encounter_active',
-    'DUNGEON_ACTIVE': 'dungeon_active',
 }
 
 # ============================================================================

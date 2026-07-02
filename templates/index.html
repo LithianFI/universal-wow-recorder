@@ -817,38 +817,6 @@
             14: 'N', 15: 'H', 16: 'M', 17: 'LFR', 23: 'M'
         };
 
-        // SpecID → class name (subset; covers Dragonflight/War Within active specs).
-        // Each spec ID maps to one class. We use this for class colors on the
-        // death roster. Unknown IDs fall back to neutral parchment.
-        const SPEC_TO_CLASS = {
-            // Death Knight
-            250: 'deathknight', 251: 'deathknight', 252: 'deathknight',
-            // Demon Hunter
-            577: 'demonhunter', 581: 'demonhunter',
-            // Druid
-            102: 'druid', 103: 'druid', 104: 'druid', 105: 'druid',
-            // Evoker
-            1467: 'evoker', 1468: 'evoker', 1473: 'evoker',
-            // Hunter
-            253: 'hunter', 254: 'hunter', 255: 'hunter',
-            // Mage
-            62: 'mage', 63: 'mage', 64: 'mage',
-            // Monk
-            268: 'monk', 269: 'monk', 270: 'monk',
-            // Paladin
-            65: 'paladin', 66: 'paladin', 70: 'paladin',
-            // Priest
-            256: 'priest', 257: 'priest', 258: 'priest',
-            // Rogue
-            259: 'rogue', 260: 'rogue', 261: 'rogue',
-            // Shaman
-            262: 'shaman', 263: 'shaman', 264: 'shaman',
-            // Warlock
-            265: 'warlock', 266: 'warlock', 267: 'warlock',
-            // Warrior
-            71: 'warrior', 72: 'warrior', 73: 'warrior',
-        };
-
         function dashboard() {
             return {
                 connected: false,
@@ -978,16 +946,6 @@
                     if (s === 'M+') return 'diff-mplus';
                     return '';
                 },
-                classColor(specId) {
-                    const cls = SPEC_TO_CLASS[specId];
-                    return cls ? 'c-' + cls : 'text-parchment-700';
-                },
-                className(specId) {
-                    const cls = SPEC_TO_CLASS[specId];
-                    if (!cls) return '';
-                    return cls.charAt(0).toUpperCase() + cls.slice(1).replace('hunter', ' Hunter').replace('knight', ' Knight');
-                },
-
                 // Parse the WCR-style filename for table display:
                 // "2024-08-12 21:45:03 - Tezranok - Queen Ansurek [M] (Wipe).mp4"
                 parseRecordingName(name) {
@@ -1470,14 +1428,6 @@
                 },
 
                 // ── Clip export ──────────────────────────────────────
-                get clipInPercent() {
-                    if (this.clipInSecs === null || !this.previewDuration) return null;
-                    return (this.clipInSecs / this.previewDuration) * 100;
-                },
-                get clipOutPercent() {
-                    if (this.clipOutSecs === null || !this.previewDuration) return null;
-                    return (this.clipOutSecs / this.previewDuration) * 100;
-                },
                 get canExportClip() {
                     return this.clipInSecs !== null
                         && this.clipOutSecs !== null

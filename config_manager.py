@@ -7,7 +7,7 @@ import os
 import re
 import configparser
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, Optional, Set
 
 
 class ConfigManager:
@@ -603,13 +603,6 @@ proton_folder =
     # Utility Methods
     # ---------------------------------------------------------------------
 
-    def get(self, section: str, key: str, fallback: Any = None) -> Any:
-        """Generic getter for configuration values."""
-        try:
-            return self.config.get(section, key, fallback=fallback, raw=True)
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            return fallback
-
     def set(self, section: str, key: str, value: str):
         """Generic setter for configuration values."""
         if section not in self.config:
@@ -638,21 +631,6 @@ proton_folder =
                         self.config.set(ini_section, key, converted)
                         self._explicit_options.add((ini_section, key))
         self.save()
-
-    def validate(self) -> Dict[str, List[str]]:
-        """Validate configuration and return any errors."""
-        errors = {}
-        if not self.LOG_DIR.exists():
-            errors.setdefault('General', []).append(
-                f"Log directory does not exist: {self.LOG_DIR}"
-            )
-        if not self.OBS_HOST:
-            errors.setdefault('OBS', []).append("OBS host cannot be empty")
-        if not self.RECORDING_EXTENSION.startswith('.'):
-            errors.setdefault('General', []).append(
-                f"Recording extension must start with '.': {self.RECORDING_EXTENSION}"
-            )
-        return errors
 
     def print_summary(self):
         """Print configuration summary."""
