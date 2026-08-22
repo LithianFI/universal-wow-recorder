@@ -110,13 +110,11 @@ class OBSClient:
             return False
         
         try:
-            # Check if already recording
             status = self.get_recording_status()
             if status and status.get('is_recording', False):
                 print(f"{LOG_PREFIXES['OBS']} ⚠️ Recording already active")
                 return True
-            
-            # Start recording
+
             self.client.start_record()
             print(f"{LOG_PREFIXES['OBS']} ⏺️ Recording started")
             
@@ -138,13 +136,11 @@ class OBSClient:
             return False
         
         try:
-            # Check if recording is active
             status = self.get_recording_status()
             if not status or not status.get('is_recording', False):
                 print(f"{LOG_PREFIXES['OBS']} ⚠️ No active recording to stop")
                 return True
-            
-            # Stop recording
+
             self.client.stop_record()
             print(f"{LOG_PREFIXES['OBS']} ⏹️ Recording stopped")
             
@@ -173,8 +169,7 @@ class OBSClient:
         try:
             response = self.client.get_record_status()
             status = {}
-            
-            # Extract available attributes
+
             attributes = ['output_active', 'output_paused', 'output_timecode',
                          'output_duration', 'output_bytes']
             
@@ -207,8 +202,7 @@ class OBSClient:
         
         try:
             settings = {}
-            
-            # Get recording directory
+
             response = self.client.get_record_directory()
             if hasattr(response, 'record_directory'):
                 settings['record_directory'] = response.record_directory

@@ -1,8 +1,9 @@
-import os
-import secrets
 """
 Application-wide constants for WoW Raid Recorder.
 """
+
+import os
+import secrets
 
 # ============================================================================
 # FILE SYSTEM CONSTANTS

@@ -123,7 +123,6 @@ class CombatEvent:
             
             try:
                 row = next(csv_reader)
-                # Clean up fields
                 self.fields = []
                 for field in row:
                     field = field.strip()

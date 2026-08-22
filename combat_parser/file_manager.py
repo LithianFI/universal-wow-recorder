@@ -29,15 +29,13 @@ class RecordingFileManager:
     def get_recording_directory(self) -> Optional[Path]:
         """Get the current recording directory from OBS or config fallback."""
         try:
-            # Try to get from OBS first
             settings = self.obs.get_recording_settings()
             if settings and 'record_directory' in settings:
                 path = Path(settings['record_directory'])
                 if path.exists():
                     print(f"{LOG_PREFIXES['FILE']} Using OBS recording directory: {path}")
                     return path
-            
-            # Fallback to config
+
             fallback = self.config.RECORDING_PATH_FALLBACK
             if fallback:
                 print(f"{LOG_PREFIXES['FILE']} Using fallback directory: {fallback}")
@@ -59,17 +57,15 @@ class RecordingFileManager:
             return None
         
         try:
-            # Find all video files
             video_files = []
             for file in record_dir.iterdir():
                 if file.suffix.lower() in VIDEO_EXTENSIONS and file.is_file():
                     video_files.append(file)
-            
+
             if not video_files:
                 print(f"{LOG_PREFIXES['FILE']} No video files found in {record_dir}")
                 return None
-            
-            # Get most recently modified file
+
             latest = max(video_files, key=lambda f: f.stat().st_mtime)
             print(f"{LOG_PREFIXES['FILE']} Found latest recording: {latest.name}")
             return latest
@@ -85,7 +81,6 @@ class RecordingFileManager:
             if not file_path.exists():
                 return False
             
-            # Check file size stability
             initial_size = file_path.stat().st_size
             time.sleep(check_interval)
             final_size = file_path.stat().st_size
@@ -103,33 +98,26 @@ class RecordingFileManager:
     def generate_filename(self, boss_info: BossInfo = None, dungeon_info: DungeonInfo = None, 
                          file_time: datetime = None) -> str:
         """Generate a filename for a recording based on encounter info."""
-        # Determine if this is a boss or dungeon
         if boss_info:
-            # Get difficulty name from constants
-            difficulty_name = DIFFICULTY_NAMES.get(boss_info.difficulty_id, 
+            difficulty_name = DIFFICULTY_NAMES.get(boss_info.difficulty_id,
                                                   f"Difficulty_{boss_info.difficulty_id}")
-            
-            # Format timestamp
+
             if not file_time:
                 file_time = datetime.now()
             date_str = file_time.strftime("%Y-%m-%d")
             time_str = file_time.strftime("%H-%M-%S")
-            
-            # Create filename
+
             filename = f"{date_str}_{time_str}_{boss_info.formatted_name}_{difficulty_name}"
-        
+
         elif dungeon_info:
-            # Format timestamp
             if not file_time:
                 file_time = datetime.now()
             date_str = file_time.strftime("%Y-%m-%d")
             time_str = file_time.strftime("%H-%M-%S")
-            
-            # Create M+ filename
+
             filename = f"{date_str}_{time_str}_{dungeon_info.formatted_name}_M+{dungeon_info.dungeon_level}"
-        
+
         else:
-            # Fallback generic name
             if not file_time:
                 file_time = datetime.now()
             date_str = file_time.strftime("%Y-%m-%d")
@@ -145,27 +133,24 @@ class RecordingFileManager:
                         dungeon_info: DungeonInfo = None) -> Optional[Path]:
         """Rename a recording file with encounter information."""
         try:
-            # Generate new filename
             file_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
-            
+
             if boss_info:
                 new_filename = self.generate_filename(boss_info=boss_info, file_time=file_time)
             elif dungeon_info:
                 new_filename = self.generate_filename(dungeon_info=dungeon_info, file_time=file_time)
             else:
                 new_filename = self.generate_filename(file_time=file_time)
-            
+
             new_path = recording_path.parent / new_filename
-            
-            # Handle duplicates
+
             if boss_info:
                 new_path = self._handle_duplicate_filename(new_path, boss_info, file_time)
             elif dungeon_info:
                 new_path = self._handle_duplicate_dungeon_filename(new_path, dungeon_info, file_time)
             else:
                 new_path = self._handle_duplicate_generic_filename(new_path, file_time)
-            
-            # Perform rename
+
             recording_path.rename(new_path)
             print(f"[FILE] Renamed to: {new_path.name}")
             
@@ -183,17 +168,14 @@ class RecordingFileManager:
                 print(f"[FILE] File already doesn't exist: {recording_path}")
                 return False
         
-            # Get file info before deletion
             file_size = recording_path.stat().st_size
             file_size_mb = file_size / (1024 * 1024)
-        
-            # Delete the file
             recording_path.unlink()
-        
+
             reason_text = f" ({reason})" if reason else ""
             print(f"[FILE] Deleted recording{reason_text}: {recording_path.name} ({file_size_mb:.2f}MB)")
 
-            # ── NEW: also remove the companion JSON sidecar if it exists ──
+            # Also remove the companion JSON sidecar if it exists.
             json_path = recording_path.with_suffix('.json')
             if json_path.exists():
                 json_path.unlink()
@@ -222,7 +204,6 @@ class RecordingFileManager:
         original_path = path
         
         while path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
-            # Create boss name with attempt counter
             boss_with_counter = f"{boss_info.name}_attempt{counter}"
             boss_info_copy = BossInfo(
                 boss_id=boss_info.boss_id,
@@ -249,7 +230,6 @@ class RecordingFileManager:
         original_path = path
         
         while path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
-            # Create dungeon name with attempt counter
             dungeon_with_counter = f"{dungeon_info.name}_attempt{counter}"
             dungeon_info_copy = DungeonInfo(
                 dungeon_id=dungeon_info.dungeon_id,
@@ -299,7 +279,7 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} organize_into_date_subfolder: file not found: {file_path}")
             return None
 
-        # ── Determine the date ──────────────────────────────────────────
+        # Determine the date.
         date_str: Optional[str] = None
 
         # Filenames produced by generate_filename start with YYYY-MM-DD_
@@ -310,7 +290,7 @@ class RecordingFileManager:
             # Fallback: use the file's last-modified timestamp
             date_str = datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d")
 
-        # ── Create the target directory ─────────────────────────────────
+        # Create the target directory.
         target_dir = file_path.parent / date_str
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -318,7 +298,7 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} Could not create date subfolder {target_dir}: {e}")
             return None
 
-        # ── Move the video file ─────────────────────────────────────────
+        # Move the video file.
         new_path = target_dir / file_path.name
 
         # Avoid silent overwrites if a file with the same name already exists
@@ -337,7 +317,7 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} Failed to move {file_path.name} → {target_dir}: {e}")
             return None
 
-        # ── Move companion .json metadata (if present) ──────────────────
+        # Move companion .json metadata (if present).
         json_src = file_path.with_suffix('.json')
         if json_src.exists():
             json_dst = new_path.with_suffix('.json')

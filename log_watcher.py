@@ -39,11 +39,9 @@ class LogTailer:
             return False
         
         print(f"{LOG_PREFIXES['WATCHER']} 🎯 Starting to tail: {log_path.name}")
-        
-        # Reset stop event
+
         self._stop_event.clear()
-        
-        # Start tailing thread
+
         self._tail_thread = Thread(
             target=self._tail_file,
             args=(log_path, self._stop_event),
@@ -67,16 +65,13 @@ class LogTailer:
             return True
         
         print(f"{LOG_PREFIXES['WATCHER']} ⏹️ Stopping tailer...")
-        
-        # Signal thread to stop
+
         self._stop_event.set()
         self.is_tailing = False
-        
-        # Wait for thread to finish
+
         if self._tail_thread.is_alive():
             self._tail_thread.join(timeout=timeout)
-        
-        # Check if thread stopped
+
         if self._tail_thread.is_alive():
             print(f"{LOG_PREFIXES['WATCHER']} ⚠️ Tail thread did not stop within {timeout}s")
             return False
@@ -95,14 +90,11 @@ class LogTailer:
                 print(f"{LOG_PREFIXES['WATCHER']} 📖 Now reading new entries from {log_path.name}")
                 
                 while not stop_event.is_set():
-                    # Read new line
                     line = file.readline()
-                    
+
                     if line:
-                        # Process the line
                         self.parser.process_line(line)
                     else:
-                        # No new data, sleep briefly
                         time.sleep(0.05)
                         
         except FileNotFoundError:

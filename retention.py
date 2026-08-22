@@ -127,7 +127,7 @@ def apply_retention(
 
     print(f"{LOG_PREFIXES['FILE']} [Retention] Sweeping {len(all_files)} recordings in {record_dir}")
 
-    # ── Rule 1: age-based ──────────────────────────────────────────
+    # Rule 1: age-based
     survivors = all_files
     if max_age_days > 0:
         cutoff = time.time() - (max_age_days * 86400)
@@ -145,7 +145,7 @@ def apply_retention(
         if result['deleted_by_age']:
             print(f"{LOG_PREFIXES['FILE']} [Retention] Deleted {result['deleted_by_age']} by age")
 
-    # ── Rule 2: count per group ────────────────────────────────────
+    # Rule 2: count per group
     if max_per_group > 0 and survivors:
         groups: Dict[tuple, List[Path]] = defaultdict(list)
         for f in survivors:

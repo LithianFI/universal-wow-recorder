@@ -15,7 +15,7 @@ on major patches. Icon names resolve via: https://wow.zamimg.com/images/wow/icon
 
 TRACKED_SPELLS = {
 
-    # ── HEALER COOLDOWNS ────────────────────────────────────────────────────
+    # --- Healer Cooldowns ---
 
     # Discipline Priest
     62618:  {"name": "Power Word: Barrier", "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_holy_powerwordbarrier"},
@@ -54,7 +54,7 @@ TRACKED_SPELLS = {
     359816: {"name": "Dream Flight",        "class": "Evoker",       "spec": "Preservation","category": "healer_cd","icon": "ability_evoker_dreamflight"},
     370537: {"name": "Stasis",              "class": "Evoker",       "spec": "Preservation","category": "healer_cd","icon": "ability_evoker_stasis"},
 
-    # ── EXTERNALS ────────────────────────────────────────────────────────────
+    # --- Externals ---
 
     33206:  {"name": "Pain Suppression",    "class": "Priest",       "spec": "Discipline", "category": "external",  "icon": "spell_holy_painsupression"},
     47788:  {"name": "Guardian Spirit",     "class": "Priest",       "spec": "Holy",       "category": "external",  "icon": "spell_holy_guardianspirit"},
@@ -64,7 +64,7 @@ TRACKED_SPELLS = {
     1022:   {"name": "Blessing of Protection","class": "Paladin",    "spec": None,         "category": "external",  "icon": "spell_holy_sealofprotection"},
     204018: {"name": "Blessing of Spellwarding","class": "Paladin",  "spec": None,         "category": "external",  "icon": "spell_holy_blessingofprotection"},   # ?
 
-    # ── TANK COOLDOWNS ───────────────────────────────────────────────────────
+    # --- Tank Cooldowns ---
 
     # Protection Warrior
     871:    {"name": "Shield Wall",         "class": "Warrior",      "spec": "Protection", "category": "tank_cd",   "icon": "ability_warrior_shieldwall"},
@@ -92,7 +92,7 @@ TRACKED_SPELLS = {
     187827: {"name": "Metamorphosis",       "class": "Demon Hunter", "spec": "Vengeance",  "category": "tank_cd",   "icon": "ability_demonhunter_metamorphasistank"},
     204021: {"name": "Fiery Brand",         "class": "Demon Hunter", "spec": "Vengeance",  "category": "tank_cd",   "icon": "ability_demonhunter_fierybrand"},
 
-    # ── RAID-WIDE DEFENSIVES ─────────────────────────────────────────────────
+    # --- Raid-Wide Defensives ---
 
     97462:  {"name": "Rallying Cry",        "class": "Warrior",      "spec": "Protection", "category": "raid_cd",   "icon": "ability_warrior_rallyingcry"},
     51052:  {"name": "Anti-Magic Zone",     "class": "Death Knight", "spec": "Blood",      "category": "raid_cd",   "icon": "spell_deathknight_antimagiczone"},
@@ -101,7 +101,7 @@ TRACKED_SPELLS = {
     192077: {"name": "Wind Rush Totem",     "class": "Shaman",       "spec": "Restoration","category": "raid_cd",   "icon": "ability_shaman_windwalktotem"},
     132578: {"name": "Invoke Niuzao",       "class": "Monk",         "spec": "Brewmaster", "category": "raid_cd",   "icon": "spell_monk_brewmaster_spec"},
 
-    # ── OFFENSIVE DPS COOLDOWNS ──────────────────────────────────────────────
+    # --- Offensive DPS Cooldowns ---
 
     # Death Knight
     42650:  {"name": "Army of the Dead",    "class": "Death Knight", "spec": "Unholy",     "category": "dps_cd",    "icon": "spell_deathknight_armyofthedead"},
@@ -161,7 +161,7 @@ TRACKED_SPELLS = {
     375087: {"name": "Dragonrage",          "class": "Evoker",       "spec": "Devastation","category": "dps_cd",    "icon": "ability_evoker_dragonrage"},
     403631: {"name": "Breath of Eons",      "class": "Evoker",       "spec": "Augmentation","category": "dps_cd",   "icon": "ability_evoker_breathofeons"},        # ?
 
-    # ── UTILITY ──────────────────────────────────────────────────────────────
+    # --- Utility ---
 
     # Bloodlust / Heroism variants
     2825:   {"name": "Bloodlust",           "class": "Shaman",       "spec": None,         "category": "utility",   "icon": "spell_nature_bloodlust"},
