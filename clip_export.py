@@ -32,9 +32,19 @@ class ClipResult:
     duration_seconds: float
 
 
-def ffmpeg_available() -> bool:
-    """Return True if an ffmpeg binary is on PATH."""
-    return shutil.which('ffmpeg') is not None
+def resolve_ffmpeg(configured_path: str = '') -> Optional[str]:
+    """The ffmpeg to run: *configured_path* if set (a file or a command name),
+    else ffmpeg from PATH. None if not found."""
+    if configured_path:
+        if Path(configured_path).is_file():
+            return configured_path
+        return shutil.which(configured_path)
+    return shutil.which('ffmpeg')
+
+
+def ffmpeg_available(configured_path: str = '') -> bool:
+    """Return True if an ffmpeg binary can be found."""
+    return resolve_ffmpeg(configured_path) is not None
 
 
 def _format_seconds_for_name(seconds: float) -> str:
@@ -67,6 +77,7 @@ def export_clip(
     start_seconds: float,
     end_seconds: float,
     output_dir: Optional[Path] = None,
+    ffmpeg_path: str = '',
 ) -> ClipResult:
     """Cut [start_seconds, end_seconds] out of *source_path* using ffmpeg.
 
@@ -75,6 +86,7 @@ def export_clip(
         start_seconds: Inclusive start offset in seconds (>= 0).
         end_seconds: Exclusive end offset in seconds (> start_seconds).
         output_dir: Directory for the clip (defaults to source_path.parent).
+        ffmpeg_path: Configured ffmpeg binary ('' = from PATH).
 
     Raises:
         ClipError: For any user-visible failure — missing ffmpeg, bad range,
@@ -83,8 +95,9 @@ def export_clip(
     Returns:
         ClipResult with the output path and requested duration.
     """
-    if not ffmpeg_available():
-        raise ClipError("ffmpeg is not installed or not on PATH")
+    ffmpeg_bin = resolve_ffmpeg(ffmpeg_path)
+    if not ffmpeg_bin:
+        raise ClipError("ffmpeg not found — install it or set its path in Config")
 
     if not source_path.exists() or not source_path.is_file():
         raise ClipError(f"Source file not found: {source_path.name}")
@@ -118,7 +131,7 @@ def export_clip(
     # copy the cut still snaps to a keyframe regardless, but post-input seek
     # at least gets us a correct end.
     cmd = [
-        'ffmpeg',
+        ffmpeg_bin,
         '-loglevel', 'error',
         '-y',                       # overwrite temp targets
         '-i', str(source_path),
@@ -134,6 +147,8 @@ def export_clip(
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
+        # A half-written clip would otherwise show up on the Clips page.
+        out_path.unlink(missing_ok=True)
         raise ClipError("ffmpeg timed out after 120 seconds")
     except OSError as e:
         raise ClipError(f"Failed to invoke ffmpeg: {e}")

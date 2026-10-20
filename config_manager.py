@@ -32,6 +32,7 @@ class ConfigManager:
             'log_dir': str(Path.home() / "Games" / "World of Warcraft" / "_retail_" / "Logs"),
             'log_pattern': r'WoWCombatLog-\d{6}_\d{6}\.txt$',
             'recording_extension': '.mp4',
+            'ffmpeg_path': '',
         },
         'OBS': {
             'host': 'localhost',
@@ -83,6 +84,7 @@ class ConfigManager:
             'log_dir':             str,
             'log_pattern':         str,
             'recording_extension': str,
+            'ffmpeg_path':         lambda v: str(v).strip(),
         }),
         'obs': ('OBS', {
             'host':     str,
@@ -218,6 +220,9 @@ log_pattern = WoWCombatLog-\\d{{6}}_\\d{{6}}\\.txt$
 # Extension for recording files (must match OBS settings)
 recording_extension = .mp4
 
+# ffmpeg binary for clip export; empty = find it on PATH
+ffmpeg_path =
+
 [OBS]
 # OBS WebSocket connection settings
 host = localhost
@@ -347,6 +352,11 @@ proton_folder =
     def RECORDING_EXTENSION(self) -> str:
         """Get recording file extension."""
         return self.config.get('General', 'recording_extension', fallback='.mp4', raw=True)
+
+    @property
+    def FFMPEG_PATH(self) -> str:
+        """Configured ffmpeg binary for clip export ('' = look it up on PATH)."""
+        return self.config.get('General', 'ffmpeg_path', fallback='', raw=True).strip()
 
     @property
     def OBS_HOST(self) -> str:

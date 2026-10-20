@@ -7,6 +7,10 @@ Runs the recorder and web interface in a single process with WebSocket communica
 import os
 import re
 import sys
+import math
+import shutil
+import subprocess
+import traceback
 import json
 import time
 import signal
@@ -37,6 +41,8 @@ from constants import (
     FLASK_SECRET_KEY,
     MAX_EVENT_LOG_SIZE,
     STATUS_BROADCAST_INTERVAL,
+    LOW_DISK_SPACE_BYTES,
+    DISK_CHECK_INTERVAL_SECONDS,
     LOG_PREFIXES,
 )
 
@@ -47,7 +53,7 @@ from cloud_integration import (
 )
 from cloud_upload import UploadProgress
 from cloud_pov_sync import DownloadProgress
-from retention import apply_retention
+from retention import apply_retention, plan_retention
 
 
 # -----------------------------------------------------------------------------
@@ -265,6 +271,7 @@ def get_config():
             'log_dir': str(cm.LOG_DIR),
             'log_pattern': cm.config.get('General', 'log_pattern', raw=True),
             'recording_extension': cm.RECORDING_EXTENSION,
+            'ffmpeg_path': cm.FFMPEG_PATH,
         },
         'obs': {
             'host': cm.OBS_HOST,
@@ -461,6 +468,70 @@ def serve_pov_video(filename: str):
     return send_file(file_path, conditional=True)
 
 
+def _reveal_in_file_manager(path: Path):
+    """Open the folder containing *path* in the OS file manager."""
+    if sys.platform == 'win32':
+        os.startfile(path.parent)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', str(path)])
+    else:
+        # A PyInstaller build points LD_LIBRARY_PATH at its bundled libs, which
+        # can break the system file manager; give it the original value back.
+        env = dict(os.environ)
+        if 'LD_LIBRARY_PATH_ORIG' in env:
+            env['LD_LIBRARY_PATH'] = env['LD_LIBRARY_PATH_ORIG']
+        else:
+            env.pop('LD_LIBRARY_PATH', None)
+        subprocess.Popen(['xdg-open', str(path.parent)], env=env)
+
+
+@app.route('/api/recordings/<path:filename>/show-in-folder', methods=['POST'])
+def show_in_folder(filename: str):
+    record_dir = get_recording_directory()
+    if not record_dir:
+        return jsonify({'error': 'Recording directory not available'}), 500
+    try:
+        file_path = _resolve_recording_path(record_dir, filename)
+    except _PathTraversalError:
+        return jsonify({'error': 'Invalid path'}), 403
+    if not file_path.exists():
+        return jsonify({'error': 'File not found'}), 404
+    try:
+        _reveal_in_file_manager(file_path)
+    except OSError as e:
+        return jsonify({'error': f'Could not open file manager: {e}'}), 500
+    return jsonify({'success': True})
+
+
+def _non_negative_int(value, fallback: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
+@app.route('/api/retention/preview', methods=['POST'])
+def preview_retention():
+    """What a retention sweep would delete with the given (unsaved) limits."""
+    s = get_state()
+    record_dir = get_recording_directory()
+    if not record_dir or not s.config_manager:
+        return jsonify({'error': 'Recording directory not available'}), 500
+    payload = request.get_json(silent=True) or {}
+    max_age = _non_negative_int(payload.get('max_age_days'), s.config_manager.RETENTION_MAX_AGE_DAYS)
+    max_per = _non_negative_int(payload.get('max_per_group'), s.config_manager.RETENTION_MAX_PER_GROUP)
+    plan = plan_retention(record_dir, max_age, max_per)
+
+    def names(paths):
+        return [p.relative_to(record_dir).as_posix() for p in paths]
+
+    return jsonify({
+        'scanned': plan.scanned,
+        'by_age': names(plan.by_age),
+        'by_count': names(plan.by_count),
+    })
+
+
 @app.route('/api/log-files')
 def list_log_files():
     """Return combat log files available in the configured log directory, newest first."""
@@ -589,8 +660,10 @@ def create_clip(filename: str):
     if not source_path.exists() or not source_path.is_file():
         return jsonify({'error': 'File not found'}), 404
 
-    if not ffmpeg_available():
-        return jsonify({'error': 'ffmpeg is not installed on the server'}), 503
+    config_manager = get_state().config_manager
+    ffmpeg_path = config_manager.FFMPEG_PATH if config_manager else ''
+    if not ffmpeg_available(ffmpeg_path):
+        return jsonify({'error': 'ffmpeg not found — install it or set its path in Config'}), 503
 
     payload = request.get_json(silent=True) or {}
     try:
@@ -598,12 +671,14 @@ def create_clip(filename: str):
         end = float(payload.get('end', 0))
     except (TypeError, ValueError):
         return jsonify({'error': 'start and end must be numbers'}), 400
+    if not (math.isfinite(start) and math.isfinite(end)):
+        return jsonify({'error': 'start and end must be finite'}), 400
 
     # Run ffmpeg in a background thread so the request doesn't block;
     # emit a socket event when done so the recordings list refreshes.
     def _worker():
         try:
-            result = export_clip(source_path, start, end)
+            result = export_clip(source_path, start, end, ffmpeg_path=ffmpeg_path)
             print(f"[CLIP] Created: {result.output_path.name}")
             socketio.emit('clips_updated')
             socketio.emit('clip_complete', {
@@ -611,7 +686,10 @@ def create_clip(filename: str):
                 'output': result.output_path.name,
                 'duration': round(result.duration_seconds, 1),
             })
-        except ClipError as e:
+        except Exception as e:
+            # Any failure must reach the UI, or its "Exporting…" state never clears.
+            if not isinstance(e, ClipError):
+                traceback.print_exc()
             print(f"[CLIP] Failed: {e}")
             socketio.emit('clip_complete', {
                 'source': filename,
@@ -1168,6 +1246,31 @@ def handle_status_request(auth=None):
 # Status
 # -----------------------------------------------------------------------------
 
+_disk_status_cache = {'checked_at': 0.0, 'value': None}
+
+
+def _disk_status() -> Optional[dict]:
+    """Free space on the recordings drive, refreshed at most every 30 s."""
+    now = time.time()
+    if now - _disk_status_cache['checked_at'] < DISK_CHECK_INTERVAL_SECONDS:
+        return _disk_status_cache['value']
+    _disk_status_cache['checked_at'] = now
+    value = None
+    record_dir = get_recording_directory()
+    if record_dir:
+        try:
+            usage = shutil.disk_usage(record_dir)
+            value = {
+                'free_gb': round(usage.free / 1024 ** 3, 1),
+                'total_gb': round(usage.total / 1024 ** 3, 1),
+                'is_low': usage.free < LOW_DISK_SPACE_BYTES,
+            }
+        except OSError as e:
+            print(f"[STATUS] Could not read disk usage: {e}")
+    _disk_status_cache['value'] = value
+    return value
+
+
 def build_status() -> dict:
     """Build current status dictionary."""
     s = get_state()
@@ -1207,6 +1310,7 @@ def build_status() -> dict:
         'obs_connected': s.obs_client.is_connected if s.obs_client else False,
         'recorder': recorder_state,
         'log_monitor': monitor_state,
+        'disk': _disk_status(),
     }
 
 
@@ -1317,6 +1421,7 @@ def status_broadcast_loop():
                 recorder.get('dungeon_name'),
                 log_mon.get('current_log'),
                 status.get('obs_connected'),
+                (status.get('disk') or {}).get('is_low'),
             )
 
             if status_key != last_status:

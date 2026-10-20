@@ -90,6 +90,10 @@ MAX_EVENT_LOG_SIZE = 50                     # Used by run.py and AppState
 # Broadcast interval (seconds)
 STATUS_BROADCAST_INTERVAL = 0.5             # Used by status_broadcast_loop in run.py
 
+# Dashboard warns when the recordings drive has less free space than this.
+LOW_DISK_SPACE_BYTES = 10 * 1024 ** 3
+DISK_CHECK_INTERVAL_SECONDS = 30
+
 # ============================================================================
 # LOGGING PREFIXES (for consistent console output)
 # ============================================================================

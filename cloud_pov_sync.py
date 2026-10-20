@@ -38,6 +38,7 @@ _DIFF_MAP: Dict[str, str] = {
 
 
 _PROGRESS_INTERVAL_SECONDS = 0.5
+_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 
 # Separators and drive/stream markers that would let a key leave the download dir.
 _UNSAFE_KEY_CHARS = ('/', '\\', ':', '\0')
@@ -479,42 +480,57 @@ class PovSyncManager:
         print(f"[PovSync] Downloading {key} "
               f"({total_bytes / (1024**2):.1f} MB to {dl_dir})")
 
+        # A partial .tmp from an interrupted attempt or session is resumed.
         tmp_path = dest.with_suffix(dest.suffix + '.tmp')
-        try:
-            with requests.get(signed_url, stream=True, timeout=600) as resp:
+        if not self._stream_to_file(signed_url, tmp_path, progress):
+            return  # stopping; the .tmp is kept for next time
+
+        downloaded = tmp_path.stat().st_size
+        if total_bytes and downloaded != total_bytes:
+            tmp_path.unlink(missing_ok=True)
+            raise RuntimeError(f"Size mismatch for {key}: got {downloaded} of {total_bytes} bytes")
+
+        tmp_path.rename(dest)
+        with self._lock:
+            self._local_keys.add(key)
+        self._write_pov_sidecar(dest, cloud_video)
+        progress.status = 'completed'
+        progress.downloaded_bytes = downloaded
+        self._notify_progress(progress)
+        print(f"[PovSync] Saved: {dest}")
+
+    def _stream_to_file(self, url: str, tmp_path: Path, progress: DownloadProgress) -> bool:
+        """Download *url* into *tmp_path*, continuing from its current size.
+
+        Returns True when the download finished, False if stopping. While a
+        recording runs the connection is closed rather than left idle (it
+        would time out during a long fight) and resumed afterwards.
+        """
+        while True:
+            offset = tmp_path.stat().st_size if tmp_path.exists() else 0
+            headers = {'Range': f'bytes={offset}-'} if offset else {}
+            with requests.get(url, stream=True, timeout=600, headers=headers) as resp:
+                if offset and resp.status_code == 416:
+                    return True  # nothing left to fetch: the .tmp is already complete
                 resp.raise_for_status()
-                downloaded = 0
-                with open(tmp_path, 'wb') as f:
-                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                        if not chunk:
-                            continue
-                        # Pause mid-download if a recording starts
+                resumed = offset > 0 and resp.status_code == 206
+                if offset and not resumed:
+                    print(f"[PovSync] Server ignored the resume request, restarting {tmp_path.name}")
+                downloaded = offset if resumed else 0
+                with open(tmp_path, 'ab' if resumed else 'wb') as f:
+                    for chunk in resp.iter_content(chunk_size=_DOWNLOAD_CHUNK_BYTES):
+                        if self._stop_event.is_set():
+                            return False
                         if self._is_recording():
-                            if not self._wait_for_recording_idle():
-                                break
+                            break
                         f.write(chunk)
                         downloaded += len(chunk)
                         progress.downloaded_bytes = downloaded
                         self._notify_progress(progress)
-                        if self._stop_event.is_set():
-                            break
-
-            if self._stop_event.is_set():
-                tmp_path.unlink(missing_ok=True)
-                return
-
-            tmp_path.rename(dest)
-            with self._lock:
-                self._local_keys.add(key)
-            self._write_pov_sidecar(dest, cloud_video)
-            progress.status = 'completed'
-            progress.downloaded_bytes = total_bytes or downloaded
-            self._notify_progress(progress)
-            print(f"[PovSync] Saved: {dest}")
-
-        except Exception:
-            tmp_path.unlink(missing_ok=True)
-            raise
+                    else:
+                        return True
+            if not self._wait_for_recording_idle():
+                return False
 
     def _get_download_dir(self, recording_dir: Path) -> Path:
         return resolve_pov_download_dir(self._config, recording_dir)
