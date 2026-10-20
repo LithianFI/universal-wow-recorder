@@ -6,6 +6,9 @@ const fs = require('fs')
 
 const PORT = 5001
 const APP_DIR = path.join(__dirname, '..')
+// Time the backend gets to stop OBS and clean up before it is killed.
+const BACKEND_SHUTDOWN_TIMEOUT_MS = 30000
+const PORT_POLL_INTERVAL_MS = 500
 
 let mainWindow = null
 let pythonProcess = null
@@ -83,9 +86,72 @@ function startBackend() {
   })
 }
 
+// SIGTERM is a hard kill on Windows, so ask the backend to shut itself down
+// (stop OBS, finish file handling) over HTTP and only kill it as a fallback.
+function requestBackendShutdown() {
+  return new Promise(resolve => {
+    const req = http.request(
+      { host: '127.0.0.1', port: PORT, path: '/api/shutdown', method: 'POST', timeout: 2000 },
+      res => { res.resume(); resolve(res.statusCode === 200) }
+    )
+    req.on('timeout', () => req.destroy())
+    req.on('error', () => resolve(false))
+    req.end()
+  })
+}
+
+function stopBackend() {
+  return new Promise(resolve => {
+    if (!pythonProcess || pythonProcess.exitCode !== null) return resolve()
+    const killTimer = setTimeout(() => pythonProcess.kill(), BACKEND_SHUTDOWN_TIMEOUT_MS)
+    pythonProcess.once('exit', () => { clearTimeout(killTimer); resolve() })
+    requestBackendShutdown().then(accepted => {
+      if (!accepted) pythonProcess.kill('SIGTERM')
+    })
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Server readiness poll
 // ---------------------------------------------------------------------------
+
+function isServerUp() {
+  return new Promise(resolve => {
+    const req = http.get(`http://127.0.0.1:${PORT}`, res => { res.resume(); resolve(true) })
+    req.setTimeout(1000, () => req.destroy())
+    req.on('error', () => resolve(false))
+  })
+}
+
+async function waitForPortFree(timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!(await isServerUp())) return true
+    await new Promise(r => setTimeout(r, PORT_POLL_INTERVAL_MS))
+  }
+  return false
+}
+
+// A backend left over from a crashed session would otherwise be mistaken for
+// ours by waitForServer, and the new one would fail to bind the port.
+async function ensurePortAvailable() {
+  if (!(await isServerUp())) return true
+  const choice = dialog.showMessageBoxSync({
+    type: 'warning',
+    title: 'Recorder Already Running',
+    message: `Another recorder backend is already running on port ${PORT}.`,
+    detail: 'It may be left over from a previous session.',
+    buttons: ['Shut it down and continue', 'Quit'],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  if (choice !== 0) return false
+  await requestBackendShutdown()
+  if (await waitForPortFree(BACKEND_SHUTDOWN_TIMEOUT_MS)) return true
+  dialog.showErrorBox('Recorder Already Running',
+    `Could not stop the process using port ${PORT}. Close it manually and start the app again.`)
+  return false
+}
 
 function waitForServer(maxAttempts = 60) {
   return new Promise((resolve, reject) => {
@@ -199,19 +265,44 @@ async function createWindow() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-app.on('ready', () => {
-  Menu.setApplicationMenu(null)
-  startBackend()
-  createWindow()
-})
+function registerLifecycle() {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+  })
 
-app.on('before-quit', () => {
-  appIsQuitting = true
-  if (pythonProcess) pythonProcess.kill('SIGTERM')
-})
+  app.on('ready', async () => {
+    Menu.setApplicationMenu(null)
+    if (!(await ensurePortAvailable())) {
+      appIsQuitting = true
+      app.quit()
+      return
+    }
+    startBackend()
+    createWindow()
+  })
 
-app.on('window-all-closed', () => app.quit())
+  let backendStopped = false
+  app.on('before-quit', event => {
+    appIsQuitting = true
+    if (backendStopped) return
+    event.preventDefault()
+    stopBackend().then(() => {
+      backendStopped = true
+      app.quit()
+    })
+  })
 
-app.on('activate', () => {
-  if (mainWindow === null) createWindow()
-})
+  app.on('window-all-closed', () => app.quit())
+
+  app.on('activate', () => {
+    if (mainWindow === null) createWindow()
+  })
+}
+
+if (app.requestSingleInstanceLock()) {
+  registerLifecycle()
+} else {
+  app.quit()
+}

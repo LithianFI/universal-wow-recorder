@@ -18,6 +18,10 @@ from cloud_upload import (
 )
 from cloud_pov_sync import PovSyncManager, DownloadProgress
 
+# How long shutdown waits for an in-flight upload. Together with the parser's
+# thread join this must stay under Electron's kill timeout (30 s).
+UPLOAD_SHUTDOWN_GRACE_SECONDS = 10
+
 
 class CloudUploadManager:
     """
@@ -247,7 +251,7 @@ class CloudUploadManager:
             self.pov_sync.stop()
         if self.upload_queue:
             wait = 0
-            while self.upload_queue._active and wait < 300:
+            while self.upload_queue._active and wait < UPLOAD_SHUTDOWN_GRACE_SECONDS:
                 await asyncio.sleep(1)
                 wait += 1
             self.upload_queue.stop()
