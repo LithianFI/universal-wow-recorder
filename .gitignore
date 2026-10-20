@@ -5,3 +5,4 @@ config.ini
 build/
 node_modules/
 dist/
+.claude/settings.local.json
