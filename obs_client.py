@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 import obsws_python as obs
+from obsws_python.error import OBSSDKRequestError
 
 from constants import (
     DEFAULT_OBS_HOST,
@@ -140,6 +141,7 @@ class OBSClient:
             
         except Exception as e:
             print(f"{LOG_PREFIXES['OBS']} ❌ Failed to start recording: {e}")
+            self._note_request_failure(e)
             return False
     
     def stop_recording(self) -> StopResult:
@@ -163,6 +165,7 @@ class OBSClient:
 
         except Exception as e:
             print(f"{LOG_PREFIXES['OBS']} ❌ Failed to stop recording: {e}")
+            self._note_request_failure(e)
             return StopResult(stopped=False)
 
 
@@ -200,6 +203,7 @@ class OBSClient:
             
         except Exception as e:
             print(f"[OBS] ⚠️ Failed to get recording status: {e}")
+            self._note_request_failure(e)
             return None
     
     def get_recording_settings(self) -> dict:
@@ -233,6 +237,7 @@ class OBSClient:
             
         except Exception as e:
             print(f"[OBS] ⚠️ Failed to get recording settings: {e}")
+            self._note_request_failure(e)
             if self._cached_record_directory:
                 return {'record_directory': self._cached_record_directory}
             return None
@@ -240,6 +245,17 @@ class OBSClient:
     # ---------------------------------------------------------------------
     # Helper Methods
     # ---------------------------------------------------------------------
+
+    def _note_request_failure(self, error: Exception):
+        """Drop the connection unless OBS itself rejected the request.
+
+        A request error means the socket works; anything else (closed socket,
+        timeout after an OBS restart) leaves a dead client that would otherwise
+        keep reporting connected, so neither _ensure_connection nor the
+        periodic reconnect would ever replace it.
+        """
+        if not isinstance(error, OBSSDKRequestError):
+            self._is_connected = False
 
     def _ensure_connection(self) -> bool:
         """Ensure client is connected to OBS.
