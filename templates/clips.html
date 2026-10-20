@@ -36,7 +36,7 @@
             background: #0a0806;
             color: #c8bfa8;
             font-family: 'Raleway', sans-serif;
-            font-size: 13px;
+            font-size: 14px;
         }
 
         .seam { border-color: #1c1710; }
@@ -49,18 +49,18 @@
         .card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 14px 16px; }
         .pill {
             display: inline-flex; align-items: center; gap: 6px;
-            font-size: 11px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #6e6552;
+            font-size: 12px; padding: 3px 9px; border-radius: 999px;
+            background: #141109; border: 1px solid #221d15; color: #a89c82;
         }
         .section-title {
-            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
             font-family: 'Raleway', sans-serif; font-weight: 600;
         }
-        .label-cap { font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+        .label-cap { font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
             font-family: 'Raleway', sans-serif; font-weight: 600; }
 
         .quick-btn {
-            font-size: 11px; padding: 4px 10px; border-radius: 3px;
+            font-size: 12px; padding: 4px 10px; border-radius: 3px;
             background: #141109; border: 1px solid #221d15; color: #8a8270;
             cursor: pointer; transition: all 0.12s; white-space: nowrap;
             font-family: 'Raleway', sans-serif; font-weight: 500;
@@ -99,8 +99,8 @@
 
         .nav-tab {
             display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
-            color: #5a5244; border-bottom: 2px solid transparent;
+            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+            color: #8a8270; border-bottom: 2px solid transparent;
             transition: color 0.12s, border-color 0.12s;
             text-decoration: none; font-family: 'Raleway', sans-serif;
         }
@@ -204,7 +204,7 @@
                             </div>
                         </div>
                         <!-- Duration badge -->
-                        <div class="absolute bottom-1.5 right-2 font-mono text-[10px] text-white/80"
+                        <div class="absolute bottom-1.5 right-2 font-mono text-[11px] text-white/80"
                             style="text-shadow:0 1px 3px rgba(0,0,0,0.9);"
                             x-text="parseClipName(clip.name).duration"></div>
                         <!-- Selection checkbox -->
@@ -237,20 +237,20 @@
                             class="text-xs text-parchment-700 truncate font-medium mb-1"
                             x-text="parseClipName(clip.name).encounter || clip.name"></div>
                         <div class="flex items-center justify-between">
-                            <div class="text-[10px] text-parchment-300 space-x-2">
+                            <div class="text-[11px] text-parchment-300 space-x-2">
                                 <span x-text="formatFileSize(clip.size)"></span>
                                 <span x-text="formatDate(clip.modified)"></span>
                             </div>
                             <div class="flex items-center gap-1">
                                 <button @click.stop="startRename(clip)"
                                     x-show="renamingClip !== clip.name"
-                                    class="quick-btn px-2 py-0.5 text-[10px]" title="Rename">✎</button>
+                                    class="quick-btn px-2 py-0.5 text-[11px]" title="Rename">✎</button>
                                 <a :href="'/video/' + clip.name.split('/').map(encodeURIComponent).join('/')"
                                     download
                                     @click.stop
-                                    class="quick-btn px-2 py-0.5 text-[10px]" title="Download">↓</a>
+                                    class="quick-btn px-2 py-0.5 text-[11px]" title="Download">↓</a>
                                 <button @click.stop="deleteClip(clip)"
-                                    class="quick-btn px-2 py-0.5 text-[10px] text-red-400 border-red-900/40 hover:border-red-700/60">✕</button>
+                                    class="quick-btn px-2 py-0.5 text-[11px] text-red-400 border-red-900/40 hover:border-red-700/60">✕</button>
                             </div>
                         </div>
                     </div>
@@ -263,7 +263,7 @@
             <table class="w-full text-xs">
                 <thead>
                     <tr class="text-left text-parchment-300 border-b border-ink-500"
-                        style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;">
+                        style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;">
                         <th class="pb-2 pr-2 w-6">
                             <input type="checkbox" class="cursor-pointer"
                                 :checked="selected.size === filtered.length && filtered.length > 0"
@@ -293,7 +293,7 @@
                                         @keydown.escape="cancelRename()"
                                         @blur="cancelRename()"
                                         class="flex-1 text-xs bg-ink-600 border border-gold-600 rounded px-2 py-0.5 text-parchment-700 focus:outline-none min-w-0">
-                                    <button @mousedown.prevent="commitRename(clip)" class="quick-btn px-2 py-0.5 text-[10px] text-gold-500 border-gold-600/40">✓</button>
+                                    <button @mousedown.prevent="commitRename(clip)" class="quick-btn px-2 py-0.5 text-[11px] text-gold-500 border-gold-600/40">✓</button>
                                 </div>
                                 <span x-show="renamingClip !== clip.name"
                                     class="text-parchment-700 cursor-pointer hover:text-parchment-900 transition-colors truncate block max-w-xs"
@@ -308,12 +308,12 @@
                                 x-text="formatDate(clip.modified)"></td>
                             <td class="py-2 pl-2 text-right">
                                 <div class="flex items-center justify-end gap-1">
-                                    <button @click="openPlayer(clip)" class="quick-btn px-2 py-0.5 text-[10px]">Play</button>
-                                    <button @click="startRename(clip)" class="quick-btn px-2 py-0.5 text-[10px]">Rename</button>
+                                    <button @click="openPlayer(clip)" class="quick-btn px-2 py-0.5 text-[11px]">Play</button>
+                                    <button @click="startRename(clip)" class="quick-btn px-2 py-0.5 text-[11px]">Rename</button>
                                     <a :href="'/video/' + clip.name.split('/').map(encodeURIComponent).join('/')"
-                                        download class="quick-btn px-2 py-0.5 text-[10px]">Download</a>
+                                        download class="quick-btn px-2 py-0.5 text-[11px]">Download</a>
                                     <button @click="deleteClip(clip)"
-                                        class="quick-btn px-2 py-0.5 text-[10px] text-red-400 border-red-900/40 hover:border-red-700/60">Delete</button>
+                                        class="quick-btn px-2 py-0.5 text-[11px] text-red-400 border-red-900/40 hover:border-red-700/60">Delete</button>
                                 </div>
                             </td>
                         </tr>
@@ -389,7 +389,7 @@
                         <div class="h-full bg-amber-400 rounded" :style="'width:' + playedPct + '%;'"></div>
                         <!-- Hover tooltip -->
                         <div x-show="seekPreviewTime !== null"
-                            class="absolute -top-7 text-[10px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                            class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
                             :style="'left:' + seekPreviewPct + '%;'"
                             x-text="fmtTime(seekPreviewTime)"></div>
                     </div>
@@ -433,7 +433,7 @@
                         <div class="flex items-center gap-1">
                             <template x-for="spd in [0.5,1,1.5,2]" :key="spd">
                                 <button @click="setSpeed(spd)"
-                                    class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors"
+                                    class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
                                     :class="speed === spd
                                         ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                                         : 'text-white/40 hover:text-white/70'"
@@ -444,7 +444,7 @@
                         <div class="flex-1"></div>
 
                         <!-- Clip info -->
-                        <span class="text-white/40 text-[10px] font-mono"
+                        <span class="text-white/40 text-[11px] font-mono"
                             x-text="parseClipName(playerClip?.name || '').range"></span>
 
                         <!-- Fullscreen -->

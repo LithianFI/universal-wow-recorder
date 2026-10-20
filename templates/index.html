@@ -56,7 +56,7 @@
             background: #0a0806;
             color: #c8bfa8;
             font-family: 'Raleway', sans-serif;
-            font-size: 13px;
+            font-size: 14px;
         }
 
         .seam { border-color: #1c1710; }
@@ -90,32 +90,32 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 11px;
+            font-size: 12px;
             padding: 3px 9px;
             border-radius: 999px;
             background: #141109;
             border: 1px solid #221d15;
-            color: #6e6552;
+            color: #a89c82;
         }
         .label-cap {
-            font-size: 10px;
+            font-size: 11px;
             letter-spacing: 1.8px;
             text-transform: uppercase;
-            color: #5a5244;
+            color: #8a8270;
             font-family: 'Raleway', sans-serif;
             font-weight: 600;
         }
         .section-title {
-            font-size: 10px;
+            font-size: 11px;
             letter-spacing: 1.8px;
             text-transform: uppercase;
-            color: #5a5244;
+            color: #8a8270;
             font-family: 'Raleway', sans-serif;
             font-weight: 600;
         }
         .diff-badge {
             display: inline-block;
-            font-size: 10px;
+            font-size: 11px;
             letter-spacing: 1.5px;
             padding: 2px 8px;
             border-radius: 3px;
@@ -128,7 +128,7 @@
         .diff-lfr    { background: rgba(168,156,130,0.12); color: #a89c82; border-color: rgba(168,156,130,0.30); }
         .diff-mplus  { background: rgba(255,128,0,0.16); color: #ff9a3a; border-color: rgba(255,128,0,0.40); }
 
-        .tag { font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border-radius: 3px; }
+        .tag { font-size: 11px; letter-spacing: 1px; padding: 2px 6px; border-radius: 3px; }
         .tag-kill  { background: rgba(112,194,89,0.14); color: #8fd06b; }
         .tag-wipe  { background: rgba(220,80,80,0.14); color: #e07070; }
         .tag-timed { background: rgba(255,128,0,0.14); color: #ff9a3a; }
@@ -150,7 +150,7 @@
 
         .quick-btn {
             padding: 5px 10px;
-            font-size: 11px;
+            font-size: 12px;
             background: #141109;
             border: 1px solid #221d15;
             border-radius: 3px;
@@ -173,8 +173,8 @@
 
         .nav-tab {
             display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
-            color: #5a5244; border-bottom: 2px solid transparent;
+            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+            color: #8a8270; border-bottom: 2px solid transparent;
             transition: color 0.12s, border-color 0.12s;
             text-decoration: none; font-family: 'Raleway', sans-serif;
         }
@@ -410,7 +410,7 @@
                                     :title="(d.name || 'unknown') + ' @ ' + formatDuration(d.timestamp)"></div>
                             </template>
                         </div>
-                        <div class="flex justify-between font-mono text-[10px] text-parchment-300 mt-1">
+                        <div class="flex justify-between font-mono text-[11px] text-parchment-300 mt-1">
                             <span>00:00</span>
                             <span style="color:#e07070;" x-show="(lastPull?.deaths || []).length > 0">
                                 <span x-text="(lastPull?.deaths || []).length"></span> deaths
@@ -432,7 +432,7 @@
                                         x-text="formatDuration(d.timestamp)"></span>
                                 </div>
                             </template>
-                            <div class="text-parchment-300 text-[10px] pt-1"
+                            <div class="text-parchment-300 text-[11px] pt-1"
                                 x-show="(lastPull?.deaths || []).length > 6">
                                 +<span x-text="(lastPull?.deaths || []).length - 6"></span> more
                             </div>
@@ -485,13 +485,13 @@
                                     + (p.is_kill
                                         ? 'background: rgba(112,194,89,0.55);'
                                         : 'background: rgba(220,80,80,' + (0.25 + (idx / progression.pulls.length) * 0.4) + ');')"></div>
-                            <span class="font-mono text-[9px]"
+                            <span class="font-mono text-[10px]"
                                 :class="p.is_kill ? 'text-green-400' : (idx === progression.pulls.length - 1 ? 'text-red-400' : 'text-parchment-300')"
                                 x-text="(idx + 1) + (p.is_kill ? '★' : '')"></span>
                         </div>
                     </template>
                 </div>
-                <div class="flex justify-between text-[10px] text-parchment-300 mt-1">
+                <div class="flex justify-between text-[11px] text-parchment-300 mt-1">
                     <span>Bar height = pull duration · taller = longer attempt</span>
                     <span class="text-gold-500">★ kill</span>
                 </div>
@@ -517,7 +517,7 @@
                 <table x-show="recordings.length > 0" class="w-full text-xs">
                     <thead>
                         <tr class="text-left text-parchment-300"
-                            style="font-size:10px; letter-spacing: 1.5px; text-transform: uppercase;">
+                            style="font-size:11px; letter-spacing: 1.5px; text-transform: uppercase;">
                             <th class="px-2 py-1.5 font-medium">Encounter</th>
                             <th class="px-2 py-1.5 font-medium">Diff</th>
                             <th class="px-2 py-1.5 font-medium">Result</th>
@@ -579,7 +579,7 @@
                         <div class="h-full bg-gold-500 transition-all duration-300"
                             :style="'width:' + (uploadProgress || 0) + '%;'"></div>
                     </div>
-                    <div class="font-mono text-[10px] text-gold-500 mt-1"
+                    <div class="font-mono text-[11px] text-gold-500 mt-1"
                         x-text="(uploadProgress || 0).toFixed(1) + '%'"></div>
                 </div>
 
@@ -690,7 +690,7 @@
                                 </template>
                                 <!-- Seek preview tooltip -->
                                 <div x-show="previewSeekPreviewTime !== null"
-                                    class="absolute -top-7 text-[10px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                                    class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
                                     :style="'left:' + previewSeekPreviewPercent + '%;'"
                                     x-text="previewFormatTime(previewSeekPreviewTime)"></div>
                             </div>
@@ -734,7 +734,7 @@
                                 <div class="flex items-center gap-1">
                                     <template x-for="spd in [0.5, 1, 1.5, 2]" :key="spd">
                                         <button @click="previewSetSpeed(spd)"
-                                            class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors"
+                                            class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
                                             :class="previewSpeed === spd
                                                 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                                                 : 'text-white/40 hover:text-white/70'"
@@ -766,7 +766,7 @@
                                 </div>
 
                                 <span x-show="previewDeathMarkerPositions.length > 0"
-                                    class="px-2 py-0.5 rounded-full text-[10px]"
+                                    class="px-2 py-0.5 rounded-full text-[11px]"
                                     style="background:rgba(220,80,80,0.2);color:#e07070;border:1px solid rgba(220,80,80,0.4);">
                                     <span x-text="previewDeathMarkerPositions.length"></span> deaths
                                 </span>

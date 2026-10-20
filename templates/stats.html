@@ -35,7 +35,7 @@
             background: #0a0806;
             color: #c8bfa8;
             font-family: 'Raleway', sans-serif;
-            font-size: 13px;
+            font-size: 14px;
         }
 
         .seam { border-color: #1c1710; }
@@ -48,17 +48,17 @@
         .card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 14px 16px; }
 
         .section-title {
-            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
             font-family: 'Raleway', sans-serif; font-weight: 600;
         }
 
         .label-cap {
-            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; color: #5a5244;
+            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
             font-family: 'Raleway', sans-serif; font-weight: 600;
         }
 
         .diff-badge {
-            display: inline-block; font-size: 10px; letter-spacing: 1.5px;
+            display: inline-block; font-size: 11px; letter-spacing: 1.5px;
             padding: 2px 8px; border-radius: 3px; font-weight: 500; border: 1px solid;
         }
         .diff-M   { background: rgba(255,128,0,0.14); color: #ff8c1a; border-color: rgba(255,128,0,0.35); }
@@ -69,8 +69,8 @@
 
         .pill {
             display: inline-flex; align-items: center; gap: 6px;
-            font-size: 11px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #6e6552;
+            font-size: 12px; padding: 3px 9px; border-radius: 999px;
+            background: #141109; border: 1px solid #221d15; color: #a89c82;
         }
 
         .stat-tile {
@@ -82,12 +82,12 @@
 
         .filter-pill {
             display: inline-flex; align-items: center;
-            font-size: 10px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #6e6552;
+            font-size: 11px; padding: 3px 9px; border-radius: 999px;
+            background: #141109; border: 1px solid #221d15; color: #a89c82;
             cursor: pointer; transition: all 0.12s;
             font-family: 'Raleway', sans-serif; font-weight: 600; letter-spacing: 0.5px;
         }
-        .filter-pill:hover { color: #a89c82; border-color: #2e271d; }
+        .filter-pill:hover { color: #d4ccb6; border-color: #2e271d; }
         .filter-pill.active { background: rgba(201,169,97,0.12); border-color: rgba(201,169,97,0.5); color: #c9a961; }
 
         /* Bar chart bars */
@@ -103,8 +103,8 @@
 
         .nav-tab {
             display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
-            color: #5a5244; border-bottom: 2px solid transparent;
+            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+            color: #8a8270; border-bottom: 2px solid transparent;
             transition: color 0.12s, border-color 0.12s;
             text-decoration: none; font-family: 'Raleway', sans-serif;
         }
@@ -224,7 +224,7 @@
                                         <span class="font-display text-sm text-parchment-900" x-text="boss.name"></span>
                                         <span class="diff-badge" :class="'diff-' + boss.difficulty.replace('+','')"
                                             x-text="boss.difficulty"></span>
-                                        <span x-show="boss.category === 'MythicPlus'" class="text-[10px] text-parchment-300"
+                                        <span x-show="boss.category === 'MythicPlus'" class="text-[11px] text-parchment-300"
                                             x-text="boss.keystoneRange"></span>
                                     </div>
                                 </div>
@@ -287,12 +287,12 @@
                                             :title="pullTooltip(pull)">
                                             <div class="w-full rounded-t-sm"
                                                 :style="pullBarStyle(pull, boss.maxDuration)"></div>
-                                            <span class="font-mono text-[8px] text-parchment-300"
+                                            <span class="font-mono text-[9px] text-parchment-300"
                                                 x-text="pull.result ? '★' : ''"></span>
                                         </div>
                                     </template>
                                 </div>
-                                <div class="flex justify-between text-[10px] text-parchment-300">
+                                <div class="flex justify-between text-[11px] text-parchment-300">
                                     <span>Pull #1</span>
                                     <span class="text-gold-500">★ kill</span>
                                     <span>Pull #<span x-text="boss.pulls_list.length"></span></span>
@@ -311,7 +311,7 @@
                                                         <div class="h-full rounded hp-bar-fill"
                                                             :style="'width:' + pull.pct + '%;background:' + hpBarColor(pull.pct)"></div>
                                                     </div>
-                                                    <span class="font-mono text-parchment-400 text-[10px] shrink-0"
+                                                    <span class="font-mono text-parchment-400 text-[11px] shrink-0"
                                                         x-text="formatDuration(pull.duration)"></span>
                                                 </div>
                                             </template>

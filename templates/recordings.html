@@ -39,7 +39,7 @@
             background: #0a0806;
             color: #c8bfa8;
             font-family: 'Raleway', sans-serif;
-            font-size: 13px;
+            font-size: 14px;
         }
 
         /* ─── Scrollbar ─────────────────────────────────────────── */
@@ -53,13 +53,13 @@
 
         /* ─── Typography ────────────────────────────────────────── */
         .label-cap {
-            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase;
-            color: #5a5244; font-family: 'Raleway', sans-serif; font-weight: 600;
+            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
+            color: #8a8270; font-family: 'Raleway', sans-serif; font-weight: 600;
         }
 
         /* ─── Diff badges ───────────────────────────────────────── */
         .diff-badge {
-            display: inline-block; font-size: 10px; letter-spacing: 1.2px;
+            display: inline-block; font-size: 11px; letter-spacing: 1.2px;
             padding: 1px 6px; border-radius: 2px; font-weight: 600;
             border: 1px solid; font-family: 'Raleway', sans-serif;
         }
@@ -70,7 +70,7 @@
         .diff-mplus  { background: rgba(255,128,0,0.14); color: #f09030; border-color: rgba(255,128,0,0.36); }
 
         /* ─── Result tags ───────────────────────────────────────── */
-        .tag { font-size: 10px; letter-spacing: 0.8px; padding: 1px 5px; border-radius: 2px;
+        .tag { font-size: 11px; letter-spacing: 0.8px; padding: 1px 5px; border-radius: 2px;
                font-family: 'Raleway', sans-serif; font-weight: 600; }
         .tag-kill { background: rgba(100,180,70,0.12); color: #7ec856; }
         .tag-wipe { background: rgba(210,70,70,0.12); color: #d46060; }
@@ -91,24 +91,24 @@
         /* ─── Filter / input controls ───────────────────────────── */
         .filter-pill {
             display: inline-flex; align-items: center;
-            font-size: 10px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #6e6552;
+            font-size: 11px; padding: 3px 9px; border-radius: 999px;
+            background: #141109; border: 1px solid #221d15; color: #a89c82;
             cursor: pointer; transition: all 0.12s;
             font-family: 'Raleway', sans-serif; font-weight: 600; letter-spacing: 0.5px;
         }
-        .filter-pill:hover { color: #a89c82; border-color: #2e271d; }
+        .filter-pill:hover { color: #d4ccb6; border-color: #2e271d; }
         .filter-pill.active { background: rgba(201,169,97,0.12); border-color: rgba(201,169,97,0.5); color: #c9a961; }
 
         .input-bare {
             background: #141109; border: 1px solid #221d15; border-radius: 3px;
-            color: #c8bfa8; padding: 5px 9px; font-size: 12px;
+            color: #c8bfa8; padding: 5px 9px; font-size: 13px;
             font-family: 'Raleway', sans-serif;
         }
         .input-bare:focus { outline: none; border-color: rgba(201,169,97,0.5); }
-        .input-bare::placeholder { color: #4a4338; }
+        .input-bare::placeholder { color: #8a8270; }
 
         .quick-btn {
-            padding: 5px 10px; font-size: 11px;
+            padding: 5px 10px; font-size: 12px;
             background: #141109; border: 1px solid #221d15;
             border-radius: 3px; color: #8a8270;
             text-align: center; cursor: pointer; transition: all 0.12s;
@@ -159,21 +159,21 @@
 
         /* ─── Stat chips ────────────────────────────────────────── */
         .stat-chip {
-            font-size: 11px; color: #6a6055;
+            font-size: 12px; color: #8a8270;
             font-family: 'Fira Mono', monospace;
         }
 
         /* ─── Section title ─────────────────────────────────────── */
         .section-title {
-            font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase;
-            color: #5a5244; font-family: 'Raleway', sans-serif; font-weight: 600;
+            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
+            color: #8a8270; font-family: 'Raleway', sans-serif; font-weight: 600;
         }
 
         /* ─── Top nav tabs ───────────────────────────────────────── */
         .nav-tab {
             display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
-            color: #5a5244; border-bottom: 2px solid transparent;
+            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+            color: #8a8270; border-bottom: 2px solid transparent;
             transition: color 0.12s, border-color 0.12s;
             text-decoration: none; font-family: 'Raleway', sans-serif;
         }
@@ -204,14 +204,14 @@
         <!-- Inline stat chips -->
         <div class="flex items-center gap-2 ml-auto flex-wrap" x-show="recordings.length > 0" x-cloak>
             <span class="stat-chip" x-text="recordings.length + ' vods'"></span>
-            <span class="stat-chip" style="color:#3d3529;">·</span>
+            <span class="stat-chip" style="color: #8a8270;">·</span>
             <span class="stat-chip" x-text="formatFileSize(totalBytes)"></span>
-            <span class="stat-chip" style="color:#3d3529;">·</span>
+            <span class="stat-chip" style="color: #8a8270;">·</span>
             <span class="stat-chip"
                 :style="killRate >= 0.5 ? 'color:#78c352;' : ''"
                 x-text="(killRate * 100).toFixed(0) + '% kills'"></span>
             <template x-if="topBoss">
-                <span class="stat-chip" style="color:#3d3529;">·</span>
+                <span class="stat-chip" style="color: #8a8270;">·</span>
             </template>
             <template x-if="topBoss">
                 <span class="stat-chip truncate max-w-[140px]"
@@ -232,7 +232,7 @@
             class="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded
                 border seam text-parchment-400 hover:text-gold-500 transition-colors"
             title="Keyboard shortcuts">
-            <span class="text-[11px] font-mono leading-none">?</span>
+            <span class="text-[12px] font-mono leading-none">?</span>
         </button>
     </header>
 
@@ -258,7 +258,7 @@
             <button class="filter-pill" :class="{ active: resultFilter === 'WIPE' }" @click="resultFilter = 'WIPE'">Wipes</button>
         </div>
 
-        <select x-model="sortBy" class="input-bare cursor-pointer text-[11px] py-1 border-l pl-2" style="border-color:#1c1710;">
+        <select x-model="sortBy" class="input-bare cursor-pointer text-[12px] py-1 border-l pl-2" style="border-color:#1c1710;">
             <option value="date_desc">Newest first</option>
             <option value="date_asc">Oldest first</option>
             <option value="size_desc">Largest first</option>
@@ -269,16 +269,16 @@
         <!-- Bulk action strip — floats to right when active -->
         <div x-show="selectedSet.size > 0" x-cloak
             class="flex items-center gap-2 ml-auto border-l pl-3" style="border-color:#1c1710;">
-            <span class="text-[11px] text-parchment-400 font-mono">
+            <span class="text-[12px] text-parchment-400 font-mono">
                 <span x-text="selectedSet.size"></span> selected ·
                 <span x-text="formatFileSize(selectedBytes)"></span>
             </span>
-            <button class="quick-btn text-[10px]" @click="clearSelection()">Clear</button>
-            <button class="quick-btn text-[10px]" @click="confirmBulkDelete()"
+            <button class="quick-btn text-[11px]" @click="clearSelection()">Clear</button>
+            <button class="quick-btn text-[11px]" @click="confirmBulkDelete()"
                 style="color:#c05050; border-color: rgba(192,80,80,0.35);">Delete</button>
         </div>
 
-        <span class="ml-auto text-[11px] stat-chip"
+        <span class="ml-auto text-[12px] stat-chip"
             x-show="filteredAndSorted.length !== recordings.length && recordings.length > 0 && selectedSet.size === 0" x-cloak
             x-text="filteredAndSorted.length + ' of ' + recordings.length"></span>
     </div>
@@ -298,7 +298,7 @@
                 <span class="label-cap">
                     <span x-text="filteredAndSorted.length"></span> recordings
                 </span>
-                <button class="text-[10px] text-parchment-400 hover:text-gold-500 transition-colors tracking-widest uppercase"
+                <button class="text-[11px] text-parchment-400 hover:text-gold-500 transition-colors tracking-widest uppercase"
                     @click="toggleSelectAll()"
                     x-text="allFilteredSelected ? 'Deselect all' : 'Select all'"></button>
             </div>
@@ -317,13 +317,13 @@
             <!-- Recording list — full height, no max-height cap -->
             <div class="flex-1 overflow-y-auto custom-scrollbar"
                 x-show="filteredAndSorted.length > 0">
-                <template x-for="(group, gi) in groupedByDate" :key="gi">
+                <template x-for="(group, gi) in groupedByEncounter" :key="gi">
                     <div>
-                        <!-- Date group header -->
+                        <!-- Encounter group header -->
                         <div class="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5"
                             style="background:#0a0806; border-bottom:1px solid #111009;">
                             <span class="label-cap text-parchment-300" x-text="group.label"></span>
-                            <span class="font-mono text-[10px]" style="color:#3d3529;"
+                            <span class="font-mono text-[11px]" style="color: #8a8270;"
                                 x-text="'(' + group.items.length + ')'"></span>
                         </div>
 
@@ -355,30 +355,30 @@
                                             x-text="rec._parsed?.difficulty || '?'"></span>
                                         <!-- POV badge -->
                                         <template x-if="rec._meta?.uniqueHash && povsForRecording(rec).length > 0">
-                                            <span class="shrink-0 text-[9px] px-1 py-0.5 rounded font-mono"
+                                            <span class="shrink-0 text-[10px] px-1 py-0.5 rounded font-mono"
                                                 style="background:rgba(51,147,127,0.15);color:#3a9080;border:1px solid rgba(51,147,127,0.3);"
                                                 :title="povsForRecording(rec).length + ' other POV(s) available'"
                                                 x-text="'+' + povsForRecording(rec).length"></span>
                                         </template>
                                         <span class="text-parchment-700 text-xs truncate"
                                             x-text="rec._parsed?.encounter || rec.name"></span>
-                                        <span class="shrink-0 ml-auto font-mono text-[10px] text-parchment-300"
+                                        <span class="shrink-0 ml-auto font-mono text-[11px] text-parchment-300"
                                             x-show="rec._meta?.duration"
                                             x-text="formatDuration(rec._meta?.duration)"></span>
                                     </div>
                                     <!-- Row 2: player + meta -->
                                     <div class="flex items-center gap-1.5 mt-0.5">
-                                        <span class="text-[10px]"
+                                        <span class="text-[11px]"
                                             :class="rec._parsed?.result === 'KILL' ? 'tag tag-kill' : (rec._parsed?.result === 'WIPE' ? 'tag tag-wipe' : '')"
                                             x-show="rec._parsed?.result"
                                             x-text="rec._parsed?.result || ''"></span>
                                         <span x-show="rec._parsed?.player"
-                                            class="text-[10px] text-parchment-300 truncate"
+                                            class="text-[11px] text-parchment-300 truncate"
                                             x-text="rec._parsed?.player"></span>
-                                        <span class="text-[10px] ml-auto font-mono" style="color:#4a4338;"
+                                        <span class="text-[11px] ml-auto font-mono" style="color: #8a8270;"
                                             x-text="formatFileSize(rec.size)"></span>
                                         <span x-show="rec._meta?.deaths?.length > 0"
-                                            class="text-[10px] font-mono"
+                                            class="text-[11px] font-mono"
                                             style="color:#804040;"
                                             x-text="'💀' + rec._meta.deaths.length"></span>
                                     </div>
@@ -449,7 +449,7 @@
                             </video>
                             <!-- Name label (only shown when POVs are active) -->
                             <div x-show="multiPovMode && localPovs.length > 0"
-                                class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[11px] truncate pointer-events-none"
+                                class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[12px] truncate pointer-events-none"
                                 style="background:rgba(0,0,0,0.7);color:#c8bfa8;">
                                 <span x-text="selectedRecording?._parsed?.player || 'Main'"></span>
                             </div>
@@ -467,7 +467,7 @@
                                         preload="auto" muted playsinline
                                         @loadedmetadata="$el.playbackRate = speed; syncPovPlayers($refs.videoPlayer)">
                                     </video>
-                                    <div class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[11px] truncate pointer-events-none"
+                                    <div class="absolute bottom-0 left-0 right-0 px-2 py-1 text-[12px] truncate pointer-events-none"
                                         style="background:rgba(0,0,0,0.7);color:#c8bfa8;"
                                         x-text="pov.player?._name || pov.name.split('/').pop()">
                                     </div>
@@ -515,7 +515,7 @@
                                         <div class="w-0.5 bg-red-500/70 cursor-pointer hover:bg-red-400 transition-colors"
                                             @click.stop="seekToMarker(pct)"></div>
                                     </div>
-                                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/90 text-[10px] rounded px-2 py-1 whitespace-nowrap pointer-events-none opacity-0 group-hover/marker:opacity-100 transition-opacity border border-white/10 shadow-xl">
+                                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/90 text-[11px] rounded px-2 py-1 whitespace-nowrap pointer-events-none opacity-0 group-hover/marker:opacity-100 transition-opacity border border-white/10 shadow-xl">
                                         <span class="text-white/70" x-text="formatVideoTime(deathTimesSeconds[i])"></span>
                                         <template x-if="deathNames[i]">
                                             <span class="text-red-400 ml-1" x-text="deathNames[i]"></span>
@@ -526,7 +526,7 @@
 
                             <!-- Seek preview -->
                             <div x-show="seekPreviewTime !== null"
-                                class="absolute -top-7 text-[10px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                                class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
                                 :style="'left:' + seekPreviewPercent + '%;'"
                                 x-text="formatVideoTime(seekPreviewTime)"></div>
                         </div>
@@ -544,7 +544,7 @@
                             </button>
 
                             <!-- Time -->
-                            <span class="font-mono text-white/60 text-[11px] shrink-0">
+                            <span class="font-mono text-white/60 text-[12px] shrink-0">
                                 <span x-text="formatVideoTime(currentTime)"></span>
                                 <span class="text-white/25"> / </span>
                                 <span x-text="formatVideoTime(duration)"></span>
@@ -571,7 +571,7 @@
                             <div class="flex items-center gap-0.5 shrink-0">
                                 <template x-for="spd in [0.5,1,1.5,2]" :key="spd">
                                     <button @click="setSpeed(spd)"
-                                        class="px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors"
+                                        class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
                                         :class="speed === spd
                                             ? 'bg-gold-500/15 text-gold-500 border border-gold-500/30'
                                             : 'text-white/30 hover:text-white/60'"
@@ -583,16 +583,16 @@
 
                             <!-- Clip controls -->
                             <div class="flex items-center gap-1 border-l border-white/15 pl-3 shrink-0">
-                                <button @click="clipSetIn()" class="quick-btn text-[10px] py-0.5 px-2">
+                                <button @click="clipSetIn()" class="quick-btn text-[11px] py-0.5 px-2">
                                     In<span x-show="clipInSecs !== null" class="text-gold-500 ml-1 font-mono"
                                         x-text="formatVideoTime(clipInSecs)"></span>
                                 </button>
-                                <button @click="clipSetOut()" class="quick-btn text-[10px] py-0.5 px-2">
+                                <button @click="clipSetOut()" class="quick-btn text-[11px] py-0.5 px-2">
                                     Out<span x-show="clipOutSecs !== null" class="text-gold-500 ml-1 font-mono"
                                         x-text="formatVideoTime(clipOutSecs)"></span>
                                 </button>
                                 <button @click="clipExport()" :disabled="!canExportClip || clipBusy"
-                                    class="quick-btn text-[10px] py-0.5 px-2"
+                                    class="quick-btn text-[11px] py-0.5 px-2"
                                     :class="canExportClip && !clipBusy ? 'border-gold-500/40 text-gold-500' : ''">
                                     <span x-text="clipBusy ? 'Exporting…' : 'Export'"></span>
                                 </button>
@@ -621,14 +621,14 @@
                     style="background:#0a0806;">
                     <span class="label-cap">Sources</span>
                     <!-- Main always-on chip -->
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border"
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border"
                         style="background:rgba(201,169,97,0.08); color:#a89c82; border-color:rgba(201,169,97,0.25);">
                         <span x-text="selectedRecording?._parsed?.player || 'Main'"></span>
                     </span>
                     <!-- Per-POV toggle chips -->
                     <template x-for="(pov, i) in localPovs" :key="pov.name">
                         <button @click="togglePov(pov.name)"
-                            class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] border transition-all cursor-pointer"
+                            class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] border transition-all cursor-pointer"
                             :style="disabledPovNames.has(pov.name)
                                 ? 'background:transparent; color:#3a3530; border-color:#1c1710;'
                                 : 'background:rgba(201,169,97,0.08); color:#a89c82; border-color:rgba(201,169,97,0.25);'">
@@ -698,8 +698,8 @@
                                     <template x-for="tick in cooldownTimeTicks" :key="tick.pct">
                                         <div class="absolute top-0 bottom-0 flex items-center"
                                             :style="'left:' + tick.pct + '%'">
-                                            <span class="text-[9px] font-mono -translate-x-1/2 select-none"
-                                                style="color:#4a4338;"
+                                            <span class="text-[10px] font-mono -translate-x-1/2 select-none"
+                                                style="color: #8a8270;"
                                                 x-text="tick.label"></span>
                                         </div>
                                     </template>
@@ -721,7 +721,7 @@
                                     <div class="absolute top-0 bottom-0 pointer-events-none z-10 group/dm"
                                         :style="'left: calc(100px + ' + (pct / 100) + ' * (100% - 100px))'">
                                         <div class="absolute top-0 bottom-0 w-px" style="background:rgba(192,80,80,0.45);"></div>
-                                        <div class="absolute top-0 left-1 opacity-0 group-hover/dm:opacity-100 transition-opacity font-mono text-[9px] px-1 py-0.5 rounded-sm whitespace-nowrap pointer-events-none z-30"
+                                        <div class="absolute top-0 left-1 opacity-0 group-hover/dm:opacity-100 transition-opacity font-mono text-[10px] px-1 py-0.5 rounded-sm whitespace-nowrap pointer-events-none z-30"
                                             style="background:rgba(192,80,80,0.9); color:#fff;">
                                             <span x-text="(deathNames[i] ? deathNames[i] + ' ' : '') + formatVideoTime(deathTimesSeconds[i])"></span>
                                         </div>
@@ -732,7 +732,7 @@
                                 <div class="absolute top-0 bottom-0 pointer-events-none z-20"
                                     style="width:1px; background:rgba(201,169,97,0.6); box-shadow:0 0 5px rgba(201,169,97,0.25);"
                                     :style="'left: calc(100px + ' + (playedPercent / 100) + ' * (100% - 100px))'">
-                                    <div class="absolute top-0 -translate-x-1/2 font-mono text-[9px] leading-none px-1 py-0.5 rounded-sm whitespace-nowrap"
+                                    <div class="absolute top-0 -translate-x-1/2 font-mono text-[10px] leading-none px-1 py-0.5 rounded-sm whitespace-nowrap"
                                         style="background:#c9a961; color:#0a0806;"
                                         x-text="formatVideoTime(currentTime)">
                                     </div>
@@ -742,7 +742,7 @@
                                 <template x-for="row in cooldownRows" :key="row.casterGuid">
                                     <div class="flex items-center cd-row">
                                         <!-- Name column -->
-                                        <div class="shrink-0 text-right pr-2 truncate text-[11px] leading-none"
+                                        <div class="shrink-0 text-right pr-2 truncate text-[12px] leading-none"
                                             style="width:100px; border-right:1px solid #1c1710; background:rgba(10,8,6,0.5);"
                                             :style="'color:' + row.classColor">
                                             <span x-text="row.casterName"></span>
@@ -763,7 +763,7 @@
                                                     <!-- Tooltip -->
                                                     <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover/cast:opacity-100 pointer-events-none transition-opacity duration-100 z-50"
                                                         style="min-width:max-content;">
-                                                        <div class="px-2 py-1 rounded text-[10px] shadow-xl"
+                                                        <div class="px-2 py-1 rounded text-[11px] shadow-xl"
                                                             style="background:#080604; border:1px solid rgba(201,169,97,0.2);">
                                                             <span style="color:#c8bfa8;" x-text="cast.name"></span>
                                                             <span class="font-mono ml-1.5" style="color:#c9a961;"
@@ -799,7 +799,7 @@
             <!-- Empty state -->
             <div x-show="!selectedRecording"
                 class="flex-1 flex items-center justify-center p-6 text-center">
-                <p class="text-[11px] text-parchment-300 leading-relaxed">
+                <p class="text-[12px] text-parchment-300 leading-relaxed">
                     Select a recording<br>to view encounter details
                 </p>
             </div>
@@ -825,7 +825,7 @@
                             x-text="formatDuration(recordingMetadata?.duration)"></span>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                    <div class="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px]">
                         <div>
                             <div class="label-cap mb-0.5">Player</div>
                             <div style="color:#a89c82;" class="truncate"
@@ -833,12 +833,12 @@
                         </div>
                         <div>
                             <div class="label-cap mb-0.5">File size</div>
-                            <div class="font-mono" style="color:#6e6552;"
+                            <div class="font-mono" style="color: #a89c82;"
                                 x-text="formatFileSize(selectedRecording?.size || 0)"></div>
                         </div>
                         <div class="col-span-2">
                             <div class="label-cap mb-0.5">Recorded</div>
-                            <div style="color:#6e6552;"
+                            <div style="color: #a89c82;"
                                 x-text="formatFullDate(selectedRecording?.modified)"></div>
                         </div>
                     </div>
@@ -849,23 +849,23 @@
                     <div class="flex items-center justify-between mb-2">
                         <div class="label-cap">Deaths</div>
                         <div class="flex items-center gap-1.5" x-show="deathTimesSeconds.length > 0" x-cloak>
-                            <span class="font-mono text-[10px]" style="color:#6e6552;"
+                            <span class="font-mono text-[11px]" style="color: #a89c82;"
                                 x-text="deathTimesSeconds.length + ' total'"></span>
                             <button @click="prevDeath()" title="Previous death"
                                 class="w-5 h-5 inline-flex items-center justify-center rounded border seam
-                                    text-parchment-400 hover:text-gold-500 transition-colors text-[11px] leading-none">‹</button>
+                                    text-parchment-400 hover:text-gold-500 transition-colors text-[12px] leading-none">‹</button>
                             <button @click="nextDeath()" title="Next death"
                                 class="w-5 h-5 inline-flex items-center justify-center rounded border seam
-                                    text-parchment-400 hover:text-gold-500 transition-colors text-[11px] leading-none">›</button>
+                                    text-parchment-400 hover:text-gold-500 transition-colors text-[12px] leading-none">›</button>
                         </div>
                     </div>
                     <div x-show="!recordingMetadata?.deaths?.length"
-                        class="text-[11px] italic" style="color:#4a4338;">
+                        class="text-[12px] italic" style="color: #8a8270;">
                         No deaths recorded
                     </div>
                     <div class="space-y-0.5" x-show="recordingMetadata?.deaths?.length > 0">
                         <template x-for="(d, i) in (recordingMetadata?.deaths || [])" :key="i">
-                            <div class="flex justify-between items-center text-[11px] cursor-pointer rounded px-1.5 py-1.5 -mx-1.5 group/death transition-colors"
+                            <div class="flex justify-between items-center text-[12px] cursor-pointer rounded px-1.5 py-1.5 -mx-1.5 group/death transition-colors"
                                 style="border-bottom:1px solid transparent;"
                                 :style="'border-bottom-color:#111009;'"
                                 @mouseenter="$el.style.background='rgba(30,25,18,0.7)'"
@@ -877,7 +877,7 @@
                                         :class="classColor(d.specId)"
                                         x-text="d.name || 'unknown'"></span>
                                 </div>
-                                <span class="font-mono shrink-0 ml-2" style="color:#5a5244;"
+                                <span class="font-mono shrink-0 ml-2" style="color: #8a8270;"
                                     x-text="formatVideoTime(d.timestamp)"></span>
                             </div>
                         </template>
@@ -889,25 +889,25 @@
                     <div class="label-cap mb-2">Actions</div>
                     <div class="grid grid-cols-2 gap-1.5">
                         <a :href="'/video/' + (selectedRecording?.name || '').split('/').map(encodeURIComponent).join('/')"
-                            target="_blank" class="quick-btn text-center text-[10px]">Open video</a>
+                            target="_blank" class="quick-btn text-center text-[11px]">Open video</a>
                         <a :href="'/api/recordings/' + (selectedRecording?.name || '').split('/').map(encodeURIComponent).join('/') + '/metadata'"
                             target="_blank"
                             x-show="recordingMetadata"
-                            class="quick-btn text-center text-[10px]">Metadata</a>
+                            class="quick-btn text-center text-[11px]">Metadata</a>
                         <button x-show="localPovs.length > 0"
                             @click="multiPovMode = !multiPovMode"
-                            class="quick-btn text-[10px]"
+                            class="quick-btn text-[11px]"
                             :style="multiPovMode ? 'color:#3a9080;border-color:rgba(51,147,127,0.35);' : ''"
                             x-text="multiPovMode ? 'Hide POVs' : 'POVs (' + localPovs.length + ')'">
                         </button>
                         <button x-show="recordingMetadata"
                             @click="openCooldownScanPanel()"
-                            class="quick-btn text-[10px]"
+                            class="quick-btn text-[11px]"
                             :style="cooldownCasts.length > 0 ? 'color:#c9a961;border-color:rgba(201,169,97,0.35);' : ''"
                             x-text="cooldownCasts.length > 0 ? 'Rescan CDs' : 'Scan CDs'">
                         </button>
                         <button @click="confirmDelete(selectedRecording)"
-                            class="quick-btn col-span-2 text-[10px]"
+                            class="quick-btn col-span-2 text-[11px]"
                             style="color:#c05050; border-color:rgba(192,80,80,0.3);">
                             Delete recording
                         </button>
@@ -922,11 +922,11 @@
                                 class="text-parchment-300 hover:text-parchment-700 text-xs transition-colors">✕</button>
                         </div>
                         <div x-show="cooldownLogFiles.length === 0 && !cooldownLogError"
-                            class="text-[11px] italic" style="color:#4a4338;">Loading…</div>
-                        <div x-show="cooldownLogError" class="text-[11px]" style="color:#c05050;"
+                            class="text-[12px] italic" style="color: #8a8270;">Loading…</div>
+                        <div x-show="cooldownLogError" class="text-[12px]" style="color:#c05050;"
                             x-text="cooldownLogError"></div>
                         <div x-show="cooldownLogFiles.length > 0">
-                            <select x-model="selectedLogFile" class="input-bare w-full mb-2 text-[11px]">
+                            <select x-model="selectedLogFile" class="input-bare w-full mb-2 text-[12px]">
                                 <option value="" disabled>— choose a log —</option>
                                 <template x-for="f in cooldownLogFiles" :key="f.path">
                                     <option :value="f.path" x-text="f.name"></option>
@@ -935,13 +935,13 @@
                             <div class="flex gap-2">
                                 <button @click="runCooldownScan()"
                                     :disabled="!selectedLogFile || cooldownScanBusy"
-                                    class="quick-btn flex-1 text-[10px]"
+                                    class="quick-btn flex-1 text-[11px]"
                                     :style="selectedLogFile && !cooldownScanBusy
                                         ? 'color:#c9a961;border-color:rgba(201,169,97,0.35);' : ''">
                                     <span x-text="cooldownScanBusy ? 'Scanning…' : 'Scan'"></span>
                                 </button>
                                 <button @click="showCooldownScanPanel = false"
-                                    class="quick-btn text-[10px]">Cancel</button>
+                                    class="quick-btn text-[11px]">Cancel</button>
                             </div>
                         </div>
                     </div>
@@ -960,9 +960,9 @@
                                 <div class="flex items-center justify-between gap-2 px-2 py-1.5 rounded border seam"
                                     style="background:#080604;">
                                     <div class="min-w-0 flex-1">
-                                        <div class="text-[11px] truncate" style="color:#a89c82;"
+                                        <div class="text-[12px] truncate" style="color:#a89c82;"
                                             x-text="pov.player?._name || pov.videoKey"></div>
-                                        <div class="flex items-center gap-2 mt-0.5 text-[10px]" style="color:#5a5244;">
+                                        <div class="flex items-center gap-2 mt-0.5 text-[11px]" style="color: #8a8270;">
                                             <span x-show="pov.duration" class="font-mono"
                                                 x-text="formatDuration(pov.duration)"></span>
                                         </div>
@@ -973,7 +973,7 @@
                                                         :style="'width:' + (povProgress[pov.videoKey].progress_percent || 0) + '%;'"
                                                         :class="povProgress[pov.videoKey].status === 'failed' ? 'bg-red-600' : 'bg-teal-600'"></div>
                                                 </div>
-                                                <div class="text-[9px] mt-0.5 font-mono"
+                                                <div class="text-[10px] mt-0.5 font-mono"
                                                     :style="povProgress[pov.videoKey].status === 'failed' ? 'color:#c05050' : 'color:#3a9080;'"
                                                     x-text="povProgress[pov.videoKey].status === 'completed'
                                                         ? 'Downloaded'
@@ -987,13 +987,13 @@
                                     <button
                                         x-show="!povProgress[pov.videoKey] || povProgress[pov.videoKey].status === 'failed'"
                                         @click="downloadPov(pov.videoKey)"
-                                        class="quick-btn shrink-0 text-[10px]"
+                                        class="quick-btn shrink-0 text-[11px]"
                                         style="color:#3a9080; border-color:rgba(51,147,127,0.3);">
                                         Download
                                     </button>
                                     <span
                                         x-show="povProgress[pov.videoKey]?.status === 'completed'"
-                                        class="text-[11px] shrink-0" style="color:#3a9080;">✓</span>
+                                        class="text-[12px] shrink-0" style="color:#3a9080;">✓</span>
                                 </div>
                             </template>
                         </div>
@@ -1008,7 +1008,7 @@
 <!-- ── Toast notifications ── -->
 <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:300px;">
     <template x-for="t in toasts" :key="t.id">
-        <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded text-[12px] shadow-2xl"
+        <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded text-[13px] shadow-2xl"
             :style="t.type === 'error'
                 ? 'background:#180a0a;border:1px solid rgba(192,80,80,0.4);color:#d46060;'
                 : 'background:#0a150a;border:1px solid rgba(100,175,70,0.4);color:#78c352;'">
@@ -1030,10 +1030,10 @@
             <span x-show="bulkDeleteTargets.length > 0" x-text="bulkDeleteTargets.length + ' recordings'"></span>
             <span x-show="bulkDeleteTargets.length === 0">recording</span>?
         </h3>
-        <p class="text-[12px] mb-4" style="color:#6e6552;">
+        <p class="text-[13px] mb-4" style="color: #a89c82;">
             <span x-show="bulkDeleteTargets.length === 0">
                 Are you sure you want to delete
-                <span class="font-mono text-[11px]" style="color:#a89c82;" x-text="deleteTarget?.name"></span>?
+                <span class="font-mono text-[12px]" style="color:#a89c82;" x-text="deleteTarget?.name"></span>?
             </span>
             <span x-show="bulkDeleteTargets.length > 0">
                 This will permanently delete
@@ -1073,8 +1073,8 @@
                 ['F',           'Toggle fullscreen'],
                 ['M',           'Toggle mute'],
             ]" :key="row[0]">
-                <div class="flex items-center justify-between text-[12px]">
-                    <kbd class="font-mono px-1.5 py-0.5 rounded text-[11px]"
+                <div class="flex items-center justify-between text-[13px]">
+                    <kbd class="font-mono px-1.5 py-0.5 rounded text-[12px]"
                         style="background:#1c1710; border:1px solid #2e271d; color:#c9a961;"
                         x-text="row[0]"></kbd>
                     <span style="color:#8a8270;" x-text="row[1]"></span>
@@ -1518,30 +1518,11 @@
                     return out;
                 },
 
-                // Group filtered list by relative-day labels (Today,
-                // Yesterday, This week, This month, …).
-                get groupedByDate() {
+                // Group filtered list by encounter name.
+                get groupedByEncounter() {
                     const groups = new Map();
-                    const now = Date.now();
-                    const day = 86400 * 1000;
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
                     for (const rec of this.filteredAndSorted) {
-                        const ts = (rec.modified || 0) * 1000;
-                        const date = new Date(ts);
-                        date.setHours(0, 0, 0, 0);
-                        const ageDays = Math.floor((today.getTime() - date.getTime()) / day);
-
-                        let label;
-                        if (ageDays <= 0) label = 'Today';
-                        else if (ageDays === 1) label = 'Yesterday';
-                        else if (ageDays < 7) label = 'This week';
-                        else if (ageDays < 14) label = 'Last week';
-                        else if (ageDays < 30) label = 'This month';
-                        else if (ageDays < 90) label = 'Past 3 months';
-                        else label = 'Older';
-
+                        const label = rec._parsed?.encounter || 'Unknown encounter';
                         if (!groups.has(label)) groups.set(label, []);
                         groups.get(label).push(rec);
                     }
