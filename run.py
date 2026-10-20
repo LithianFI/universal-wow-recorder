@@ -4,6 +4,7 @@ WoW Raid Recorder with Web frontend.
 Runs the recorder and web interface in a single process with WebSocket communication.
 """
 
+import os
 import sys
 import json
 import time
@@ -14,6 +15,8 @@ import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from collections import deque
+
+from urllib.parse import urlsplit
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
@@ -69,7 +72,10 @@ class AppState:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = FLASK_SECRET_KEY
 app.config['state'] = AppState()
-socketio = SocketIO(app, cors_allowed_origins=f"http://127.0.0.1:{DEFAULT_WEB_PORT}")
+# True while bound to loopback; main() clears it when --host exposes the UI.
+app.config['RESTRICT_TO_LOOPBACK'] = True
+# Default CORS policy: only the origin matching the request's Host header.
+socketio = SocketIO(app)
 
 # Single process-level event — legitimately not part of AppState
 shutdown_event = threading.Event()
@@ -117,6 +123,37 @@ def install_log_capture():
 def get_state() -> AppState:
     """Accessor for the application state stored on the Flask app."""
     return app.config['state']
+
+
+# -----------------------------------------------------------------------------
+# Request origin checks
+# -----------------------------------------------------------------------------
+
+_LOOPBACK_HOSTNAMES = frozenset({'127.0.0.1', 'localhost', '::1'})
+_STATE_CHANGING_METHODS = frozenset({'POST', 'PUT', 'PATCH', 'DELETE'})
+
+
+def _is_foreign_host() -> bool:
+    if not app.config['RESTRICT_TO_LOOPBACK']:
+        return False
+    return urlsplit('//' + request.host).hostname not in _LOOPBACK_HOSTNAMES
+
+
+@app.before_request
+def reject_cross_site_requests():
+    """Block other websites from driving the local API.
+
+    A foreign Host header on a loopback-bound server means DNS rebinding;
+    a foreign Origin on a state-changing request means a cross-site form/fetch.
+    """
+    if _is_foreign_host():
+        return jsonify({'error': 'Forbidden host'}), 403
+
+    origin = request.headers.get('Origin')
+    if request.method in _STATE_CHANGING_METHODS and origin is not None:
+        if urlsplit(origin).netloc != request.host:
+            return jsonify({'error': 'Cross-origin request rejected'}), 403
+    return None
 
 
 # -----------------------------------------------------------------------------
@@ -183,6 +220,20 @@ def stop_manual_recording():
     if success:
         return jsonify({'success': True, 'message': 'Manual recording stopped'})
     return jsonify({'success': False, 'error': 'Failed to stop recording'}), 500
+
+@app.route('/api/shutdown', methods=['POST'])
+def request_shutdown():
+    """Graceful exit for the Electron shell (SIGTERM is a hard kill on Windows)."""
+    threading.Thread(target=_shutdown_and_exit, daemon=True).start()
+    return jsonify({'success': True})
+
+
+def _shutdown_and_exit():
+    shutdown_event.set()
+    shutdown_recorder()
+    # socketio.run() owns the main thread and can't be stopped from here.
+    os._exit(0)
+
 
 @app.route('/api/obs/reconnect', methods=['POST'])
 def reconnect_obs():
@@ -1025,6 +1076,9 @@ async def _test_cloud_connection_async():
 @socketio.on('connect')
 def handle_connect(auth=None):
     """Handle client connection - send current status and event log."""
+    # Socket.IO bypasses before_request, so repeat the DNS-rebinding check.
+    if _is_foreign_host():
+        return False
     s = get_state()
     print(f"{LOG_PREFIXES['WEBSOCKET']} Client connected")
     status = build_status()
@@ -1256,18 +1310,12 @@ def handle_recording_saved(recording_info: dict = None):
     if not should_auto_upload(s.config_manager, duration):
         return
 
+    if not info.get('path'):
+        print("[Cloud] Saved recording has no path; skipping upload")
+        return
+
     try:
-        recordings = list_recording_files()
-        if not recordings:
-            print("[Cloud] No recordings found to upload")
-            return
-
-        record_dir = get_recording_directory()
-        if not record_dir:
-            print("[Cloud] Could not determine recording directory")
-            return
-
-        file_path = record_dir / recordings[0]['name']
+        file_path = Path(info['path'])
 
         parsed_meta = s.combat_parser.current_metadata
 
@@ -1388,7 +1436,10 @@ def init_recorder(config_path: Path) -> bool:
             print(f"   Please update 'log_dir' in your config.ini")
             print(f"")
 
-        asyncio.run(init_cloud_manager())
+        # Cloud login (Google OAuth, WCR) can take minutes; don't hold up the
+        # web server, which Electron waits on.
+        threading.Thread(target=lambda: asyncio.run(init_cloud_manager()),
+                         name='cloud-init', daemon=True).start()
 
         # One-off retention sweep on startup (no-op if disabled in config)
         _run_retention_sweep()
@@ -1401,8 +1452,18 @@ def init_recorder(config_path: Path) -> bool:
         return False
 
 
+_shutdown_lock = threading.Lock()
+_has_shut_down = False
+
+
 def shutdown_recorder():
-    """Clean shutdown of recorder components."""
+    """Clean shutdown of recorder components. Safe to call more than once."""
+    global _has_shut_down
+    with _shutdown_lock:
+        if _has_shut_down:
+            return
+        _has_shut_down = True
+
     s = get_state()
 
     print("[RECORDER] Shutting down...")
@@ -1410,6 +1471,14 @@ def shutdown_recorder():
 
     if s.log_monitor:
         s.log_monitor.stop()
+
+    # Leaving OBS recording after we exit would record forever.
+    if s.obs_client and s.state_manager and s.state_manager.recording:
+        print("[RECORDER] Stopping active OBS recording")
+        s.obs_client.stop_recording()
+
+    if s.combat_parser:
+        s.combat_parser.shutdown()
 
     if s.cloud_manager:
         print("[Cloud] Shutting down cloud manager...")
@@ -1442,6 +1511,7 @@ def main():
                         help='Enable debug mode')
 
     args = parser.parse_args()
+    app.config['RESTRICT_TO_LOOPBACK'] = args.host in _LOOPBACK_HOSTNAMES
 
     def signal_handler(sig, frame):
         print("\n[APP] Shutdown requested...")
