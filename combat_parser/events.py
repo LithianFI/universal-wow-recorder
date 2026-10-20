@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from typing import Optional, List
 from datetime import datetime
 
-from constants import DIFFICULTY_NAMES
+from constants import DIFFICULTY_NAMES, VALID_SPEC_IDS
+
+# COMBATANT_INFO: [0] event, [1] GUID, [2] faction, [3..22] stats,
+# [23] armor, [24] currentSpecID. Neighbours are tried in case a patch
+# shifts the layout; a value only counts if it is a real spec ID.
+_COMBATANT_SPEC_INDICES = (24, 25, 23)
 
 
 @dataclass
@@ -56,6 +61,18 @@ class DungeonInfo:
         cleaned = cleaned.replace(":", "")
         cleaned = cleaned.replace("-", "_")
         return cleaned.strip()
+
+def parse_combatant_spec_id(parts: List[str]) -> int:
+    """Spec ID from comma-split COMBATANT_INFO fields, or 0 if not found."""
+    for index in _COMBATANT_SPEC_INDICES:
+        try:
+            spec_id = int(parts[index].strip())
+        except (ValueError, IndexError):
+            continue
+        if spec_id in VALID_SPEC_IDS:
+            return spec_id
+    return 0
+
 
 def parse_player_name_realm(raw_name: str) -> tuple[str, str]:
     """Parse a raw WoW player name string into (name, realm).

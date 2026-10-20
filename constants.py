@@ -25,6 +25,29 @@ DIFFICULTY_IDS = {
     'other': [4, 5, 8, 9, 24, 33],  # Timewalking, Mythic+, etc.
 }
 
+# Every player specialization ID (COMBATANT_INFO currentSpecID), used to
+# sanity-check the field we read from the log.
+VALID_SPEC_IDS = frozenset({
+    250, 251, 252,          # Death Knight
+    577, 581, 1480,         # Demon Hunter
+    102, 103, 104, 105,     # Druid
+    1467, 1468, 1473,       # Evoker
+    253, 254, 255,          # Hunter
+    62, 63, 64,             # Mage
+    268, 269, 270,          # Monk
+    65, 66, 70,             # Paladin
+    256, 257, 258,          # Priest
+    259, 260, 261,          # Rogue
+    262, 263, 264,          # Shaman
+    265, 266, 267,          # Warlock
+    71, 72, 73,             # Warrior
+})
+
+# Watchdog limits for fights whose END never arrives (game crash, missed
+# line). Generous so that slow progression pulls and long keys aren't cut.
+MAX_ENCOUNTER_SECONDS = 25 * 60
+MAX_DUNGEON_SECONDS = 2 * 60 * 60
+
 # Difficulty names for display (used by file_manager.py and frontend)
 DIFFICULTY_NAMES = {
     1: "Normal", 

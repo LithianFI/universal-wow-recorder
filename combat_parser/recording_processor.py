@@ -12,6 +12,7 @@ from constants import (
 )
 
 from combat_parser.events import BossInfo, DungeonInfo
+from obs_client import StopResult
 from metadata_generator import RecordingMetadata
 
 
@@ -54,40 +55,47 @@ class RecordingProcessor:
             return False
         return True
 
-    def process_encounter_end(self, boss_info: BossInfo, recording_duration: float,
+    def stop_recording(self) -> StopResult:
+        """Stop OBS. Callers pass the result to process_*_end."""
+        return self.obs.stop_recording()
+
+    def process_encounter_end(self, stop_result: StopResult, boss_info: BossInfo,
+                            recording_duration: float,
                             metadata: Optional[RecordingMetadata] = None,
                             start_time: Optional[datetime] = None) -> Optional[Path]:
-        """Stop recording and rename/delete the file. Returns the saved path."""
-        print(f"{LOG_PREFIXES['PROC']} Stopping recording for: {boss_info.name}")
-        return self._stop_and_process(
+        """Rename/delete the stopped encounter recording. Returns the saved path."""
+        print(f"{LOG_PREFIXES['PROC']} Processing recording for: {boss_info.name}")
+        return self._process_stopped(
+            stop_result,
             boss_info=boss_info,
             recording_duration=recording_duration,
             metadata=metadata,
             start_time=start_time
         )
 
-    def process_dungeon_end(self, dungeon_info: DungeonInfo = None, recording_duration: float = 0,
-                           reason: str = "", metadata: Optional[RecordingMetadata] = None,
+    def process_dungeon_end(self, stop_result: StopResult, dungeon_info: DungeonInfo = None,
+                           recording_duration: float = 0, reason: str = "",
+                           metadata: Optional[RecordingMetadata] = None,
                            start_time: Optional[datetime] = None) -> Optional[Path]:
-        """Stop recording and rename/delete the dungeon file. Returns the saved path."""
-        print(f"{LOG_PREFIXES['PROC']} Stopping dungeon recording{f' ({reason})' if reason else ''}")
-        return self._stop_and_process(
+        """Rename/delete the stopped dungeon recording. Returns the saved path."""
+        print(f"{LOG_PREFIXES['PROC']} Processing dungeon recording{f' ({reason})' if reason else ''}")
+        return self._process_stopped(
+            stop_result,
             dungeon_info=dungeon_info,
             recording_duration=recording_duration,
             metadata=metadata,
             start_time=start_time
         )
 
-    def _stop_and_process(self, **file_args) -> Optional[Path]:
-        result = self.obs.stop_recording()
-        if not result.stopped:
+    def _process_stopped(self, stop_result: StopResult, **file_args) -> Optional[Path]:
+        if not stop_result.stopped:
             # Nothing of ours was recording: never touch files on disk.
             print(f"{LOG_PREFIXES['PROC']} No recording was stopped, leaving files untouched")
             return None
 
         time.sleep(self.config.RENAME_DELAY)
 
-        recording_path = self._resolve_recording_path(result.output_path)
+        recording_path = self._resolve_recording_path(stop_result.output_path)
         if not recording_path:
             print(f"{LOG_PREFIXES['PROC']} Could not find recording file")
             return None
@@ -147,16 +155,25 @@ class RecordingProcessor:
         try:
             extension = recording_path.suffix
             new_filename = metadata.generate_filename(start_time, extension)
-            new_path = recording_path.parent / new_filename
-            
+            new_path = self._unused_path(recording_path.parent / new_filename)
+
             recording_path.rename(new_path)
-            print(f"{LOG_PREFIXES['PROC']} ✅ Renamed (WCR): {recording_path.name} -> {new_filename}")
+            print(f"{LOG_PREFIXES['PROC']} ✅ Renamed (WCR): {recording_path.name} -> {new_path.name}")
             
             return new_path
         except Exception as e:
             print(f"{LOG_PREFIXES['PROC']} ❌ Failed to rename with WCR style: {e}")
             return None
     
+    @staticmethod
+    def _unused_path(path: Path) -> Path:
+        """*path*, or "name (2).ext" etc. if taken: rename() overwrites on POSIX."""
+        candidate, counter = path, 2
+        while candidate.exists():
+            candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
+            counter += 1
+        return candidate
+
     def _save_metadata_json(self, video_path: Path, metadata: RecordingMetadata) -> bool:
         """Save metadata JSON file alongside the video."""
         try:

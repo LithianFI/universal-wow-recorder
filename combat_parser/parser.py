@@ -4,18 +4,23 @@ Main combat log parser coordinating all components.
 
 import time
 import threading
+import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional, List, Callable
 from pathlib import Path
 
-from obs_client import OBSClient
+from obs_client import OBSClient, StopResult
 from state_manager import RecordingState
 from config_manager import ConfigManager
 
 from combat_parser.file_manager import RecordingFileManager
 from combat_parser.recording_processor import RecordingProcessor
 from combat_parser.dungeon_monitor import DungeonMonitor
-from combat_parser.events import CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm
+from combat_parser.events import (
+    CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm, parse_combatant_spec_id,
+)
 from combat_parser.cooldown_scanner import collect_cooldown_casts
 from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
 
@@ -36,9 +41,26 @@ _MIN_BOSS_HP = 100 * 10 ** 6
 
 _LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
 
+# Video kept after ENCOUNTER_END (matches metadata overrun). Also gives WoW
+# time to flush the end of the fight to the log before we scan it. A new
+# pull cuts it short so its start isn't lost.
+_RECORDING_OVERRUN_SECONDS = 3
+
 # Long enough for an end thread to finish (log flush wait, rename delay,
 # file stability check) so a save in progress isn't cut off at exit.
 _SHUTDOWN_THREAD_JOIN_SECONDS = 10.0
+
+
+@dataclass(frozen=True)
+class _RecordingContext:
+    """What an end thread needs, captured at END so a re-pull can't overwrite it."""
+    metadata: RecordingMetadata
+    log_path: Optional[Path]
+    start_offset: Optional[int]     # byte offset of the START line, if known
+    start_ts: Optional[str]         # log timestamp of START (fallback locator)
+    end_ts: Optional[str]           # log timestamp of END; None = read to EOF
+    start_time: Optional[datetime]
+    fight_seq: int                  # _fight_seq when this fight ended
 
 
 class CombatParser:
@@ -53,7 +75,7 @@ class CombatParser:
         # Initialize components
         self.file_manager = RecordingFileManager(config_manager, obs_client)
         self.processor = RecordingProcessor(obs_client, self.file_manager, config_manager)
-        self.dungeon_monitor = DungeonMonitor(state_manager, config_manager, self._handle_dungeon_timeout)
+        self.dungeon_monitor = DungeonMonitor(state_manager, config_manager, self._handle_recording_timeout)
 
         # Thread management
         self._active_threads: List[threading.Thread] = []
@@ -79,9 +101,24 @@ class CombatParser:
         # The end handlers only touch OBS and files when this is set.
         self._recording_requested = False
 
-        # Log timestamps for the current encounter window (used for death scanning)
+        # Log handlers run on the tail thread and the watchdog thread.
+        self._event_lock = threading.RLock()
+        # OBS start/stop run on one worker in submission order, so a re-pull's
+        # start can never overtake the previous pull's stop.
+        self._obs_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='obs')
+        # Bumped whenever a fight starts; an end job whose fight is no longer
+        # the latest cuts its overrun short so the new fight isn't delayed.
+        self._fight_seq = 0
+        self._fight_started = threading.Condition()
+        self._is_shutting_down = False
+
+        # Where the current fight starts in the log, for the post-fight scan.
+        self._line_offset: Optional[int] = None
+        self._window_log_path: Optional[Path] = None
+        self._window_start_offset: Optional[int] = None
+
+        # Log timestamp of the current fight's START (scan fallback locator)
         self.encounter_start_log_timestamp: Optional[str] = None
-        self.encounter_end_log_timestamp: Optional[str] = None
 
         # Boss HP tracking — updated live from SPELL_DAMAGE events.
         # WCR strategy: track the unit with the highest maxHP seen (RaidEncounter.updateHp).
@@ -95,8 +132,13 @@ class CombatParser:
         # Start dungeon monitor
         self.dungeon_monitor.start()
 
-    def process_line(self, line: str):
-        """Process a single combat log line."""
+    def process_line(self, line: str, offset: Optional[int] = None):
+        """Process a single combat log line. *offset* is its byte position in the log."""
+        with self._event_lock:
+            self._line_offset = offset
+            self._process_line(line)
+
+    def _process_line(self, line: str):
         # Always try to identify the player first, before any other processing.
         # This runs on every line but short-circuits immediately once resolved.
         if not (self.player_guid and self.player_name):
@@ -134,8 +176,8 @@ class CombatParser:
         # encounter ends — see section 8 of the reference doc. Doing it live
         # on every UNIT_DIED line is pure overhead on the hot path.
 
-        # Grab specID from COMBATANT_INFO once we know the player GUID
-        if self.player_guid and self.player_spec_id is None and 'COMBATANT_INFO' in line:
+        # COMBATANT_INFO is logged at every pull, so this also picks up spec changes.
+        if self.player_guid and 'COMBATANT_INFO' in line:
             self._parse_combatant_info(line)
 
         # Track boss HP% live from SPELL_DAMAGE events (mirrors WCR handleSpellDamage).
@@ -144,23 +186,32 @@ class CombatParser:
         
     def start_manual_recording(self) -> bool:
         """Start a manual recording triggered by the user."""
+        with self._event_lock:
+            return self._start_manual_recording()
+
+    def _start_manual_recording(self) -> bool:
         if self.state.is_recording or self.state.manual_recording:
             print(f"{LOG_PREFIXES['PARSER']} Manual recording requested but already recording")
             return False
 
         print(f"{LOG_PREFIXES['PARSER']} Starting manual recording...")
 
-        if not self.obs.start_recording():
+        # The queued start waits behind any pending stop; cut its overrun.
+        self._signal_new_fight()
+        if not self._submit_obs_job(self.obs.start_recording).result():
             print(f"{LOG_PREFIXES['PARSER']} Failed to start OBS recording for manual session")
             return False
 
         self.state.start_manual_recording()
         self.state.start_recording()
         self.encounter_start_time = datetime.now()
+        # No START line: the window begins at the last line read, ends at EOF.
+        self._mark_window_start(timestamp=None)
 
         # Reset metadata to a clean manual baseline
         self.current_metadata.reset()
         self.current_metadata.category = RecordingCategory.MANUAL
+        self.current_metadata.set_start_time(int(time.time() * 1000))
         if self.player_guid and self.player_name:
             self.current_metadata.set_player_info(
             guid=self.player_guid,
@@ -176,6 +227,10 @@ class CombatParser:
 
     def stop_manual_recording(self) -> bool:
         """Stop an active manual recording."""
+        with self._event_lock:
+            return self._stop_manual_recording()
+
+    def _stop_manual_recording(self) -> bool:
         if not self.state.manual_recording:
             print(f"{LOG_PREFIXES['PARSER']} Stop manual recording requested but no manual recording active")
             return False
@@ -194,11 +249,13 @@ class CombatParser:
         self._finalize_metadata(is_kill=True, duration=recording_duration)
         self._emit_event('MANUAL_RECORDING_STOP', '', {'duration': round(recording_duration, 1)})
 
+        context = self._capture_context(end_ts=None)
+
         # Reset state before the background thread so is_recording becomes False immediately
         self.state.reset()
 
         # Reuse the existing encounter-end pipeline: stops OBS + renames file
-        self._start_thread(self._process_encounter_end_thread, boss_info, recording_duration)
+        self._submit_obs_job(self._encounter_end_job, boss_info, recording_duration, context)
 
         print(f"{LOG_PREFIXES['PARSER']} Manual recording stopped ({recording_duration:.1f}s)")
         return True    
@@ -275,16 +332,7 @@ class CombatParser:
     def _parse_combatant_info(self, line: str):
         """Extract specID from the player's COMBATANT_INFO line.
 
-        COMBATANT_INFO fields (comma-separated):
-          [0]    COMBATANT_INFO
-          [1]    playerGUID
-          [2-21] stats (Strength, Agility, Stamina, Intelligence,
-                        Dodge, Parry, Block, CritMelee, CritRanged, CritSpell,
-                        Speed, Lifesteal, HasteMelee, HasteRanged, HasteSpell,
-                        Avoidance, Mastery, VersatilityDamageDone,
-                        VersatilityHealingDone, VersatilityDamageTaken)
-          [22]   Armor
-          [23]   CurrentSpecID
+        Field layout: see parse_combatant_spec_id.
         """
         try:
             ts_split = line.split('  ', 1)
@@ -300,8 +348,8 @@ class CombatParser:
             if guid != self.player_guid:
                 return  # Not the local player's COMBATANT_INFO
 
-            spec_id = int(parts[23].strip())
-            if spec_id > 0:
+            spec_id = parse_combatant_spec_id(parts)
+            if spec_id > 0 and spec_id != self.player_spec_id:
                 self.player_spec_id = spec_id
                 print(f"{LOG_PREFIXES['PARSER']} Player specID: {spec_id}")
 
@@ -384,16 +432,14 @@ class CombatParser:
             dungeon_info.timestamp
         )
 
-        # Store log timestamp for post-encounter death scanning
-        self.encounter_start_log_timestamp = dungeon_info.timestamp
-        self.encounter_end_log_timestamp = None
+        self._mark_window_start(dungeon_info.timestamp)
 
         # Initialize metadata for M+ dungeon
         self._init_metadata_for_dungeon(dungeon_info)
 
         self._recording_requested = self.processor.should_record_dungeon()
         if self._recording_requested:
-            self._start_thread(self._process_dungeon_start_thread, dungeon_info)
+            self._submit_obs_job(self._dungeon_start_job, dungeon_info)
 
         # Emit event for frontend
         self._emit_event('DUNGEON_START', dungeon_info.timestamp, {
@@ -420,10 +466,6 @@ class CombatParser:
             and event.get_dungeon_end_info()[0]
         )
         timestamp = event.timestamp if event else datetime.now().strftime("%m/%d/%Y %H:%M:%S.0000")
-
-        # Record the log timestamp — the background end thread will use this
-        # as the endpoint for _scan_log_for_encounter_data().
-        self.encounter_end_log_timestamp = timestamp
  
         dungeon_info = DungeonInfo(
             dungeon_id=self.state.dungeon_id or 0,
@@ -443,7 +485,9 @@ class CombatParser:
         })
  
         if self._recording_requested:
-            self._start_thread(self._process_dungeon_end_thread, dungeon_info, dungeon_duration, reason)
+            # Without an END line (timeout, log switch) scan to the end of the log.
+            context = self._capture_context(end_ts=event.timestamp if event else None)
+            self._submit_obs_job(self._dungeon_end_job, dungeon_info, dungeon_duration, reason, context)
         self._recording_requested = False
         self.state.reset()
  
@@ -457,26 +501,36 @@ class CombatParser:
 
         print(f"{LOG_PREFIXES['PARSER']} Zone change detected during dungeon run")
 
-        # Check if we changed to a different instance (likely left dungeon)
+        # ZONE_CHANGE,instanceID,zoneName,difficultyID. Compare instance IDs:
+        # zone names don't always match the CHALLENGE_MODE_START name.
         try:
-            # ZONE_CHANGE format: uiMapID, zoneName
-            # If zoneName changes significantly, assume dungeon ended
-            if len(event.fields) >= 3:
-                new_zone = event.fields[2]
-                current_dungeon = self.state.dungeon_name
-
-                # Simple check: if zone doesn't contain dungeon name (case-insensitive)
-                if current_dungeon and current_dungeon.lower() not in new_zone.lower():
-                    print(f"{LOG_PREFIXES['PARSER']} Zone changed from dungeon to: {new_zone}")
-                    self._handle_dungeon_end(event, "zone_change")
+            new_instance_id = int(event.fields[1])
         except (IndexError, ValueError):
-            pass
-
-    def _handle_dungeon_timeout(self):
-        """Handle dungeon timeout due to inactivity."""
-        if not self.state.dungeon_active:
             return
-        self._handle_dungeon_end(None, "timeout")
+        if new_instance_id != self.state.dungeon_id:
+            new_zone = event.fields[2] if len(event.fields) > 2 else '?'
+            print(f"{LOG_PREFIXES['PARSER']} Zone changed from dungeon to: {new_zone}")
+            self._handle_dungeon_end(event, "zone_change")
+
+    def _handle_recording_timeout(self):
+        """Watchdog callback: a fight ran past its maximum length without an END."""
+        with self._event_lock:
+            self._force_end_active("timeout")
+
+    def on_log_switched(self):
+        """A new combat log replaced the old one: its END will never arrive."""
+        with self._event_lock:
+            self._force_end_active("log_changed")
+            # A new log usually means a relog, possibly onto another character.
+            self.player_guid = self.player_name = self.player_realm = None
+            self.player_spec_id = None
+
+    def _force_end_active(self, reason: str):
+        if self.state.dungeon_active:
+            self._handle_dungeon_end(None, reason)
+        elif self.state.encounter_active and not self.state.manual_recording:
+            print(f"{LOG_PREFIXES['PARSER']} Ending encounter without END ({reason})")
+            self._handle_encounter_end(None)
 
     def _handle_encounter_start(self, event: CombatEvent):
         """Handle ENCOUNTER_START event."""
@@ -504,9 +558,7 @@ class CombatParser:
             boss_info.difficulty_id, boss_info.instance_id
         )
 
-        # Store log timestamp for post-encounter death scanning
-        self.encounter_start_log_timestamp = boss_info.timestamp
-        self.encounter_end_log_timestamp = None
+        self._mark_window_start(boss_info.timestamp)
 
         # Reset boss HP tracking for this new pull
         self._boss_current_hp = 1
@@ -517,7 +569,7 @@ class CombatParser:
 
         self._recording_requested = self.processor.should_record_encounter(boss_info)
         if self._recording_requested:
-            self._start_thread(self._process_encounter_start_thread, boss_info)
+            self._submit_obs_job(self._encounter_start_job, boss_info)
 
         # Emit event for frontend
         self._emit_event('ENCOUNTER_START', boss_info.timestamp, {
@@ -536,25 +588,23 @@ class CombatParser:
         boss_name = self.state.boss_name
         difficulty_id = self.state.difficulty_id
         encounter_duration = self.state.get_encounter_duration()
-        is_kill, _, fight_percentage = event.get_encounter_end_info()
+        # event is None when forced (timeout / log switch): record it as a wipe.
+        is_kill = event.get_encounter_end_info()[0] if event else False
+        end_ts = event.timestamp if event else None
 
-        # Record the log timestamp — the background end thread will use this
-        # as the endpoint for _scan_log_for_encounter_data().
-        self.encounter_end_log_timestamp = event.timestamp
- 
         boss_info = BossInfo(
             boss_id=self.state.boss_id or 0,
             name=boss_name or "Unknown",
             difficulty_id=difficulty_id or 0,
             instance_id=self.state.instance_id or 0,
-            timestamp=event.timestamp
+            timestamp=end_ts or datetime.now().strftime("%m/%d/%Y %H:%M:%S.0000")
         )
  
         boss_hp_percent = round((100 * self._boss_current_hp) / self._boss_max_hp)
         self._finalize_metadata(is_kill=is_kill, duration=encounter_duration,
                                 fight_percentage=boss_hp_percent)
  
-        self._emit_event('ENCOUNTER_END', event.timestamp, {
+        self._emit_event('ENCOUNTER_END', boss_info.timestamp, {
             'boss_name': boss_name,
             'difficulty_id': difficulty_id,
             'duration': round(encounter_duration, 1),
@@ -562,7 +612,8 @@ class CombatParser:
         })
  
         if self._recording_requested:
-            self._start_thread(self._process_encounter_end_thread, boss_info, encounter_duration)
+            context = self._capture_context(end_ts)
+            self._submit_obs_job(self._encounter_end_job, boss_info, encounter_duration, context)
         self._recording_requested = False
         self.state.reset()
  
@@ -643,70 +694,89 @@ class CombatParser:
         # Deaths already added to current_metadata by _scan_log_for_deaths()
         # which is called before _finalize_metadata on encounter/dungeon end.
 
-    def _scan_log_for_encounter_data(
-            self, 
-            start_ts: Optional[str] = None,
-            end_ts: Optional[str] = None,
-            ):
-        """Scan the current log file between encounter start and end timestamps
-        to collect UNIT_DIED events (deaths) and COMBATANT_INFO lines (raid members).
+    def _mark_window_start(self, timestamp: Optional[str]):
+        """Remember where this fight starts in the log for the post-fight scan."""
+        self.encounter_start_log_timestamp = timestamp
+        self._window_start_offset = self._line_offset
+        self._window_log_path = self.get_log_path() if self.get_log_path else None
+        self._signal_new_fight()
+
+    def _signal_new_fight(self):
+        with self._fight_started:
+            self._fight_seq += 1
+            self._fight_started.notify_all()
+
+    def _capture_context(self, end_ts: Optional[str]) -> _RecordingContext:
+        """Hand the finished fight's state to its end thread and start fresh.
+
+        A re-pull can begin while the end thread is still scanning, so the end
+        thread must not read shared parser state.
+        """
+        context = _RecordingContext(
+            metadata=self.current_metadata,
+            log_path=self._window_log_path,
+            start_offset=self._window_start_offset,
+            start_ts=self.encounter_start_log_timestamp,
+            end_ts=end_ts,
+            start_time=self.encounter_start_time,
+            fight_seq=self._fight_seq,
+        )
+        self.current_metadata = RecordingMetadata()
+        return context
+
+    def _read_window_lines(self, context: _RecordingContext) -> Optional[List[str]]:
+        """Log lines from the fight's START up to its END (or EOF)."""
+        log_path = context.log_path
+        if not log_path or not log_path.exists():
+            print(f"{LOG_PREFIXES['PARSER']} Log file not available for encounter data scan")
+            return None
+        if context.start_offset is None and not context.start_ts:
+            print(f"{LOG_PREFIXES['PARSER']} Missing encounter start for data scan")
+            return None
+
+        window_lines = []
+        try:
+            with open(log_path, 'rb') as f:
+                # Seeking skips re-reading a multi-GB raid-night log from byte 0.
+                in_window = context.start_offset is not None
+                if in_window:
+                    f.seek(context.start_offset)
+                for raw in f:
+                    # One bad byte must not abort the scan.
+                    line = raw.decode('utf-8', errors='replace')
+                    if not in_window:
+                        if context.start_ts not in line:
+                            continue
+                        in_window = True
+                    window_lines.append(line)
+                    if context.end_ts and context.end_ts in line:
+                        break
+        except OSError as e:
+            print(f"{LOG_PREFIXES['PARSER']} Error reading log for encounter data: {e}")
+            return None
+        return window_lines
+
+    def _scan_log_for_encounter_data(self, context: _RecordingContext):
+        """Collect deaths, combatants and cooldown casts for a finished fight.
 
         WoW only flushes combat log data to disk after the encounter ends, so
         neither deaths nor combatant info can be collected in real-time -- we must
         read them retroactively once ENCOUNTER_END / CHALLENGE_MODE_END fires.
 
-        COMBATANT_INFO fields (indices after splitting on comma):
-          [0] COMBATANT_INFO
-          [1] playerGUID
-          [2] faction  (0 or 1, maps to _teamID)
-          [3..22] stats
-          [23] currentSpecID
-          (followed by talent/gear arrays)
-
         Player names are not in COMBATANT_INFO directly -- we build a GUID->name
         map from srcGUID/srcName pairs seen throughout the encounter window.
         """
-        if not self.get_log_path:
-            print(f"{LOG_PREFIXES['PARSER']} No log path callback set, cannot scan encounter data")
+        window_lines = self._read_window_lines(context)
+        if window_lines is None:
             return
-
-        log_path = self.get_log_path()
-        if not log_path or not log_path.exists():
-            print(f"{LOG_PREFIXES['PARSER']} Log file not available for encounter data scan")
-            return
-
-        start_ts = start_ts or self.encounter_start_log_timestamp
-        end_ts = end_ts or self.encounter_end_log_timestamp
-
-        if not start_ts or not end_ts:
-            print(f"{LOG_PREFIXES['PARSER']} Missing encounter timestamps for data scan")
-            return
-
-        print(f"{LOG_PREFIXES['PARSER']} Scanning log between {start_ts[:19]} and {end_ts[:19]}")
+        metadata = context.metadata
+        print(f"{LOG_PREFIXES['PARSER']} Scanning {len(window_lines)} log lines for encounter data")
 
         deaths_found = 0
         combatants_found = 0
-        in_window = False
 
         # GUID -> (name, realm) map built from any combat event in the window
         guid_to_name: dict = {}
-
-        # First pass: collect all lines in the window into memory so we can
-        # build the GUID->name map before processing COMBATANT_INFO lines.
-        window_lines = []
-        try:
-            with open(log_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if start_ts in line:
-                        in_window = True
-                    if not in_window:
-                        continue
-                    window_lines.append(line)
-                    if end_ts in line:
-                        break
-        except Exception as e:
-            print(f"{LOG_PREFIXES['PARSER']} Error reading log for encounter data: {e}")
-            return
 
         # Build GUID->name map from src/dest fields in combat event lines.
         # Standard combat event format (after timestamp double-space):
@@ -754,7 +824,7 @@ class CombatParser:
                 death_info = DeathParser.parse_death_line(line)
                 if death_info:
                     spec_id = guid_to_spec.get(death_info['guid'], 0)
-                    self.current_metadata.add_death(
+                    metadata.add_death(
                         name=death_info['name'],
                         timestamp_ms=death_info['timestamp'],
                         spec_id=spec_id,
@@ -776,7 +846,7 @@ class CombatParser:
                         continue
  
                     faction = int(parts[2].strip())
-                    spec_id = int(parts[25].strip())  # WCR: arg(25) — RetailLogHandler.ts line 490
+                    spec_id = parse_combatant_spec_id(parts)
  
                     # Always update guid_to_spec so any death lines later in this
                     # same pass can look up the spec_id for this player.
@@ -788,12 +858,12 @@ class CombatParser:
  
                     name, realm = guid_to_name[guid]
  
-                    if guid == self.player_guid and self.player_spec_id is None and spec_id > 0:
+                    if guid == self.player_guid and spec_id > 0:
                         self.player_spec_id = spec_id
-                        if self.current_metadata.player_info:
-                            self.current_metadata.player_info["_specID"] = spec_id
+                        if metadata.player_info:
+                            metadata.player_info["_specID"] = spec_id
  
-                    self.current_metadata.add_combatant(
+                    metadata.add_combatant(
                         guid=guid,
                         name=name,
                         realm=realm,
@@ -807,14 +877,14 @@ class CombatParser:
  
         # Collect tracked cooldown casts from the same window lines.
         # guid_to_name is already built above so caster names resolve cleanly.
-        if self.current_metadata.start_timestamp:
+        if metadata.start_timestamp:
             casts = collect_cooldown_casts(
                 window_lines,
-                self.current_metadata.start_timestamp,
+                metadata.start_timestamp,
                 guid_to_name,
             )
             for cast in casts:
-                self.current_metadata.add_cooldown_cast(cast)
+                metadata.add_cooldown_cast(cast)
         else:
             casts = []
 
@@ -825,7 +895,7 @@ class CombatParser:
         # _finalize_metadata() runs before this scan, so the hash it computed
         # had an empty combatants list — WCR only writes metadata after all
         # processing is done, so we match that by recomputing here.
-        self.current_metadata._recompute_hash()
+        metadata._recompute_hash()
 
     def _parse_timestamp_to_ms(self, timestamp: str) -> int:
         """Parse combat log timestamp to milliseconds."""
@@ -847,33 +917,69 @@ class CombatParser:
             print(f"{LOG_PREFIXES['PARSER']} Error parsing timestamp: {e}")
             return int(datetime.now().timestamp() * 1000)
 
-    def _process_dungeon_start_thread(self, dungeon_info: DungeonInfo):
-        """Thread function for starting dungeon recording."""
-        success = self.processor.process_dungeon_start(dungeon_info)
-        if success:
+    @property
+    def _writes_metadata(self) -> bool:
+        return self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr'
+
+    def _submit_obs_job(self, job: Callable, *args) -> Future:
+        """Queue an OBS step. Exceptions are logged (a Future would hide them)."""
+        def run():
+            try:
+                return job(*args)
+            except Exception:
+                print(f"{LOG_PREFIXES['PARSER']} OBS job {job.__name__} failed:")
+                traceback.print_exc()
+                return None
+        return self._obs_executor.submit(run)
+
+    def _dungeon_start_job(self, dungeon_info: DungeonInfo):
+        if self.processor.process_dungeon_start(dungeon_info):
             self.state.start_recording()
 
-    def _process_dungeon_end_thread(self, dungeon_info: DungeonInfo, duration: float, reason: str):
-        """Thread function for ending dungeon recording."""
-        time.sleep(3)   # moved from handler — no longer blocks log tailer
+    def _encounter_start_job(self, boss_info: BossInfo):
+        if self.processor.process_encounter_start(boss_info):
+            self.state.start_recording()
 
-        # Now that the log has had time to flush, scan the window for deaths
-        # and combatant info. This populates self.current_metadata.deaths
-        # before process_dungeon_end writes the JSON sidecar.
-        if self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr':
-            self._scan_log_for_encounter_data()
+    def _stop_after_overrun(self, context: _RecordingContext) -> StopResult:
+        """Keep recording briefly past the END, then stop OBS."""
+        with self._fight_started:
+            self._fight_started.wait_for(
+                lambda: self._fight_seq != context.fight_seq or self._is_shutting_down,
+                timeout=_RECORDING_OVERRUN_SECONDS)
+        return self.processor.stop_recording()
+
+    def _dungeon_end_job(self, dungeon_info: DungeonInfo, duration: float,
+                         reason: str, context: _RecordingContext):
+        stop_result = self._stop_after_overrun(context)
+        # Scanning and renaming take seconds; don't hold up the next start.
+        self._start_thread(self._process_dungeon_end_thread,
+                           stop_result, dungeon_info, duration, reason, context)
+
+    def _encounter_end_job(self, boss_info: BossInfo, duration: float,
+                           context: _RecordingContext):
+        stop_result = self._stop_after_overrun(context)
+        self._start_thread(self._process_encounter_end_thread,
+                           stop_result, boss_info, duration, context)
+
+    def _process_dungeon_end_thread(self, stop_result: StopResult, dungeon_info: DungeonInfo,
+                                    duration: float, reason: str, context: _RecordingContext):
+        """Thread function: scan the log and save the stopped dungeon recording."""
+        if self._writes_metadata:
+            self._scan_log_for_encounter_data(context)
 
         result = self.processor.process_dungeon_end(
+            stop_result,
             dungeon_info,
             duration,
             reason,
-            metadata=self.current_metadata if (self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr') else None,
-            start_time=self.encounter_start_time
+            metadata=context.metadata if self._writes_metadata else None,
+            start_time=context.start_time
         )
- 
+
         if result and self.on_recording_saved:
             self.on_recording_saved({
                 'path': str(result),
+                'metadata': context.metadata,
                 'duration': duration,
                 'boss_name': f"{dungeon_info.name} +{dungeon_info.dungeon_level}",
                 'difficulty_id': 4,
@@ -881,36 +987,28 @@ class CombatParser:
                 'category': 'dungeon',
             })
 
-    def _process_encounter_start_thread(self, boss_info: BossInfo):
-        """Thread function for starting encounter recording."""
-        success = self.processor.process_encounter_start(boss_info)
-        if success:
-            self.state.start_recording()
-
-    def _process_encounter_end_thread(self, boss_info: BossInfo, duration: float):
-        """Thread function for ending encounter recording."""
-        time.sleep(3)   # moved from handler — no longer blocks log tailer
-
-        # Now that the log has had time to flush, scan the window for deaths
-        # and combatant info. This populates self.current_metadata.deaths
-        # before process_encounter_end writes the JSON sidecar.
-        if self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr':
-            self._scan_log_for_encounter_data()
+    def _process_encounter_end_thread(self, stop_result: StopResult, boss_info: BossInfo,
+                                      duration: float, context: _RecordingContext):
+        """Thread function: scan the log and save the stopped encounter recording."""
+        if self._writes_metadata:
+            self._scan_log_for_encounter_data(context)
 
         result = self.processor.process_encounter_end(
+            stop_result,
             boss_info,
             duration,
-            metadata=self.current_metadata if (self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr') else None,
-            start_time=self.encounter_start_time
+            metadata=context.metadata if self._writes_metadata else None,
+            start_time=context.start_time
         )
- 
+
         if result and self.on_recording_saved:
             self.on_recording_saved({
                 'path': str(result),
+                'metadata': context.metadata,
                 'duration': duration,
                 'boss_name': boss_info.name,
                 'difficulty_id': boss_info.difficulty_id,
-                'is_kill': self.current_metadata.result,
+                'is_kill': context.metadata.result,
                 'category': 'raid',
             })
 
@@ -952,6 +1050,13 @@ class CombatParser:
 
         # Stop dungeon monitor
         self.dungeon_monitor.stop()
+
+        # Let queued OBS steps finish (each is bounded by the overrun wait);
+        # end jobs spawn the threads joined below.
+        with self._fight_started:
+            self._is_shutting_down = True
+            self._fight_started.notify_all()
+        self._obs_executor.shutdown(wait=True)
 
         # Clean up completed threads
         self._cleanup_completed_threads()

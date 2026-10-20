@@ -1317,7 +1317,8 @@ def handle_recording_saved(recording_info: dict = None):
     try:
         file_path = Path(info['path'])
 
-        parsed_meta = s.combat_parser.current_metadata
+        # The parser's current_metadata may already belong to the next pull.
+        parsed_meta = info.get('metadata') or s.combat_parser.current_metadata
 
         from cloud_upload import VideoMetadata
 
