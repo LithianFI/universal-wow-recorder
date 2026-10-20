@@ -4,6 +4,10 @@ Handles communication with OBS Studio for recording control.
 """
 
 import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+
 import obsws_python as obs
 
 from constants import (
@@ -12,6 +16,18 @@ from constants import (
     DEFAULT_OBS_TIMEOUT,
     LOG_PREFIXES,
 )
+
+
+@dataclass(frozen=True)
+class StopResult:
+    """Outcome of a stop request.
+
+    ``stopped`` is False when nothing was recording or the request failed, so
+    callers must not treat any file on disk as this recording.
+    ``output_path`` is the file OBS wrote; None if OBS didn't report it.
+    """
+    stopped: bool
+    output_path: Optional[Path] = None
 
 
 class OBSClient:
@@ -126,33 +142,30 @@ class OBSClient:
             print(f"{LOG_PREFIXES['OBS']} ❌ Failed to start recording: {e}")
             return False
     
-    def stop_recording(self) -> bool:
-        """Stop OBS recording.
-        
-        Returns:
-            True if recording stopped successfully, False otherwise
-        """
+    def stop_recording(self) -> StopResult:
+        """Stop OBS recording and report the file it wrote."""
         if not self._ensure_connection():
-            return False
-        
+            return StopResult(stopped=False)
+
         try:
             status = self.get_recording_status()
             if not status or not status.get('is_recording', False):
                 print(f"{LOG_PREFIXES['OBS']} ⚠️ No active recording to stop")
-                return True
+                return StopResult(stopped=False)
 
-            self.client.stop_record()
+            response = self.client.stop_record()
+            output_path = getattr(response, 'output_path', None)
             print(f"{LOG_PREFIXES['OBS']} ⏹️ Recording stopped")
-            
+
             # Wait for recording to finalize
             time.sleep(1)
-            return True
-            
+            return StopResult(stopped=True, output_path=Path(output_path) if output_path else None)
+
         except Exception as e:
             print(f"{LOG_PREFIXES['OBS']} ❌ Failed to stop recording: {e}")
-            return False
-    
-    
+            return StopResult(stopped=False)
+
+
     # ---------------------------------------------------------------------
     # Recording Status and Information
     # ---------------------------------------------------------------------

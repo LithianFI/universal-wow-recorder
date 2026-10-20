@@ -36,6 +36,10 @@ _MIN_BOSS_HP = 100 * 10 ** 6
 
 _LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
 
+# Long enough for an end thread to finish (log flush wait, rename delay,
+# file stability check) so a save in progress isn't cut off at exit.
+_SHUTDOWN_THREAD_JOIN_SECONDS = 10.0
+
 
 class CombatParser:
     """Main parser that coordinates combat log parsing and recording actions."""
@@ -70,6 +74,10 @@ class CombatParser:
         self.player_realm = None
         self.player_spec_id = None
         self.encounter_start_time = None
+
+        # Whether the current encounter/dungeon passed the recording filters.
+        # The end handlers only touch OBS and files when this is set.
+        self._recording_requested = False
 
         # Log timestamps for the current encounter window (used for death scanning)
         self.encounter_start_log_timestamp: Optional[str] = None
@@ -383,8 +391,9 @@ class CombatParser:
         # Initialize metadata for M+ dungeon
         self._init_metadata_for_dungeon(dungeon_info)
 
-        # Start recording in background thread
-        self._start_thread(self._process_dungeon_start_thread, dungeon_info)
+        self._recording_requested = self.processor.should_record_dungeon()
+        if self._recording_requested:
+            self._start_thread(self._process_dungeon_start_thread, dungeon_info)
 
         # Emit event for frontend
         self._emit_event('DUNGEON_START', dungeon_info.timestamp, {
@@ -433,7 +442,9 @@ class CombatParser:
             'reason': reason,
         })
  
-        self._start_thread(self._process_dungeon_end_thread, dungeon_info, dungeon_duration, reason)
+        if self._recording_requested:
+            self._start_thread(self._process_dungeon_end_thread, dungeon_info, dungeon_duration, reason)
+        self._recording_requested = False
         self.state.reset()
  
         print(f"{LOG_PREFIXES['PARSER']} Ended M+ dungeon: {dungeon_info.name} ({reason})")
@@ -504,8 +515,9 @@ class CombatParser:
         # Initialize metadata for encounter
         self._init_metadata_for_encounter(boss_info)
 
-        # Start recording in background thread
-        self._start_thread(self._process_encounter_start_thread, boss_info)
+        self._recording_requested = self.processor.should_record_encounter(boss_info)
+        if self._recording_requested:
+            self._start_thread(self._process_encounter_start_thread, boss_info)
 
         # Emit event for frontend
         self._emit_event('ENCOUNTER_START', boss_info.timestamp, {
@@ -517,7 +529,8 @@ class CombatParser:
 
     def _handle_encounter_end(self, event: CombatEvent):
         """Handle ENCOUNTER_END event."""
-        if not self.state.encounter_active:
+        # Manual recordings set encounter_active too, but only the user stops them.
+        if not self.state.encounter_active or self.state.manual_recording:
             return
  
         boss_name = self.state.boss_name
@@ -548,7 +561,9 @@ class CombatParser:
             'is_kill': is_kill,
         })
  
-        self._start_thread(self._process_encounter_end_thread, boss_info, encounter_duration)
+        if self._recording_requested:
+            self._start_thread(self._process_encounter_end_thread, boss_info, encounter_duration)
+        self._recording_requested = False
         self.state.reset()
  
         print(f"{LOG_PREFIXES['PARSER']} Ended encounter: {boss_info.name}")
@@ -858,6 +873,7 @@ class CombatParser:
  
         if result and self.on_recording_saved:
             self.on_recording_saved({
+                'path': str(result),
                 'duration': duration,
                 'boss_name': f"{dungeon_info.name} +{dungeon_info.dungeon_level}",
                 'difficulty_id': 4,
@@ -890,6 +906,7 @@ class CombatParser:
  
         if result and self.on_recording_saved:
             self.on_recording_saved({
+                'path': str(result),
                 'duration': duration,
                 'boss_name': boss_info.name,
                 'difficulty_id': boss_info.difficulty_id,
@@ -942,7 +959,7 @@ class CombatParser:
         # Wait for active threads to complete (with timeout)
         for thread in self._active_threads:
             if thread.is_alive():
-                thread.join(timeout=5.0)
+                thread.join(timeout=_SHUTDOWN_THREAD_JOIN_SECONDS)
 
         self._active_threads.clear()
         print(f"{LOG_PREFIXES['PARSER']} Shutdown complete")

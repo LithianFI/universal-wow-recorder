@@ -23,100 +23,96 @@ class RecordingProcessor:
         self.file_manager = file_manager
         self.config = config
     
+    def should_record_encounter(self, boss_info: BossInfo) -> bool:
+        """Whether this encounter's difficulty is enabled for recording."""
+        if self.config.is_difficulty_enabled(boss_info.difficulty_id):
+            return True
+        diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
+        print(f"{LOG_PREFIXES['PROC']} Skipping {diff_name} encounter - not enabled in config")
+        return False
+
+    def should_record_dungeon(self) -> bool:
+        """Whether Mythic+ recording is enabled."""
+        if self.config.RECORD_MPLUS:
+            return True
+        print(f"{LOG_PREFIXES['PROC']} Skipping M+ dungeon - not enabled in config")
+        return False
+
     def process_encounter_start(self, boss_info: BossInfo) -> bool:
-        """Start recording for an encounter."""
-        if not self.config.is_difficulty_enabled(boss_info.difficulty_id):
-            diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
-            print(f"{LOG_PREFIXES['PROC']} Skipping {diff_name} encounter - not enabled in config")
-            return False
-
+        """Start recording for an encounter already approved by should_record_encounter."""
         print(f"{LOG_PREFIXES['PROC']} Starting recording for: {boss_info.name}")
+        return self._start_obs()
 
-        if not self.obs.start_recording():
-            print(f"{LOG_PREFIXES['PROC']} Failed to start OBS recording")
-            return False
-        
-        return True
-    
     def process_dungeon_start(self, dungeon_info: DungeonInfo) -> bool:
-        """Start recording for a Mythic+ dungeon."""
-        if not self.config.RECORD_MPLUS:
-            print(f"{LOG_PREFIXES['PROC']} Skipping M+ dungeon - not enabled in config")
-            return False
-
+        """Start recording for a dungeon already approved by should_record_dungeon."""
         print(f"{LOG_PREFIXES['PROC']} Starting recording for: {dungeon_info.name} (+{dungeon_info.dungeon_level})")
+        return self._start_obs()
 
+    def _start_obs(self) -> bool:
         if not self.obs.start_recording():
             print(f"{LOG_PREFIXES['PROC']} Failed to start OBS recording")
             return False
-        
         return True
-    
+
     def process_encounter_end(self, boss_info: BossInfo, recording_duration: float,
                             metadata: Optional[RecordingMetadata] = None,
-                            start_time: Optional[datetime] = None) -> bool:
-        """Stop recording and handle the recording file.
-
-        Difficulty filtering is handled upstream in process_encounter_start;
-        by the time this is called OBS is already recording so we always stop.
-        """
+                            start_time: Optional[datetime] = None) -> Optional[Path]:
+        """Stop recording and rename/delete the file. Returns the saved path."""
         print(f"{LOG_PREFIXES['PROC']} Stopping recording for: {boss_info.name}")
-
-        if not self.obs.stop_recording():
-            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
-            return False
-
-        wait_time = self.config.RENAME_DELAY
-        time.sleep(wait_time)
-
-        return self._process_recording_file(
+        return self._stop_and_process(
             boss_info=boss_info,
             recording_duration=recording_duration,
             metadata=metadata,
             start_time=start_time
         )
-    
+
     def process_dungeon_end(self, dungeon_info: DungeonInfo = None, recording_duration: float = 0,
                            reason: str = "", metadata: Optional[RecordingMetadata] = None,
-                           start_time: Optional[datetime] = None) -> bool:
-        """Stop recording and handle the recording file for dungeon.
-
-        M+ filtering is handled upstream in process_dungeon_start;
-        by the time this is called OBS is already recording so we always stop.
-        """
+                           start_time: Optional[datetime] = None) -> Optional[Path]:
+        """Stop recording and rename/delete the dungeon file. Returns the saved path."""
         print(f"{LOG_PREFIXES['PROC']} Stopping dungeon recording{f' ({reason})' if reason else ''}")
-
-        if not self.obs.stop_recording():
-            print(f"{LOG_PREFIXES['PROC']} Failed to stop OBS recording")
-            return False
-
-        wait_time = self.config.RENAME_DELAY
-        time.sleep(wait_time)
-
-        return self._process_recording_file(
+        return self._stop_and_process(
             dungeon_info=dungeon_info,
             recording_duration=recording_duration,
             metadata=metadata,
             start_time=start_time
         )
-    
-    def _process_recording_file(self, boss_info: BossInfo = None, dungeon_info: DungeonInfo = None,
-                               recording_duration: float = 0, metadata: Optional[RecordingMetadata] = None,
-                               start_time: Optional[datetime] = None) -> bool:
-        """Process the recording file (rename or delete)."""
-        min_duration = self.config.MIN_RECORDING_DURATION
-        if recording_duration < min_duration:
-            print(f"{LOG_PREFIXES['PROC']} Recording too short ({recording_duration:.1f}s), will delete")
-            return self._handle_short_recording(recording_duration)
 
-        recording_path = self.file_manager.find_latest_recording()
+    def _stop_and_process(self, **file_args) -> Optional[Path]:
+        result = self.obs.stop_recording()
+        if not result.stopped:
+            # Nothing of ours was recording: never touch files on disk.
+            print(f"{LOG_PREFIXES['PROC']} No recording was stopped, leaving files untouched")
+            return None
+
+        time.sleep(self.config.RENAME_DELAY)
+
+        recording_path = self._resolve_recording_path(result.output_path)
         if not recording_path:
             print(f"{LOG_PREFIXES['PROC']} Could not find recording file")
-            return False
+            return None
+        return self._process_recording_file(recording_path, **file_args)
+
+    def _resolve_recording_path(self, output_path: Optional[Path]) -> Optional[Path]:
+        if output_path and output_path.is_file():
+            return output_path
+        # OBS older than websocket 5 doesn't report the path; we did stop a
+        # recording, so the newest file is the best remaining guess.
+        return self.file_manager.find_latest_recording()
+
+    def _process_recording_file(self, recording_path: Path, boss_info: BossInfo = None,
+                               dungeon_info: DungeonInfo = None, recording_duration: float = 0,
+                               metadata: Optional[RecordingMetadata] = None,
+                               start_time: Optional[datetime] = None) -> Optional[Path]:
+        """Rename the recording (or delete it if too short). Returns the saved path."""
+        min_duration = self.config.MIN_RECORDING_DURATION
+        if recording_duration < min_duration:
+            print(f"{LOG_PREFIXES['PROC']} Recording too short ({recording_duration:.1f}s)")
+            return self._handle_short_recording(recording_path, recording_duration)
 
         if not self.file_manager.validate_file_stable(recording_path):
             print(f"{LOG_PREFIXES['PROC']} Recording file not stable, skipping")
-            return False
+            return None
 
         if start_time is None:
             start_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
@@ -142,9 +138,9 @@ class RecordingProcessor:
             organised = self.file_manager.organize_into_date_subfolder(new_path)
             if organised:
                 new_path = organised
-        
-        return new_path is not None
-    
+
+        return new_path
+
     def _rename_wcr_style(self, recording_path: Path, metadata: RecordingMetadata, 
                          start_time: datetime) -> Optional[Path]:
         """Rename recording using WCR-style filename."""
@@ -175,15 +171,11 @@ class RecordingProcessor:
             print(f"{LOG_PREFIXES['PROC']} ❌ Failed to save metadata JSON: {e}")
             return False
     
-    def _handle_short_recording(self, duration: float) -> bool:
-        """Handle a recording that's too short."""
+    def _handle_short_recording(self, recording_path: Path, duration: float) -> Optional[Path]:
+        """Delete a too-short recording, or keep it as-is. Returns the kept path."""
         if not self.config.DELETE_SHORT_RECORDINGS:
             print(f"{LOG_PREFIXES['PROC']} Short recording kept (delete_short_recordings = false)")
-            return True
-        
-        recording_path = self.file_manager.find_latest_recording()
-        if recording_path:
-            reason = f"too short ({duration:.1f}s)"
-            return self.file_manager.delete_recording(recording_path, reason)
-        
-        return False
+            return recording_path
+
+        self.file_manager.delete_recording(recording_path, f"too short ({duration:.1f}s)")
+        return None
