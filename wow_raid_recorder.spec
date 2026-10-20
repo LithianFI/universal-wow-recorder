@@ -14,6 +14,8 @@ a = Analysis(
     datas=[
         # Bundle all HTML templates
         ('templates', 'templates'),
+        # Vendored JS and the prebuilt Tailwind CSS (no CDN at runtime)
+        ('static', 'static'),
         # Bundle example config
         ('config.ini.example', '.'),
     ],

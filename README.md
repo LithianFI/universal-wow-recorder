@@ -176,17 +176,19 @@ Requires Python 3.10+, Node.js, and the project's Python venv set up.
 source venv/bin/activate && pip install pyinstaller
 npm install
 
-# Build everything (PyInstaller + Electron AppImage)
+# Build everything (CSS + PyInstaller + Electron AppImage)
 npm run build
 ```
 
-This runs two steps in sequence:
-1. **PyInstaller** bundles the Python backend into `dist/WoWRaidRecorder/`
-2. **electron-builder** wraps it with Electron into `dist/WoW Raid Recorder-1.0.0.AppImage`
+This runs three steps in sequence:
+1. **Tailwind** compiles the classes used in `templates/` into `static/css/tailwind.css`
+2. **PyInstaller** bundles the Python backend into `dist/WoWRaidRecorder/`
+3. **electron-builder** wraps it with Electron into `dist/WoW Raid Recorder-1.0.0.AppImage`
 
 You can also run the steps individually:
 
 ```bash
+npm run build:css       # Rebuild CSS after adding Tailwind classes to a template
 npm run build:python    # PyInstaller only
 npm run build:electron  # Electron packaging only (requires build:python first)
 ```

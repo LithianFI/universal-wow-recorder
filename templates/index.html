@@ -8,46 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        ink: {
-                            900: '#0a0806', 800: '#0f0d0a', 700: '#141109',
-                            600: '#1a1610', 500: '#221d15', 400: '#2e271d', 300: '#3d3529'
-                        },
-                        parchment: {
-                            900: '#f0e6cd',
-                            700: '#d4ccb6',
-                            500: '#a89c82',
-                            400: '#8a8270',
-                            300: '#6e6552',
-                        },
-                        gold: {
-                            500: '#c9a961',
-                            400: '#d6b975',
-                            600: '#a88a45',
-                        },
-                        diff: {
-                            mythic: '#ff8c1a',
-                            heroic: '#73adff',
-                            normal: '#87cf63',
-                            lfr: '#a89c82',
-                        },
-                    },
-                    fontFamily: {
-                        display: ['"IM Fell English"', 'Georgia', 'serif'],
-                        sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['"Fira Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-                    },
-                },
-            },
-        };
-    </script>
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    <script defer src="/static/vendor/alpine.min.js"></script>
+    <script src="/static/vendor/socket.io.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
 
@@ -543,7 +506,7 @@
                                         x-text="recordingInfo(rec).result || '—'"></span>
                                 </td>
                                 <td class="px-2 py-2 text-right font-mono text-parchment-700"
-                                    x-text="formatDuration(rec.duration_estimate || 0) || '—'"></td>
+                                    x-text="formatDuration(rec.meta?.duration || 0) || '—'"></td>
                                 <td class="px-2 py-2 text-right text-parchment-400"
                                     x-text="formatFileSize(rec.size)"></td>
                                 <td class="px-2 py-2 text-right text-parchment-400"
@@ -834,7 +797,6 @@
                 toasts: [],
                 _toastSeq: 0,
                 recordings: [],
-                recordingsMeta: {},   // name → metadata cache
 
                 // Last pull (auto-populated when an encounter ends)
                 lastPull: null,
@@ -1015,70 +977,33 @@
                     try {
                         const res = await fetch('/api/recordings');
                         const data = await res.json();
+                        // Each entry's `meta` summary carries everything shown here,
+                        // so no per-recording metadata requests are needed.
                         this.recordings = data.recordings || [];
-                        // Hydrate the most recent few with metadata so we
-                        // can show duration in the table.
-                        this.hydrateRecordingsMetadata(this.recordings.slice(0, 8));
-                        // Promote the most recent non-clip recording into lastPull.
                         const lastFull = this.recordings.find(r => !/_clip_\d+-\d+/.test(r.name));
-                        if (lastFull) {
-                            await this.loadLastPull(lastFull);
-                        }
-                        // Build tonight's progression from recent metadata.
-                        await this.rebuildProgression();
+                        this.loadLastPull(lastFull);
+                        this.rebuildProgression();
                     } catch (e) {
                         console.error('Failed to fetch recordings:', e);
                     }
                 },
 
-                async hydrateRecordingsMetadata(recs) {
-                    const promises = recs.map(async (rec) => {
-                        // Always set duration_estimate from cache if available,
-                        // even if we populated it via loadLastPull rather than here.
-                        if (this.recordingsMeta[rec.name]) {
-                            rec.duration_estimate = this.recordingsMeta[rec.name].duration;
-                            return;
-                        }
-                        try {
-                            const url = '/api/recordings/' +
-                                rec.name.split('/').map(encodeURIComponent).join('/') +
-                                '/metadata';
-                            const res = await fetch(url);
-                            if (res.ok) {
-                                const meta = await res.json();
-                                this.recordingsMeta[rec.name] = meta;
-                                rec.duration_estimate = meta.duration;
-                            }
-                        } catch (_) {}
-                    });
-                    await Promise.all(promises);
-                },
-
-                async loadLastPull(rec) {
-                    try {
-                        const url = '/api/recordings/' +
-                            rec.name.split('/').map(encodeURIComponent).join('/') +
-                            '/metadata';
-                        const res = await fetch(url);
-                        if (!res.ok) {
-                            this.lastPull = null;
-                            return;
-                        }
-                        const meta = await res.json();
-                        this.recordingsMeta[rec.name] = meta;
-                        this.lastPull = {
-                            recording: rec,
-                            duration: meta.duration || 0,
-                            is_kill: !!meta.result,
-                            boss_percent: meta.bossPercent || 0,
-                            difficulty_id: meta.difficultyID,
-                            deaths: (meta.deaths || []).filter(d => d.friendly !== false)
-                                .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
-                            attempt: null,  // set later from progression
-                        };
-                    } catch (_) {
+                loadLastPull(rec) {
+                    const meta = rec?.meta;
+                    if (!meta) {
                         this.lastPull = null;
+                        return;
                     }
+                    this.lastPull = {
+                        recording: rec,
+                        duration: meta.duration || 0,
+                        is_kill: !!meta.result,
+                        boss_percent: meta.bossPercent || 0,
+                        difficulty_id: meta.difficultyID,
+                        deaths: (meta.deaths || []).filter(d => d.friendly !== false)
+                            .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
+                        attempt: null,  // set later from progression
+                    };
                 },
 
                 // Rebuild "tonight's progression" by walking the recordings
@@ -1086,7 +1011,7 @@
                 // boss until we hit a different boss or a >2h gap. This is
                 // a heuristic but it's honest — every pull came from a real
                 // saved recording.
-                async rebuildProgression() {
+                rebuildProgression() {
                     if (this.recordings.length === 0) {
                         this.progression = { boss: null, pulls: [], kills: 0, bestDuration: 0 };
                         return;
@@ -1104,21 +1029,7 @@
                         if (currentBoss && parsed.encounter !== currentBoss) break;
                         currentBoss = parsed.encounter;
                         lastModified = rec.modified;
-                        // We need duration + result. Try cache first; if not
-                        // there, hit metadata endpoint lazily.
-                        let meta = this.recordingsMeta[rec.name];
-                        if (!meta) {
-                            try {
-                                const url = '/api/recordings/' +
-                                    rec.name.split('/').map(encodeURIComponent).join('/') +
-                                    '/metadata';
-                                const res = await fetch(url);
-                                if (res.ok) {
-                                    meta = await res.json();
-                                    this.recordingsMeta[rec.name] = meta;
-                                }
-                            } catch (_) {}
-                        }
+                        const meta = rec.meta;
                         collected.push({
                             recording_name: rec.name,
                             duration: meta?.duration || 0,

@@ -8,27 +8,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        ink: { 900: '#0a0806', 800: '#0f0d0a', 700: '#141109', 600: '#1a1610', 500: '#221d15', 400: '#2e271d', 300: '#3d3529' },
-                        parchment: { 900: '#f0e6cd', 700: '#d4ccb6', 500: '#a89c82', 400: '#8a8270', 300: '#6e6552' },
-                        gold: { 500: '#c9a961', 400: '#d6b975', 600: '#a88a45' },
-                    },
-                    fontFamily: {
-                        display: ['"IM Fell English"', 'Georgia', 'serif'],
-                        sans: ['Raleway', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-                        mono: ['"Fira Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-                    },
-                },
-            },
-        };
-    </script>
+    <link rel="stylesheet" href="/static/css/tailwind.css">
+    <script defer src="/static/vendor/alpine.min.js"></script>
+    <script src="/static/vendor/socket.io.min.js"></script>
     <style>
         [x-cloak] { display: none !important; }
 
@@ -1115,6 +1097,7 @@
         const RESIZE_HANDLE_HEIGHT = 8;
         const VIDEO_GRID_GAP = 2;
         const DEFAULT_VIDEO_ASPECT = 16 / 9;
+        const RECORDINGS_REFRESH_DEBOUNCE_MS = 300;
 
         function loadPlayerHeightRatio() {
             try {
@@ -1210,9 +1193,15 @@
 
                 connectSocket() {
                     this.socket = io();
+                    // Bursts (several POV downloads, retention after a save)
+                    // collapse into one refresh.
+                    let refreshTimer = null;
                     this.socket.on('recordings_updated', () => {
-                        this.fetchRecordings();
-                        this.fetchPovs();
+                        clearTimeout(refreshTimer);
+                        refreshTimer = setTimeout(() => {
+                            this.fetchRecordings();
+                            this.fetchPovs();
+                        }, RECORDINGS_REFRESH_DEBOUNCE_MS);
                     });
                     this.socket.on('clip_complete', (data) => {
                         this.clipBusy = false;
@@ -1225,7 +1214,7 @@
                     this.socket.on('pov_download_progress', (data) => {
                         this.povProgress = { ...this.povProgress, [data.video_key]: data };
                         if (data.status === 'completed') {
-                            this.fetchPovs();
+                            // The list and cloud POVs refresh via recordings_updated.
                             this.fetchLocalPovs().then(() => {
                                 if (this.localPovs.length > 0) this.multiPovMode = true;
                             });
