@@ -3,10 +3,13 @@ Cloud Upload Module for WoW Raid Recorder.
 Provides automated upload to cloud storage services after recording completion.
 """
 
+import os
+import json
 import time
 import base64
 import asyncio
 import threading
+import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
@@ -14,6 +17,16 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import requests
+
+
+# Retries for one HTTP step (a part PUT, the metadata POST, a Drive chunk).
+# Backoff doubles per attempt: 1, 2, 4, 8 s ... capped.
+HTTP_STEP_ATTEMPTS = 5
+MAX_BACKOFF_SECONDS = 30
+
+
+def _backoff(attempt: int):
+    time.sleep(min(2 ** (attempt - 1), MAX_BACKOFF_SECONDS))
 
 
 # =============================================================================
@@ -304,8 +317,11 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     file_path, metadata, progress, progress_callback)
 
             if success:
-                # Step 3 (both paths): register metadata in WCR database
-                await self._post_video_metadata(metadata)
+                # Step 3 (both paths): register metadata in WCR database.
+                # Without it the file uses guild storage but nobody can see it.
+                success = await self._post_video_metadata(metadata)
+
+            if success:
                 progress.status = 'completed'
                 progress.uploaded_bytes = file_size
                 if progress_callback:
@@ -363,8 +379,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             attempts = 0
             success = False
 
-            while not success and attempts < 5:
+            while not success and attempts < HTTP_STEP_ATTEMPTS:
                 attempts += 1
+                if attempts > 1:
+                    _backoff(attempts - 1)
                 try:
                     with open(file_path, 'rb') as f:
                         put_resp = requests.put(
@@ -455,8 +473,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     part_success = False
                     put_resp = None
 
-                    while not part_success and attempts < 5:
+                    while not part_success and attempts < HTTP_STEP_ATTEMPTS:
                         attempts += 1
+                        if attempts > 1:
+                            _backoff(attempts - 1)
                         try:
                             put_resp = requests.put(
                                 url,
@@ -513,32 +533,42 @@ class WarcraftRecorderCloud(CloudUploadProvider):
     # Post metadata to WCR database (always last step after file upload)
     # ------------------------------------------------------------------
 
-    async def _post_video_metadata(self, metadata: VideoMetadata):
-        """POST /guild/{g}/video  with CloudMetadata payload."""
-        try:
-            g = requests.utils.quote(self.guild_name)
-            payload = metadata.to_cloud_metadata()
+    async def _post_video_metadata(self, metadata: VideoMetadata) -> bool:
+        """POST /guild/{g}/video with CloudMetadata payload. True if registered."""
+        g = requests.utils.quote(self.guild_name)
+        payload = metadata.to_cloud_metadata()
 
-            resp = requests.post(
-                f"{self.API_BASE}/guild/{g}/video",
-                headers={**self._headers, 'Content-Type': 'application/json'},
-                json=payload,
-                timeout=15,
-            )
+        for attempt in range(1, HTTP_STEP_ATTEMPTS + 1):
+            if attempt > 1:
+                _backoff(attempt - 1)
+            try:
+                resp = requests.post(
+                    f"{self.API_BASE}/guild/{g}/video",
+                    headers={**self._headers, 'Content-Type': 'application/json'},
+                    json=payload,
+                    timeout=15,
+                )
+            except requests.RequestException as e:
+                print(f"[WCR Cloud] Error posting metadata (attempt {attempt}): {e}")
+                continue
 
             if resp.status_code == 401:
+                # Token expired during a long upload: log in again and retry.
                 print("[WCR Cloud] 401 posting metadata — re-authenticating")
                 await self.authenticate()
-                return
+                continue
 
-            if resp.status_code not in (200, 201, 204):
-                print(f"[WCR Cloud] Failed to post metadata: {resp.status_code} {resp.text}")
-            else:
+            if resp.status_code in (200, 201, 204):
                 print(f"[WCR Cloud] ✅ Metadata registered: {metadata.video_key}")
                 self._run_housekeeping(g)
+                return True
 
-        except Exception as e:
-            print(f"[WCR Cloud] Error posting metadata: {e}")
+            print(f"[WCR Cloud] Failed to post metadata (attempt {attempt}): "
+                  f"{resp.status_code} {resp.text[:200]}")
+            if resp.status_code < 500 and resp.status_code != 429:
+                return False  # the payload itself was rejected; retrying won't help
+
+        return False
 
     def get_signed_download_url(self, video_key: str) -> Optional[str]:
         """
@@ -617,12 +647,22 @@ class WarcraftRecorderCloud(CloudUploadProvider):
 
 class CloudUploadQueue:
     """
-    Persistent upload queue. The worker thread runs continuously and blocks
-    on an Event when idle, so items added after startup are always picked up.
+    Upload queue with a single worker thread. Pending (including the one in
+    progress) and failed items are saved to *state_file*, so uploads survive
+    a restart and failed ones can be retried.
     """
 
-    def __init__(self, provider: CloudUploadProvider):
+    MAX_ATTEMPTS = 3
+    RETRY_DELAY_SECONDS = 5
+    MAX_REMEMBERED_FAILURES = 50
+
+    def __init__(self, provider: CloudUploadProvider, provider_name: str = '',
+                 state_file: Optional[Path] = None,
+                 on_uploaded: Optional[Callable[[Path], None]] = None):
         self.provider = provider
+        self.provider_name = provider_name
+        self._state_file = state_file
+        self._on_uploaded = on_uploaded
         self._queue: List[Dict[str, Any]] = []
         self._lock = threading.Lock()
         self._work_event = threading.Event()
@@ -632,8 +672,65 @@ class CloudUploadQueue:
         self.completed: List[str] = []
         self.failed: List[Dict] = []
         self._progress_callbacks: List[Callable] = []
+        self._load_state()
         print(f"[Upload Queue] Initialized ({type(provider).__name__})")
 
+    # ── persistence ──────────────────────────────────────────────────
+    def _item_to_json(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'file_path': str(item['file_path']),
+            'metadata': dataclasses.asdict(item['metadata']),
+            'added_at': item['added_at'],
+            'attempts': item['attempts'],
+            'provider': self.provider_name,
+        }
+
+    def _item_from_json(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if data.get('provider') != self.provider_name:
+            return None  # queued for a provider that is no longer configured
+        path = Path(data['file_path'])
+        if not path.exists():
+            return None
+        return {
+            'file_path': path,
+            'metadata': VideoMetadata(**data['metadata']),
+            'added_at': data.get('added_at', time.time()),
+            'attempts': data.get('attempts', 0),
+        }
+
+    def _load_state(self):
+        if not self._state_file or not self._state_file.exists():
+            return
+        try:
+            data = json.loads(self._state_file.read_text(encoding='utf-8'))
+            for key, target in (('pending', self._queue), ('failed', self.failed)):
+                for raw in data.get(key, []):
+                    item = self._item_from_json(raw)
+                    if item:
+                        target.append(item)
+        except (OSError, ValueError, TypeError, KeyError) as e:
+            print(f"[Upload Queue] ⚠️ Could not load saved queue ({e}); starting empty")
+            return
+        if self._queue:
+            print(f"[Upload Queue] Resuming {len(self._queue)} pending upload(s) from last session")
+
+    def _save_state(self):
+        """Write pending/failed items. Call with self._lock held."""
+        if not self._state_file or self._stop_event.is_set():
+            return  # a stopped queue must not overwrite its replacement's state
+        pending = ([self._active] if self._active else []) + self._queue
+        data = {
+            'pending': [self._item_to_json(i) for i in pending],
+            'failed': [self._item_to_json(i) for i in self.failed[-self.MAX_REMEMBERED_FAILURES:]],
+        }
+        tmp = self._state_file.with_suffix('.tmp')
+        try:
+            tmp.write_text(json.dumps(data, indent=1), encoding='utf-8')
+            tmp.replace(self._state_file)
+        except OSError as e:
+            print(f"[Upload Queue] ⚠️ Could not save queue: {e}")
+
+    # ── lifecycle ────────────────────────────────────────────────────
     def start(self):
         """Start the persistent worker thread."""
         if self._thread and self._thread.is_alive():
@@ -641,12 +738,19 @@ class CloudUploadQueue:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
+        if self._queue:
+            self._work_event.set()
         print("[Upload Queue] Worker started")
 
     def stop(self):
         """Signal the worker to stop after the current upload finishes."""
         self._stop_event.set()
         self._work_event.set()  # wake it up so it can exit
+
+    # ── queue operations ─────────────────────────────────────────────
+    def _is_queued(self, file_path: Path) -> bool:
+        active = [self._active] if self._active else []
+        return any(i['file_path'] == file_path for i in active + self._queue)
 
     def add_to_queue(self, file_path: Path, metadata: VideoMetadata) -> bool:
         if not file_path.exists():
@@ -661,14 +765,32 @@ class CloudUploadQueue:
         }
 
         with self._lock:
+            if self._is_queued(file_path):
+                print(f"[Upload Queue] Already queued: {metadata.video_key}")
+                return True
             self._queue.append(item)
+            self._save_state()
+            size = len(self._queue)
 
-        print(f"[Upload Queue] Queued: {metadata.video_key} "
-              f"(queue size: {len(self._queue)})")
+        print(f"[Upload Queue] Queued: {metadata.video_key} (queue size: {size})")
 
         # Wake the worker thread
         self._work_event.set()
         return True
+
+    def retry_failed(self) -> int:
+        """Move failed uploads whose files still exist back into the queue."""
+        with self._lock:
+            retry = [i for i in self.failed if i['file_path'].exists()
+                     and not self._is_queued(i['file_path'])]
+            for item in retry:
+                item['attempts'] = 0
+            self._queue.extend(retry)
+            self.failed = []
+            self._save_state()
+        if retry:
+            self._work_event.set()
+        return len(retry)
 
     def add_progress_callback(self, cb: Callable):
         self._progress_callbacks.append(cb)
@@ -680,6 +802,7 @@ class CloudUploadQueue:
             except Exception as e:
                 print(f"[Upload Queue] Progress callback error: {e}")
 
+    # ── worker ───────────────────────────────────────────────────────
     def _worker(self):
         """Persistent worker loop — blocks when idle, wakes on new items."""
         loop = asyncio.new_event_loop()
@@ -690,57 +813,70 @@ class CloudUploadQueue:
             self._work_event.wait()
             self._work_event.clear()
 
-            while True:
+            while not self._stop_event.is_set():
                 with self._lock:
                     if not self._queue:
                         break
                     item = self._queue.pop(0)
-
-                item['attempts'] += 1
-                self._active = item
-                meta = item['metadata']
-
-                print(f"[Upload Queue] Processing: {meta.video_key} "
-                      f"(attempt {item['attempts']})")
-
-                try:
-                    success = loop.run_until_complete(
-                        self.provider.upload_video(
-                            item['file_path'], meta,
-                            progress_callback=self._on_progress,
-                        )
-                    )
-                except Exception as e:
-                    print(f"[Upload Queue] Exception during upload: {e}")
-                    success = False
-
-                if success:
-                    self.completed.append(meta.video_key)
-                    print(f"[Upload Queue] ✅ Completed: {meta.video_key}")
-                elif item['attempts'] < 3:
-                    print(f"[Upload Queue] ⚠️ Retry {item['attempts']}/3: {meta.video_key}")
-                    with self._lock:
-                        self._queue.insert(0, item)  # retry next iteration
-                    time.sleep(5)
-                else:
-                    print(f"[Upload Queue] ❌ Failed after 3 attempts: {meta.video_key}")
-                    self.failed.append(item)
-
-                self._active = None
+                    item['attempts'] += 1
+                    self._active = item
+                    self._save_state()
+                self._upload_item(loop, item)
 
         loop.close()
         print("[Upload Queue] Worker stopped")
 
+    def _upload_item(self, loop, item: Dict[str, Any]):
+        meta = item['metadata']
+        print(f"[Upload Queue] Processing: {meta.video_key} (attempt {item['attempts']})")
+        try:
+            success = loop.run_until_complete(
+                self.provider.upload_video(
+                    item['file_path'], meta,
+                    progress_callback=self._on_progress,
+                )
+            )
+        except Exception as e:
+            print(f"[Upload Queue] Exception during upload: {e}")
+            success = False
+
+        should_retry = not success and item['attempts'] < self.MAX_ATTEMPTS
+        with self._lock:
+            self._active = None
+            if success:
+                self.completed.append(meta.video_key)
+            elif should_retry:
+                self._queue.insert(0, item)
+            else:
+                self.failed.append(item)
+            self._save_state()
+
+        if success:
+            print(f"[Upload Queue] ✅ Completed: {meta.video_key}")
+            if self._on_uploaded:
+                try:
+                    self._on_uploaded(item['file_path'])
+                except Exception as e:
+                    print(f"[Upload Queue] Post-upload hook failed: {e}")
+        elif should_retry:
+            print(f"[Upload Queue] ⚠️ Retry {item['attempts']}/{self.MAX_ATTEMPTS}: {meta.video_key}")
+            time.sleep(self.RETRY_DELAY_SECONDS)
+        else:
+            print(f"[Upload Queue] ❌ Failed after {self.MAX_ATTEMPTS} attempts: {meta.video_key}")
+
     def get_status(self) -> Dict[str, Any]:
         with self._lock:
             q_size = len(self._queue)
+            active = self._active['metadata'].video_key if self._active else None
         return {
             'is_running': self._thread.is_alive() if self._thread else False,
             'queue_size': q_size,
-            'active_upload': self._active['metadata'].video_key if self._active else None,
+            'active_upload': active,
             'completed_count': len(self.completed),
             'failed_count': len(self.failed),
         }
+
+
 # =============================================================================
 # Google Drive Upload Provider
 # =============================================================================
@@ -813,17 +949,14 @@ class GoogleDriveUpload(CloudUploadProvider):
                     str(self.TOKEN_FILE), self.SCOPES)
 
             if not creds or not creds.valid:
-                if creds and creds.expired and creds.refresh_token:
-                    print("[GDrive] Refreshing expired token...")
-                    creds.refresh(Request())
-                else:
+                creds = self._refresh(creds, Request) if creds and creds.expired and creds.refresh_token else None
+                if creds is None:
                     print("[GDrive] Opening browser for OAuth2 authorisation...")
                     flow = InstalledAppFlow.from_client_secrets_file(
                         str(self.credentials_file), self.SCOPES)
                     creds = flow.run_local_server(port=0)
 
-                with open(self.TOKEN_FILE, 'w') as f:
-                    f.write(creds.to_json())
+                self._write_token(creds.to_json())
                 print(f"[GDrive] Token cached at {self.TOKEN_FILE}")
 
             self._creds = creds
@@ -915,6 +1048,29 @@ class GoogleDriveUpload(CloudUploadProvider):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _refresh(creds, request_cls):
+        """Refreshed credentials, or None if the refresh token is no longer valid.
+
+        Refresh tokens of Google projects in "Testing" mode expire after 7 days;
+        returning None sends the caller back through the browser consent flow.
+        """
+        from google.auth.exceptions import RefreshError
+        print("[GDrive] Refreshing expired token...")
+        try:
+            creds.refresh(request_cls())
+            return creds
+        except RefreshError as e:
+            print(f"[GDrive] Token refresh failed ({e}); re-authorising")
+            return None
+
+    def _write_token(self, token_json: str):
+        # The token grants Drive access: owner-only permissions.
+        fd = os.open(self.TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(token_json)
+        os.chmod(self.TOKEN_FILE, 0o600)  # also tighten a token written by older versions
+
+    @staticmethod
     def _check_dependencies():
         import google.oauth2.credentials          # noqa: F401
         import google_auth_oauthlib.flow          # noqa: F401
@@ -975,47 +1131,93 @@ class GoogleDriveUpload(CloudUploadProvider):
             print("[GDrive] Missing Location header in resumable upload response")
         return session_uri
 
+    @staticmethod
+    def _committed_bytes(resp) -> int:
+        """Bytes Drive has stored, from a 308 response's Range header.
+
+        No Range header means nothing has been stored yet.
+        """
+        range_header = resp.headers.get('Range')
+        if not range_header:
+            return 0
+        return int(range_header.rsplit('-', 1)[1]) + 1
+
+    def _query_upload_offset(self, session_uri: str, file_size: int) -> Optional[int]:
+        """Ask Drive how much of an interrupted upload it has; None if unknown."""
+        try:
+            resp = requests.put(
+                session_uri,
+                headers={**self._auth_header(), 'Content-Range': f'bytes */{file_size}'},
+                data=b'',
+                timeout=30,
+            )
+        except requests.RequestException as e:
+            print(f"[GDrive] Upload status query failed: {e}")
+            return None
+        if resp.status_code in (200, 201):
+            return file_size
+        if resp.status_code == 308:
+            return self._committed_bytes(resp)
+        return None
+
+    def _put_chunk(self, session_uri: str, chunk: bytes, offset: int,
+                   file_size: int, mime: str):
+        """PUT one chunk. Returns the response, or None on a network error."""
+        chunk_end = offset + len(chunk) - 1
+        try:
+            return requests.put(
+                session_uri,
+                headers={
+                    **self._auth_header(),
+                    'Content-Type': mime,
+                    'Content-Range': f'bytes {offset}-{chunk_end}/{file_size}',
+                },
+                data=chunk,
+                timeout=300,
+            )
+        except requests.RequestException as e:
+            print(f"[GDrive] Chunk upload error at byte {offset}: {e}")
+            return None
+
     def _execute_resumable_upload(self, file_path: Path, file_size: int,
                                   session_uri: str, progress: UploadProgress,
                                   progress_callback) -> bool:
-        """Stream file to Drive in chunks, updating progress after each."""
+        """Stream file to Drive in chunks, resuming from Drive's offset after errors."""
         ext = file_path.suffix.lower()
         mime = 'video/mp4' if ext == '.mp4' else 'application/octet-stream'
         uploaded = 0
+        consecutive_failures = 0
 
         with open(file_path, 'rb') as f:
             while uploaded < file_size:
+                # Drive may store less than we sent; always continue from its offset.
+                f.seek(uploaded)
                 chunk = f.read(self.CHUNK_SIZE)
                 if not chunk:
                     break
 
-                chunk_end = uploaded + len(chunk) - 1
-                headers = {
-                    **self._auth_header(),
-                    'Content-Type': mime,
-                    'Content-Range': f'bytes {uploaded}-{chunk_end}/{file_size}',
-                }
+                resp = self._put_chunk(session_uri, chunk, uploaded, file_size, mime)
 
-                resp = requests.put(
-                    session_uri,
-                    headers=headers,
-                    data=chunk,
-                    timeout=300,
-                )
-
-                # 200/201 → final chunk accepted; 308 → more chunks expected
-                if resp.status_code in (200, 201):
+                if resp is not None and resp.status_code in (200, 201):
                     uploaded = file_size
-                elif resp.status_code == 308:
-                    range_header = resp.headers.get('Range')
-                    if range_header:
-                        uploaded = int(range_header.split('-')[1]) + 1
-                    else:
-                        uploaded += len(chunk)
-                else:
-                    print(f"[GDrive] Unexpected status during upload chunk: "
+                    consecutive_failures = 0
+                elif resp is not None and resp.status_code == 308:
+                    uploaded = self._committed_bytes(resp)
+                    consecutive_failures = 0
+                elif resp is not None and resp.status_code < 500 and resp.status_code != 429:
+                    # 4xx: the session is gone or the request is invalid.
+                    print(f"[GDrive] Upload chunk rejected: "
                           f"{resp.status_code} {resp.text[:200]}")
                     return False
+                else:
+                    consecutive_failures += 1
+                    if consecutive_failures >= HTTP_STEP_ATTEMPTS:
+                        print("[GDrive] Giving up after repeated chunk failures")
+                        return False
+                    _backoff(consecutive_failures)
+                    offset = self._query_upload_offset(session_uri, file_size)
+                    if offset is not None:
+                        uploaded = offset
 
                 progress.uploaded_bytes = uploaded
                 if progress_callback:
