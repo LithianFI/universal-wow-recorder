@@ -31,7 +31,6 @@ Examples:
   %(prog)s --config myconfig.ini  # Use custom config file
   %(prog)s --show-config      # Show config and exit
   %(prog)s --create-config    # Create default config and exit
-  %(prog)s --no-rename        # Disable auto-renaming
         """
     )
     
@@ -39,8 +38,6 @@ Examples:
                        help='Path to configuration file')
     parser.add_argument('--show-config', action='store_true',
                        help='Show current configuration and exit')
-    parser.add_argument('--no-rename', action='store_true',
-                       help='Disable auto-renaming of recordings')
     parser.add_argument('--create-config', action='store_true',
                        help='Create a default config file and exit')
     
@@ -84,11 +81,9 @@ def print_startup_info(config, obs_settings):
         print(f"🎥 Fallback Recording Path: {config.RECORDING_PATH_FALLBACK}")
     
     print(f"\n⚙️  Configuration:")
-    print(f"  • Auto-rename: {'ENABLED' if config.AUTO_RENAME else 'DISABLED'}")
-    if config.AUTO_RENAME:
-        print(f"    - Rename delay: {config.RENAME_DELAY}s")
-        print(f"    - Min duration: {config.MIN_RECORDING_DURATION}s")
-        print(f"    - Delete short recordings: {'YES' if config.DELETE_SHORT_RECORDINGS else 'NO'}")
+    print(f"  • Rename delay: {config.RENAME_DELAY}s")
+    print(f"  • Min duration: {config.MIN_RECORDING_DURATION}s")
+    print(f"  • Delete short recordings: {'YES' if config.DELETE_SHORT_RECORDINGS else 'NO'}")
     
     print(f"\n🎯 Enabled Difficulties:")
     print(f"  • LFR: {'✓' if config.RECORD_LFR else '✗'}")
@@ -154,11 +149,6 @@ def main():
     
     # Initialize configuration
     config = ConfigManager(Path(args.config) if args.config else None)
-    
-    # Apply command line overrides
-    if args.no_rename:
-        config.set('Recording', 'auto_rename', 'false')
-        print(f"{LOG_PREFIXES['CONFIG']} Auto-rename disabled via command line")
     
     # Show configuration if requested
     if args.show_config:

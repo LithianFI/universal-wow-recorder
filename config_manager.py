@@ -45,11 +45,9 @@ class ConfigManager:
             'password': '',
         },
         'Recording': {
-            'auto_rename': 'true',
             'rename_delay': '3',
             'min_recording_duration': '5',
             'delete_short_recordings': 'true',
-            'dungeon_timeout_seconds': '120',
             'track_player_deaths': 'false',
             'retention_max_age_days': '0',
             'retention_max_per_group': '0',
@@ -102,11 +100,9 @@ class ConfigManager:
             'password': lambda v: None if v == '[set]' else str(v),
         }),
         'recording': ('Recording', {
-            'auto_rename':             lambda v: str(v).lower(),
             'rename_delay':            str,
             'min_recording_duration':  str,
             'delete_short_recordings': lambda v: str(v).lower(),
-            'dungeon_timeout_seconds': str,
             'track_player_deaths':     lambda v: str(v).lower(),
             'organize_by_date':        lambda v: str(v).lower(),
             'recording_path_fallback': str,
@@ -247,9 +243,6 @@ port = 4455
 password =
 
 [Recording]
-# Automatically rename recordings based on boss encounters
-auto_rename = true
-
 # Delay in seconds before renaming (to ensure OBS finished writing)
 rename_delay = 3
 
@@ -261,9 +254,6 @@ delete_short_recordings = true
 
 # Fallback recording path if OBS directory cannot be detected
 recording_path_fallback = {recording_path}
-
-# Timeout in seconds for M+ dungeon idle detection
-dungeon_timeout_seconds = 120
 
 # Track player deaths in metadata
 track_player_deaths = false
@@ -396,11 +386,6 @@ proton_folder =
         return self.config.get('OBS', 'password', fallback='', raw=True)
 
     @property
-    def AUTO_RENAME(self) -> bool:
-        """Check if auto-rename is enabled."""
-        return self.config.getboolean('Recording', 'auto_rename', fallback=True)
-
-    @property
     def RENAME_DELAY(self) -> int:
         """Get rename delay in seconds."""
         return self.config.getint('Recording', 'rename_delay', fallback=3)
@@ -457,11 +442,6 @@ proton_folder =
     @property
     def RECORD_OTHER(self) -> bool:
         return self.config.getboolean('Difficulties', 'record_other', fallback=False)
-
-    @property
-    def DUNGEON_TIMEOUT_SECONDS(self) -> int:
-        """Get dungeon idle timeout in seconds."""
-        return self.config.getint('Recording', 'dungeon_timeout_seconds', fallback=120)
 
     @property
     def RECORD_MPLUS(self) -> bool:

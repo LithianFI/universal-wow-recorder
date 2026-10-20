@@ -279,12 +279,10 @@ def get_config():
             'password': '[set]' if cm.OBS_PASSWORD else '',
         },
         'recording': {
-            'auto_rename': cm.AUTO_RENAME,
             'rename_delay': cm.RENAME_DELAY,
             'min_recording_duration': cm.MIN_RECORDING_DURATION,
             'delete_short_recordings': cm.DELETE_SHORT_RECORDINGS,
             'recording_path_fallback': str(cm.RECORDING_PATH_FALLBACK or ''),
-            'dungeon_timeout_seconds': cm.DUNGEON_TIMEOUT_SECONDS,
             'track_player_deaths': cm.TRACK_PLAYER_DEATHS,
             'organize_by_date': cm.ORGANIZE_BY_DATE,
             'retention_max_age_days': cm.RETENTION_MAX_AGE_DAYS,

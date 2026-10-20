@@ -325,17 +325,6 @@
                 <div class="space-y-4">
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-parchment-700 text-sm font-medium">Auto rename</div>
-                            <div class="text-parchment-400 text-xs">Rename recordings with boss name and difficulty</div>
-                        </div>
-                        <button type="button" class="toggle" :class="config.recording.auto_rename ? 'on' : 'off'"
-                            @click="config.recording.auto_rename = !config.recording.auto_rename">
-                            <span class="toggle-thumb"></span>
-                        </button>
-                    </div>
-
-                    <div class="flex items-center justify-between">
-                        <div>
                             <div class="text-parchment-700 text-sm font-medium">Delete short recordings</div>
                             <div class="text-parchment-400 text-xs">Auto-delete pulls shorter than the minimum duration</div>
                         </div>
@@ -386,17 +375,10 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                            <label class="field-label">Dungeon timeout (s)</label>
-                            <input type="number" x-model.number="config.recording.dungeon_timeout_seconds" min="30" class="input">
-                            <p class="field-help">Idle timeout for M+ dungeon auto-end (default 120).</p>
-                        </div>
-                        <div>
-                            <label class="field-label">Fallback recording path</label>
-                            <input type="text" x-model="config.recording.recording_path_fallback" class="input input-mono">
-                            <p class="field-help">Used if OBS recording directory can't be detected.</p>
-                        </div>
+                    <div class="mt-4">
+                        <label class="field-label">Fallback recording path</label>
+                        <input type="text" x-model="config.recording.recording_path_fallback" class="input input-mono">
+                        <p class="field-help">Used if OBS recording directory can't be detected.</p>
                     </div>
                 </div>
 
@@ -757,12 +739,10 @@
                     general: { log_dir: '', log_pattern: '', recording_extension: '.mp4', ffmpeg_path: '' },
                     obs: { host: 'localhost', port: 4455, password: '' },
                     recording: {
-                        auto_rename: true,
                         rename_delay: 3,
                         min_recording_duration: 5,
                         delete_short_recordings: true,
                         recording_path_fallback: '',
-                        dungeon_timeout_seconds: 120,
                         track_player_deaths: false,
                         organize_by_date: false,
                         retention_max_age_days: 0,
@@ -815,12 +795,10 @@
                             password: data.obs?.password ?? '',
                         };
                         this.config.recording = {
-                            auto_rename: data.recording?.auto_rename !== false,
                             rename_delay: data.recording?.rename_delay ?? 3,
                             min_recording_duration: data.recording?.min_recording_duration ?? 5,
                             delete_short_recordings: data.recording?.delete_short_recordings !== false,
                             recording_path_fallback: data.recording?.recording_path_fallback ?? '',
-                            dungeon_timeout_seconds: data.recording?.dungeon_timeout_seconds ?? 120,
                             track_player_deaths: data.recording?.track_player_deaths === true,
                             organize_by_date: data.recording?.organize_by_date === true,
                             retention_max_age_days: data.recording?.retention_max_age_days ?? 0,
