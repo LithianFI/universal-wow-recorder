@@ -12,6 +12,10 @@
   "build": {
     "appId": "com.wowraidrecorder",
     "productName": "WoW Raid Recorder",
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
     "extraResources": [
       {
         "from": "dist/WoWRaidRecorder",
