@@ -57,6 +57,9 @@ _LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
 # pull cuts it short so its start isn't lost.
 _RECORDING_OVERRUN_SECONDS = 3
 
+# Upper bound for a believable gap between the log's START and the video start.
+_MAX_VIDEO_START_DELAY_MS = 60_000
+
 # Long enough for an end thread to finish (log flush wait, rename delay,
 # file stability check) so a save in progress isn't cut off at exit.
 _SHUTDOWN_THREAD_JOIN_SECONDS = 10.0
@@ -455,7 +458,7 @@ class CombatParser:
 
         self._recording_requested = self.processor.should_record_dungeon()
         if self._recording_requested:
-            self._submit_obs_job(self._dungeon_start_job, dungeon_info)
+            self._submit_obs_job(self._dungeon_start_job, dungeon_info, self.current_metadata)
 
         # Emit event for frontend
         self._emit_event('DUNGEON_START', dungeon_info.timestamp, {
@@ -585,7 +588,7 @@ class CombatParser:
 
         self._recording_requested = self.processor.should_record_encounter(boss_info)
         if self._recording_requested:
-            self._submit_obs_job(self._encounter_start_job, boss_info)
+            self._submit_obs_job(self._encounter_start_job, boss_info, self.current_metadata)
 
         # Emit event for frontend
         self._emit_event('ENCOUNTER_START', boss_info.timestamp, {
@@ -935,13 +938,28 @@ class CombatParser:
                 return None
         return self._obs_executor.submit(run)
 
-    def _dungeon_start_job(self, dungeon_info: DungeonInfo):
+    def _dungeon_start_job(self, dungeon_info: DungeonInfo, metadata: RecordingMetadata):
         if self.processor.process_dungeon_start(dungeon_info):
+            self._note_video_start(metadata)
             self.state.start_recording()
 
-    def _encounter_start_job(self, boss_info: BossInfo):
+    def _encounter_start_job(self, boss_info: BossInfo, metadata: RecordingMetadata):
         if self.processor.process_encounter_start(boss_info):
+            self._note_video_start(metadata)
             self.state.start_recording()
+
+    @staticmethod
+    def _note_video_start(metadata: RecordingMetadata):
+        """Record how far the video start lags the log's START.
+
+        WoW writes the log in bursts, so START is often read seconds late;
+        death/cooldown offsets are relative to START, the video isn't.
+        Implausible values (clock changes, replayed logs) are ignored.
+        """
+        if not metadata.start_timestamp:
+            return
+        delay_ms = int(time.time() * 1000) - metadata.start_timestamp
+        metadata.video_start_delay_ms = delay_ms if 0 <= delay_ms <= _MAX_VIDEO_START_DELAY_MS else 0
 
     def _stop_after_overrun(self, context: _RecordingContext) -> StopResult:
         """Keep recording briefly past the END, then stop OBS."""

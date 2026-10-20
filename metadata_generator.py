@@ -38,6 +38,9 @@ class RecordingMetadata:
         self.combatants = []
         self.cooldown_casts = []
         self.start_timestamp = None
+        # How long after the log's START the video began (log flush lag,
+        # OBS start). Our own field: markers are shifted by it in the player.
+        self.video_start_delay_ms = 0
         self.unique_hash = None
         self.boss_percent = 0
         self.app_version = "7.5.1"
@@ -249,6 +252,7 @@ class RecordingMetadata:
             "combatants": self.combatants,
             "cooldownCasts": self.cooldown_casts,
             "start": self.start_timestamp,
+            "videoStartDelayMs": self.video_start_delay_ms,
             "uniqueHash": self.unique_hash,
             "bossPercent": self.boss_percent,
             "appVersion": self.app_version
