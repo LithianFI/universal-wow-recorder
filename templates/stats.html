@@ -177,7 +177,7 @@
                     <div class="flex items-center gap-1.5">
                         <span class="label-cap">Sort</span>
                         <select x-model="bossSort"
-                            class="text-xs bg-ink-600 border border-ink-400 rounded px-2 py-1 text-parchment-500 cursor-pointer">
+                            class="text-xs bg-ink-600 border border-ink-400 rounded-sm px-2 py-1 text-parchment-500 cursor-pointer">
                             <option value="pulls">Most pulls</option>
                             <option value="name">Name</option>
                             <option value="best">Best time</option>
@@ -289,8 +289,8 @@
                                                 <div class="flex items-center gap-2 text-xs">
                                                     <span class="font-mono text-parchment-300 w-8 text-right shrink-0"
                                                         x-text="pull.pct.toFixed(1) + '%'"></span>
-                                                    <div class="flex-1 h-1.5 bg-ink-600 rounded overflow-hidden">
-                                                        <div class="h-full rounded hp-bar-fill"
+                                                    <div class="flex-1 h-1.5 bg-ink-600 rounded-sm overflow-hidden">
+                                                        <div class="h-full rounded-sm hp-bar-fill"
                                                             :style="'width:' + pull.pct + '%;background:' + hpBarColor(pull.pct)"></div>
                                                     </div>
                                                     <span class="font-mono text-parchment-400 text-[11px] shrink-0"
@@ -306,7 +306,7 @@
                                     <div class="label-cap mb-1.5">Most deaths</div>
                                     <div class="flex flex-wrap gap-2">
                                         <template x-for="k in boss.topKillers" :key="k.name">
-                                            <span class="text-xs px-2 py-0.5 rounded bg-ink-600 border border-ink-400">
+                                            <span class="text-xs px-2 py-0.5 rounded-sm bg-ink-600 border border-ink-400">
                                                 <span class="text-red-400 font-mono" x-text="k.count"></span>
                                                 <span class="text-parchment-500 ml-1" x-text="k.name"></span>
                                             </span>
@@ -334,8 +334,8 @@
                                     <span class="font-mono text-parchment-300 w-4 text-right shrink-0"
                                         x-text="i+1"></span>
                                     <span class="flex-1 text-parchment-700 truncate" x-text="p.name"></span>
-                                    <div class="w-24 h-1.5 bg-ink-600 rounded overflow-hidden shrink-0">
-                                        <div class="h-full bg-red-600/60 rounded"
+                                    <div class="w-24 h-1.5 bg-ink-600 rounded-sm overflow-hidden shrink-0">
+                                        <div class="h-full bg-red-600/60 rounded-sm"
                                             :style="'width:' + (p.count / deathsByPlayer[0]?.count * 100) + '%'"></div>
                                     </div>
                                     <span class="font-mono text-red-400 w-6 text-right shrink-0"
@@ -353,8 +353,8 @@
                                     <span class="font-mono text-parchment-300 w-4 text-right shrink-0"
                                         x-text="i+1"></span>
                                     <span class="flex-1 text-parchment-700 truncate" x-text="b.name"></span>
-                                    <div class="w-24 h-1.5 bg-ink-600 rounded overflow-hidden shrink-0">
-                                        <div class="h-full bg-red-600/60 rounded"
+                                    <div class="w-24 h-1.5 bg-ink-600 rounded-sm overflow-hidden shrink-0">
+                                        <div class="h-full bg-red-600/60 rounded-sm"
                                             :style="'width:' + (b.count / deathsByBoss[0]?.count * 100) + '%'"></div>
                                     </div>
                                     <span class="font-mono text-red-400 w-6 text-right shrink-0"

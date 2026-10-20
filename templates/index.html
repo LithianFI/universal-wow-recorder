@@ -258,7 +258,7 @@
                         x-text="getDifficultyName(status.recorder?.difficulty_id) || '—'"></span>
                     <span class="text-parchment-400 text-xs">attempt #<span x-text="bossAttemptCount"></span></span>
                     <template x-if="status.recorder?.manual_recording">
-                        <span class="text-xs px-1.5 py-0.5 rounded bg-ink-600 text-parchment-400">manual</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded-sm bg-ink-600 text-parchment-400">manual</span>
                     </template>
                 </div>
             </div>
@@ -363,7 +363,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 px-4 pb-4">
                     <!-- Video thumbnail -->
                     <div class="md:col-span-3">
-                        <div class="relative aspect-video bg-ink-900 rounded overflow-hidden cursor-pointer group"
+                        <div class="relative aspect-video bg-ink-900 rounded-sm overflow-hidden cursor-pointer group"
                             @click="openPreview(lastPull?.recording)"
                             style="background: radial-gradient(circle at 30% 40%, rgba(80,40,30,0.4), transparent 50%),
                                                radial-gradient(circle at 70% 60%, rgba(120,30,40,0.35), transparent 50%),
@@ -382,7 +382,7 @@
                         </div>
 
                         <!-- Death timeline -->
-                        <div class="relative mt-2 h-2 bg-ink-600 rounded overflow-hidden">
+                        <div class="relative mt-2 h-2 bg-ink-600 rounded-sm overflow-hidden">
                             <template x-for="d in (lastPull?.deaths || [])" :key="d.timestamp">
                                 <div class="absolute top-0 bottom-0 w-0.5 bg-red-500/85"
                                     :style="'left:' + ((d.timestamp / (lastPull?.duration || 1)) * 100) + '%;'"
@@ -554,7 +554,7 @@
                         <span class="text-parchment-700 truncate" x-text="cloudStatus.queue?.active_upload"></span>
                         <span class="text-parchment-400 ml-2 shrink-0 font-mono" x-text="uploadSpeed"></span>
                     </div>
-                    <div class="h-1.5 bg-ink-600 rounded overflow-hidden border border-ink-500">
+                    <div class="h-1.5 bg-ink-600 rounded-sm overflow-hidden border border-ink-500">
                         <div class="h-full bg-gold-500 transition-all duration-300"
                             :style="'width:' + (uploadProgress || 0) + '%;'"></div>
                     </div>
@@ -563,17 +563,17 @@
                 </div>
 
                 <div class="grid grid-cols-3 gap-3">
-                    <div class="text-center p-2 bg-ink-600 rounded">
+                    <div class="text-center p-2 bg-ink-600 rounded-sm">
                         <div class="font-mono text-xl text-parchment-900"
                             x-text="cloudStatus.queue?.queue_size || 0"></div>
                         <div class="label-cap mt-1">Queued</div>
                     </div>
-                    <div class="text-center p-2 bg-ink-600 rounded">
+                    <div class="text-center p-2 bg-ink-600 rounded-sm">
                         <div class="font-mono text-xl" style="color:#8fd06b;"
                             x-text="cloudStatus.queue?.completed_count || 0"></div>
                         <div class="label-cap mt-1">Completed</div>
                     </div>
-                    <div class="text-center p-2 bg-ink-600 rounded">
+                    <div class="text-center p-2 bg-ink-600 rounded-sm">
                         <div class="font-mono text-xl"
                             :style="(cloudStatus.queue?.failed_count || 0) > 0 ? 'color:#e07070;' : 'color:#a89c82;'"
                             x-text="cloudStatus.queue?.failed_count || 0"></div>
@@ -653,12 +653,12 @@
                             :style="previewIsFullscreen ? 'position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.97) 40%);padding:1.25rem 1rem 0.75rem;cursor:default' : 'background:rgba(0,0,0,0.92);padding:0.75rem'">
 
                             <!-- Timeline -->
-                            <div class="relative h-2 bg-white/20 rounded cursor-pointer mb-3"
+                            <div class="relative h-2 bg-white/20 rounded-sm cursor-pointer mb-3"
                                 x-ref="previewTimeline"
                                 @click="previewSeekTo($event)"
                                 @mousemove="previewHoverSeek($event)"
                                 @mouseleave="previewSeekPreviewTime = null">
-                                <div class="h-full bg-amber-400 rounded transition-all"
+                                <div class="h-full bg-amber-400 rounded-sm transition-all"
                                     :style="'width:' + previewPlayedPercent + '%;'"></div>
                                 <template x-for="(pct, i) in previewDeathMarkerPositions" :key="i">
                                     <div class="absolute top-0 bottom-0 w-0.5 bg-red-500"
@@ -672,7 +672,7 @@
                                 </template>
                                 <!-- Seek preview tooltip -->
                                 <div x-show="previewSeekPreviewTime !== null"
-                                    class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                                    class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
                                     :style="'left:' + previewSeekPreviewPercent + '%;'"
                                     x-text="previewFormatTime(previewSeekPreviewTime)"></div>
                             </div>
@@ -716,7 +716,7 @@
                                 <div class="flex items-center gap-1">
                                     <template x-for="spd in [0.5, 1, 1.5, 2]" :key="spd">
                                         <button @click="previewSetSpeed(spd)"
-                                            class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
+                                            class="px-1.5 py-0.5 rounded-sm text-[11px] font-mono transition-colors"
                                             :class="previewSpeed === spd
                                                 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                                                 : 'text-white/40 hover:text-white/70'"

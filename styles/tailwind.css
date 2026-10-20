@@ -1,5 +1,49 @@
 /* Source for static/css/tailwind.css — rebuild with `npm run build:css`
    after adding Tailwind classes to the templates. */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
+/* Scan only the templates; automatic detection would also walk venv/. */
+@import "tailwindcss" source(none);
+@source "../templates";
+
+/* Theme shared by all pages. */
+@theme {
+  --color-ink-900: #0a0806;
+  --color-ink-800: #0f0d0a;
+  --color-ink-700: #141109;
+  --color-ink-600: #1a1610;
+  --color-ink-500: #221d15;
+  --color-ink-400: #2e271d;
+  --color-ink-300: #3d3529;
+
+  --color-parchment-900: #f0e6cd;
+  --color-parchment-700: #d4ccb6;
+  --color-parchment-500: #a89c82;
+  --color-parchment-400: #8a8270;
+  --color-parchment-300: #6e6552;
+
+  --color-gold-400: #d6b975;
+  --color-gold-500: #c9a961;
+  --color-gold-600: #a88a45;
+
+  --color-diff-mythic: #ff8c1a;
+  --color-diff-heroic: #73adff;
+  --color-diff-normal: #87cf63;
+  --color-diff-lfr: #a89c82;
+
+  --font-display: "IM Fell English", Georgia, serif;
+  --font-sans: Raleway, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Fira Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Tailwind v3 defaults the templates were written against (v4 changed them). */
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+  input::placeholder, textarea::placeholder {
+    color: var(--color-gray-400);
+  }
+  button:not(:disabled), [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}

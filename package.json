@@ -5,7 +5,7 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "build:css": "tailwindcss -c tailwind.config.js -i styles/tailwind.css -o static/css/tailwind.css --minify",
+    "build:css": "tailwindcss -i styles/tailwind.css -o static/css/tailwind.css --minify",
     "build:python": "venv/bin/pyinstaller wow_raid_recorder.spec --noconfirm",
     "build:electron": "electron-builder",
     "build": "npm run build:css && npm run build:python && npm run build:electron"
@@ -24,23 +24,31 @@
       }
     ],
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Utility"
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.utilities"
     }
   },
   "devDependencies": {
-    "electron": "^32.0.0",
-    "electron-builder": "^25.0.0",
-    "tailwindcss": "3.4.17"
+    "electron": "^44.9.2",
+    "electron-builder": "^26.15.3",
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
   },
   "allowScripts": {
-    "electron@32.3.3": true
+    "electron@44.9.2": true
   }
 }

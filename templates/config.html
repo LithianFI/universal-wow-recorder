@@ -201,7 +201,7 @@
 
         <!-- Flash message -->
         <div x-show="message" x-cloak
-            class="mb-5 px-4 py-3 rounded border flex items-center justify-between"
+            class="mb-5 px-4 py-3 rounded-sm border flex items-center justify-between"
             :style="messageType === 'success'
                 ? 'background: rgba(112,194,89,0.10); border-color: rgba(112,194,89,0.4); color:#8fd06b;'
                 : 'background: rgba(220,80,80,0.10); border-color: rgba(220,80,80,0.4); color:#e07070;'">
@@ -309,7 +309,7 @@
                     </div>
                 </div>
 
-                <div x-show="obsTestResult" x-cloak class="mt-4 px-3 py-2 rounded text-xs"
+                <div x-show="obsTestResult" x-cloak class="mt-4 px-3 py-2 rounded-sm text-xs"
                     :style="obsTestSuccess
                         ? 'background: rgba(112,194,89,0.10); border:1px solid rgba(112,194,89,0.3); color:#8fd06b;'
                         : 'background: rgba(220,80,80,0.10); border:1px solid rgba(220,80,80,0.3); color:#e07070;'">
@@ -494,7 +494,7 @@
                                 @change="config.boss_names[id] = $event.target.value"
                                 class="input flex-1" placeholder="Display name">
                             <button type="button" @click="removeBossOverride(id)"
-                                class="p-2 text-parchment-400 hover:text-red-400 transition-colors rounded">
+                                class="p-2 text-parchment-400 hover:text-red-400 transition-colors rounded-sm">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                                 </svg>
@@ -685,7 +685,7 @@
                         </div>
                     </div>
 
-                    <div x-show="cloudTestResult" x-cloak class="px-3 py-2 rounded text-xs"
+                    <div x-show="cloudTestResult" x-cloak class="px-3 py-2 rounded-sm text-xs"
                         :style="cloudTestSuccess
                             ? 'background: rgba(112,194,89,0.10); border:1px solid rgba(112,194,89,0.3); color:#8fd06b;'
                             : 'background: rgba(220,80,80,0.10); border:1px solid rgba(220,80,80,0.3); color:#e07070;'">

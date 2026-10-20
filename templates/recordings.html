@@ -202,7 +202,7 @@
         </div>
 
         <button @click="fetchRecordings()"
-            class="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded
+            class="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-sm
                 border seam text-parchment-400 hover:text-gold-500 transition-colors ml-2"
             title="Refresh">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
@@ -211,7 +211,7 @@
             </svg>
         </button>
         <button @click="showShortcuts = true"
-            class="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded
+            class="w-7 h-7 shrink-0 inline-flex items-center justify-center rounded-sm
                 border seam text-parchment-400 hover:text-gold-500 transition-colors"
             title="Keyboard shortcuts">
             <span class="text-[12px] font-mono leading-none">?</span>
@@ -342,7 +342,7 @@
                                             x-text="rec._parsed?.difficulty || '?'"></span>
                                         <!-- POV badge -->
                                         <template x-if="rec._meta?.uniqueHash && povsForRecording(rec).length > 0">
-                                            <span class="shrink-0 text-[10px] px-1 py-0.5 rounded font-mono"
+                                            <span class="shrink-0 text-[10px] px-1 py-0.5 rounded-sm font-mono"
                                                 style="background:rgba(51,147,127,0.15);color:#3a9080;border:1px solid rgba(51,147,127,0.3);"
                                                 :title="povsForRecording(rec).length + ' other POV(s) available'"
                                                 x-text="'+' + povsForRecording(rec).length"></span>
@@ -474,11 +474,11 @@
                             : 'background:rgba(5,4,3,0.95);padding:0.5rem 0.75rem 0.45rem;'">
 
                         <!-- Scrub bar -->
-                        <div class="relative h-1.5 bg-white/10 rounded cursor-pointer mb-2 select-none"
+                        <div class="relative h-1.5 bg-white/10 rounded-sm cursor-pointer mb-2 select-none"
                             @click="seekTo($event)" @mousedown="startClipDrag($event)" @mousemove="previewSeek($event)"
                             title="Click to seek · Shift+drag to select a clip"
                             @mouseleave="seekPreviewTime = null" x-ref="timeline">
-                            <div class="h-full bg-amber-400/80 rounded pointer-events-none"
+                            <div class="h-full bg-amber-400/80 rounded-sm pointer-events-none"
                                 :style="'width:' + playedPercent + '%'"></div>
 
                             <!-- Clip range -->
@@ -503,7 +503,7 @@
                                         <div class="w-0.5 bg-red-500/70 cursor-pointer hover:bg-red-400 transition-colors"
                                             @click.stop="seekToMarker(pct)"></div>
                                     </div>
-                                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/90 text-[11px] rounded px-2 py-1 whitespace-nowrap pointer-events-none opacity-0 group-hover/marker:opacity-100 transition-opacity border border-white/10 shadow-xl">
+                                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/90 text-[11px] rounded-sm px-2 py-1 whitespace-nowrap pointer-events-none opacity-0 group-hover/marker:opacity-100 transition-opacity border border-white/10 shadow-xl">
                                         <span class="text-white/70" x-text="formatVideoTime(deathTimesSeconds[i])"></span>
                                         <template x-if="deathNames[i]">
                                             <span class="text-red-400 ml-1" x-text="deathNames[i]"></span>
@@ -514,7 +514,7 @@
 
                             <!-- Seek preview -->
                             <div x-show="seekPreviewTime !== null"
-                                class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                                class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
                                 :style="'left:' + seekPreviewPercent + '%;'"
                                 x-text="formatVideoTime(seekPreviewTime)"></div>
                         </div>
@@ -559,7 +559,7 @@
                             <div class="flex items-center gap-0.5 shrink-0">
                                 <template x-for="spd in playbackSpeeds" :key="spd">
                                     <button @click="setSpeed(spd)"
-                                        class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
+                                        class="px-1.5 py-0.5 rounded-sm text-[11px] font-mono transition-colors"
                                         :class="speed === spd
                                             ? 'bg-gold-500/15 text-gold-500 border border-gold-500/30'
                                             : 'text-white/30 hover:text-white/60'"
@@ -609,14 +609,14 @@
                     style="background:#0a0806;">
                     <span class="label-cap">Sources</span>
                     <!-- Main always-on chip -->
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border"
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-[11px] border"
                         style="background:rgba(201,169,97,0.08); color:#a89c82; border-color:rgba(201,169,97,0.25);">
                         <span x-text="selectedRecording?._parsed?.player || 'Main'"></span>
                     </span>
                     <!-- Per-POV toggle chips -->
                     <template x-for="(pov, i) in localPovs" :key="pov.name">
                         <button @click="togglePov(pov.name)"
-                            class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] border transition-all cursor-pointer"
+                            class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-[11px] border transition-all cursor-pointer"
                             :style="disabledPovNames.has(pov.name)
                                 ? 'background:transparent; color:#3a3530; border-color:#1c1710;'
                                 : 'background:rgba(201,169,97,0.08); color:#a89c82; border-color:rgba(201,169,97,0.25);'">
@@ -703,7 +703,7 @@
                                     <div class="absolute top-0 bottom-0 pointer-events-none z-10 group/dm"
                                         :style="'left: calc(100px + ' + (pct / 100) + ' * (100% - 100px))'">
                                         <div class="absolute top-0 bottom-0 w-px" style="background:rgba(192,80,80,0.45);"></div>
-                                        <div class="absolute top-0 left-1 opacity-0 group-hover/dm:opacity-100 transition-opacity font-mono text-[10px] px-1 py-0.5 rounded-sm whitespace-nowrap pointer-events-none z-30"
+                                        <div class="absolute top-0 left-1 opacity-0 group-hover/dm:opacity-100 transition-opacity font-mono text-[10px] px-1 py-0.5 rounded-xs whitespace-nowrap pointer-events-none z-30"
                                             style="background:rgba(192,80,80,0.9); color:#fff;">
                                             <span x-text="(deathNames[i] ? deathNames[i] + ' ' : '') + formatVideoTime(deathTimesSeconds[i])"></span>
                                         </div>
@@ -714,7 +714,7 @@
                                 <div class="absolute top-0 bottom-0 pointer-events-none z-20"
                                     style="width:1px; background:rgba(201,169,97,0.6); box-shadow:0 0 5px rgba(201,169,97,0.25);"
                                     :style="'left: calc(100px + ' + (playedPercent / 100) + ' * (100% - 100px))'">
-                                    <div class="absolute top-0 -translate-x-1/2 font-mono text-[10px] leading-none px-1 py-0.5 rounded-sm whitespace-nowrap"
+                                    <div class="absolute top-0 -translate-x-1/2 font-mono text-[10px] leading-none px-1 py-0.5 rounded-xs whitespace-nowrap"
                                         style="background:#c9a961; color:#0a0806;"
                                         x-text="formatVideoTime(currentTime)">
                                     </div>
@@ -745,7 +745,7 @@
                                                     <!-- Tooltip -->
                                                     <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover/cast:opacity-100 pointer-events-none transition-opacity duration-100 z-50"
                                                         style="min-width:max-content;">
-                                                        <div class="px-2 py-1 rounded text-[11px] shadow-xl"
+                                                        <div class="px-2 py-1 rounded-sm text-[11px] shadow-xl"
                                                             style="background:#080604; border:1px solid rgba(201,169,97,0.2);">
                                                             <span style="color:#c8bfa8;" x-text="cast.name"></span>
                                                             <span class="font-mono ml-1.5" style="color:#c9a961;"
@@ -835,10 +835,10 @@
                             <span class="font-mono text-[11px]" style="color: #a89c82;"
                                 x-text="deathTimesSeconds.length + ' total'"></span>
                             <button @click="prevDeath()" title="Previous death"
-                                class="w-5 h-5 inline-flex items-center justify-center rounded border seam
+                                class="w-5 h-5 inline-flex items-center justify-center rounded-sm border seam
                                     text-parchment-400 hover:text-gold-500 transition-colors text-[12px] leading-none">‹</button>
                             <button @click="nextDeath()" title="Next death"
-                                class="w-5 h-5 inline-flex items-center justify-center rounded border seam
+                                class="w-5 h-5 inline-flex items-center justify-center rounded-sm border seam
                                     text-parchment-400 hover:text-gold-500 transition-colors text-[12px] leading-none">›</button>
                         </div>
                     </div>
@@ -848,7 +848,7 @@
                     </div>
                     <div class="space-y-0.5" x-show="recordingMetadata?.deaths?.length > 0">
                         <template x-for="(d, i) in (recordingMetadata?.deaths || [])" :key="i">
-                            <div class="flex justify-between items-center text-[12px] cursor-pointer rounded px-1.5 py-1.5 -mx-1.5 group/death transition-colors"
+                            <div class="flex justify-between items-center text-[12px] cursor-pointer rounded-sm px-1.5 py-1.5 -mx-1.5 group/death transition-colors"
                                 style="border-bottom:1px solid transparent;"
                                 :style="'border-bottom-color:#111009;'"
                                 @mouseenter="$el.style.background='rgba(30,25,18,0.7)'"
@@ -899,7 +899,7 @@
 
                     <!-- Cooldown scan panel -->
                     <div x-show="showCooldownScanPanel" x-cloak
-                        class="mt-3 p-3 rounded border seam" style="background:#080604;">
+                        class="mt-3 p-3 rounded-sm border seam" style="background:#080604;">
                         <div class="flex items-center justify-between mb-2">
                             <span class="label-cap">Combat log</span>
                             <button @click="showCooldownScanPanel = false"
@@ -941,7 +941,7 @@
                         </div>
                         <div class="space-y-1.5">
                             <template x-for="pov in selectedPovs" :key="pov.videoKey">
-                                <div class="flex items-center justify-between gap-2 px-2 py-1.5 rounded border seam"
+                                <div class="flex items-center justify-between gap-2 px-2 py-1.5 rounded-sm border seam"
                                     style="background:#080604;">
                                     <div class="min-w-0 flex-1">
                                         <div class="text-[12px] truncate" style="color:#a89c82;"
@@ -952,8 +952,8 @@
                                         </div>
                                         <template x-if="povProgress[pov.videoKey]">
                                             <div class="mt-1.5">
-                                                <div class="h-0.5 rounded overflow-hidden" style="background:#1c1710;">
-                                                    <div class="h-full rounded transition-all duration-300"
+                                                <div class="h-0.5 rounded-sm overflow-hidden" style="background:#1c1710;">
+                                                    <div class="h-full rounded-sm transition-all duration-300"
                                                         :style="'width:' + (povProgress[pov.videoKey].progress_percent || 0) + '%;'"
                                                         :class="povProgress[pov.videoKey].status === 'failed' ? 'bg-red-600' : 'bg-teal-600'"></div>
                                                 </div>
@@ -992,7 +992,7 @@
 <!-- ── Toast notifications ── -->
 <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:300px;">
     <template x-for="t in toasts" :key="t.id">
-        <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded text-[13px] shadow-2xl"
+        <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded-sm text-[13px] shadow-2xl"
             :style="t.type === 'error'
                 ? 'background:#180a0a;border:1px solid rgba(192,80,80,0.4);color:#d46060;'
                 : 'background:#0a150a;border:1px solid rgba(100,175,70,0.4);color:#78c352;'">
@@ -1008,7 +1008,7 @@
     style="background:rgba(0,0,0,0.85);"
     @click.self="showDeleteModal = false"
     @keydown.escape.window="showDeleteModal = false">
-    <div class="border seam rounded max-w-sm w-full p-5" style="background:#0f0d0a;">
+    <div class="border seam rounded-sm max-w-sm w-full p-5" style="background:#0f0d0a;">
         <h3 class="font-display text-lg text-parchment-900 mb-2">
             Delete
             <span x-show="bulkDeleteTargets.length > 0" x-text="bulkDeleteTargets.length + ' recordings'"></span>
@@ -1044,7 +1044,7 @@
     style="background:rgba(0,0,0,0.85);"
     @click.self="showShortcuts = false"
     @keydown.escape.window="showShortcuts = false">
-    <div class="border seam rounded w-80" style="background:#0f0d0a;">
+    <div class="border seam rounded-sm w-80" style="background:#0f0d0a;">
         <div class="flex items-center justify-between px-5 py-3 border-b seam">
             <h3 class="font-display text-base text-gold-500">Keyboard Shortcuts</h3>
             <button @click="showShortcuts = false" class="text-parchment-300 hover:text-parchment-700 transition-colors">✕</button>
@@ -1062,7 +1062,7 @@
                 ['↑ / ↓',       'Previous / next recording'],
             ]" :key="row[0]">
                 <div class="flex items-center justify-between text-[13px]">
-                    <kbd class="font-mono px-1.5 py-0.5 rounded text-[12px]"
+                    <kbd class="font-mono px-1.5 py-0.5 rounded-sm text-[12px]"
                         style="background:#1c1710; border:1px solid #2e271d; color:#c9a961;"
                         x-text="row[0]"></kbd>
                     <span style="color:#8a8270;" x-text="row[1]"></span>

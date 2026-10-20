@@ -139,7 +139,7 @@
         <div class="flex flex-wrap items-center gap-3 mb-5">
             <div class="flex-1 min-w-40">
                 <input type="text" x-model="search" placeholder="Search clips…"
-                    class="w-full text-sm bg-ink-600 border border-ink-400 rounded px-3 py-1.5 text-parchment-700 placeholder-parchment-300 focus:outline-none focus:border-gold-600">
+                    class="w-full text-sm bg-ink-600 border border-ink-400 rounded-sm px-3 py-1.5 text-parchment-700 placeholder-parchment-300 focus:outline-hidden focus:border-gold-600">
             </div>
             <div class="flex items-center gap-2 text-xs text-parchment-300">
                 <span x-text="filtered.length"></span> clips
@@ -151,7 +151,7 @@
                 class="quick-btn text-red-400 border-red-900/50 hover:border-red-700/70 hover:text-red-300">
                 Delete <span x-text="selected.size"></span> selected
             </button>
-            <div class="flex items-center gap-1 border border-ink-400 rounded overflow-hidden">
+            <div class="flex items-center gap-1 border border-ink-400 rounded-sm overflow-hidden">
                 <button @click="viewMode = 'grid'"
                     class="px-2.5 py-1.5 transition-colors"
                     :class="viewMode === 'grid' ? 'bg-ink-500 text-parchment-700' : 'bg-ink-600 text-parchment-300 hover:text-parchment-500'">
@@ -192,7 +192,7 @@
                         <!-- Selection checkbox -->
                         <div class="absolute top-2 left-2"
                             @click.stop="toggleSelect(clip.name)">
-                            <div class="w-5 h-5 rounded border-2 flex items-center justify-center transition-colors"
+                            <div class="w-5 h-5 rounded-sm border-2 flex items-center justify-center transition-colors"
                                 :class="selected.has(clip.name)
                                     ? 'bg-gold-500 border-gold-500'
                                     : 'border-white/40 bg-black/30 opacity-0 group-hover:opacity-100'">
@@ -212,7 +212,7 @@
                                 @keydown.enter="commitRename(clip)"
                                 @keydown.escape="cancelRename()"
                                 @blur="cancelRename()"
-                                class="w-full text-xs bg-ink-600 border border-gold-600 rounded px-2 py-1 text-parchment-700 focus:outline-none">
+                                class="w-full text-xs bg-ink-600 border border-gold-600 rounded-sm px-2 py-1 text-parchment-700 focus:outline-hidden">
                         </div>
                         <!-- Display name -->
                         <div x-show="renamingClip !== clip.name"
@@ -274,7 +274,7 @@
                                         @keydown.enter="commitRename(clip)"
                                         @keydown.escape="cancelRename()"
                                         @blur="cancelRename()"
-                                        class="flex-1 text-xs bg-ink-600 border border-gold-600 rounded px-2 py-0.5 text-parchment-700 focus:outline-none min-w-0">
+                                        class="flex-1 text-xs bg-ink-600 border border-gold-600 rounded-sm px-2 py-0.5 text-parchment-700 focus:outline-hidden min-w-0">
                                     <button @mousedown.prevent="commitRename(clip)" class="quick-btn px-2 py-0.5 text-[11px] text-gold-500 border-gold-600/40">✓</button>
                                 </div>
                                 <span x-show="renamingClip !== clip.name"
@@ -363,15 +363,15 @@
                         : 'background:rgba(0,0,0,0.92);padding:0.75rem'">
 
                     <!-- Seek bar -->
-                    <div class="relative h-2 bg-white/20 rounded cursor-pointer mb-3"
+                    <div class="relative h-2 bg-white/20 rounded-sm cursor-pointer mb-3"
                         x-ref="seekBar"
                         @click="seekTo($event)"
                         @mousemove="hoverSeek($event)"
                         @mouseleave="seekPreviewTime = null">
-                        <div class="h-full bg-amber-400 rounded" :style="'width:' + playedPct + '%;'"></div>
+                        <div class="h-full bg-amber-400 rounded-sm" :style="'width:' + playedPct + '%;'"></div>
                         <!-- Hover tooltip -->
                         <div x-show="seekPreviewTime !== null"
-                            class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded pointer-events-none -translate-x-1/2"
+                            class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
                             :style="'left:' + seekPreviewPct + '%;'"
                             x-text="fmtTime(seekPreviewTime)"></div>
                     </div>
@@ -415,7 +415,7 @@
                         <div class="flex items-center gap-1">
                             <template x-for="spd in [0.5,1,1.5,2]" :key="spd">
                                 <button @click="setSpeed(spd)"
-                                    class="px-1.5 py-0.5 rounded text-[11px] font-mono transition-colors"
+                                    class="px-1.5 py-0.5 rounded-sm text-[11px] font-mono transition-colors"
                                     :class="speed === spd
                                         ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                                         : 'text-white/40 hover:text-white/70'"
