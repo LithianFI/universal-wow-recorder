@@ -573,6 +573,17 @@
                                 <span class="toggle-thumb"></span>
                             </button>
                         </div>
+                        <div x-show="config.cloud_upload.auto_upload" x-cloak>
+                            <div class="text-parchment-400 text-xs mb-2">Content to auto upload — the rest stays local only (you can still upload it manually)</div>
+                            <div class="grid grid-cols-3 md:grid-cols-5 gap-2">
+                                <template x-for="kind in uploadKinds" :key="kind.key">
+                                    <button type="button" class="diff-tile"
+                                        :class="config.cloud_upload['upload_' + kind.key] ? 'on-' + kind.key : ''"
+                                        @click="config.cloud_upload['upload_' + kind.key] = !config.cloud_upload['upload_' + kind.key]"
+                                        x-text="kind.label"></button>
+                                </template>
+                            </div>
+                        </div>
                         <div class="flex items-center justify-between">
                             <div>
                                 <div class="text-parchment-700 text-sm font-medium">Delete after upload</div>
@@ -734,6 +745,13 @@
                 cloudTestSuccess: false,
                 retentionPreview: null,
                 retentionPreviewBusy: false,
+                uploadKinds: [
+                    { key: 'lfr', label: 'LFR' },
+                    { key: 'normal', label: 'Normal' },
+                    { key: 'heroic', label: 'Heroic' },
+                    { key: 'mythic', label: 'Mythic' },
+                    { key: 'mplus', label: 'Mythic+' },
+                ],
 
                 config: {
                     general: { log_dir: '', log_pattern: '', recording_extension: '.mp4', ffmpeg_path: '' },
@@ -763,6 +781,11 @@
                         provider: 'warcraft_recorder',
                         auto_upload: true,
                         delete_after_upload: false,
+                        upload_lfr: true,
+                        upload_normal: true,
+                        upload_heroic: true,
+                        upload_mythic: true,
+                        upload_mplus: true,
                         wcr_username: '',
                         wcr_password: '',
                         wcr_guild: '',
@@ -819,6 +842,11 @@
                                 provider: data.cloud_upload.provider ?? 'warcraft_recorder',
                                 auto_upload: data.cloud_upload.auto_upload !== false,
                                 delete_after_upload: data.cloud_upload.delete_after_upload === true,
+                                upload_lfr: data.cloud_upload.upload_lfr !== false,
+                                upload_normal: data.cloud_upload.upload_normal !== false,
+                                upload_heroic: data.cloud_upload.upload_heroic !== false,
+                                upload_mythic: data.cloud_upload.upload_mythic !== false,
+                                upload_mplus: data.cloud_upload.upload_mplus !== false,
                                 wcr_username: data.cloud_upload.wcr_username ?? '',
                                 wcr_password: data.cloud_upload.wcr_password ?? '',
                                 wcr_guild: data.cloud_upload.wcr_guild ?? '',

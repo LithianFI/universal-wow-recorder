@@ -9,6 +9,8 @@ import configparser
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 
+from metadata_generator import RecordingCategory
+
 
 class ConfigManager:
     """Manages application configuration from INI files."""
@@ -25,6 +27,9 @@ class ConfigManager:
         'mythic': [3, 16, 22, 23, 233],
         'other': [4, 5, 8, 9, 24, 33],
     }
+
+    # Content kinds with their own auto-upload toggle (CloudUpload upload_<kind>).
+    UPLOAD_CONTENT_KINDS = ('lfr', 'normal', 'heroic', 'mythic', 'mplus')
 
     # Default configuration values
     DEFAULT_CONFIG = {
@@ -61,6 +66,11 @@ class ConfigManager:
             'provider': 'warcraft_recorder',
             'auto_upload': 'true',
             'delete_after_upload': 'false',
+            'upload_lfr':    'true',
+            'upload_normal': 'true',
+            'upload_heroic': 'true',
+            'upload_mythic': 'true',
+            'upload_mplus':  'true',
             'wcr_username': '',
             'wcr_password': '',
             'wcr_guild': '',
@@ -116,6 +126,11 @@ class ConfigManager:
             'provider':            str,
             'auto_upload':         lambda v: str(v).lower(),
             'delete_after_upload': lambda v: str(v).lower(),
+            'upload_lfr':          lambda v: str(v).lower(),
+            'upload_normal':       lambda v: str(v).lower(),
+            'upload_heroic':       lambda v: str(v).lower(),
+            'upload_mythic':       lambda v: str(v).lower(),
+            'upload_mplus':        lambda v: str(v).lower(),
             'wcr_username':        str,
             'wcr_password':        lambda v: None if v == '[set]' else str(v),
             'wcr_guild':           str,
@@ -277,6 +292,13 @@ auto_upload = true
 
 # Delete local file after successful upload
 delete_after_upload = false
+
+# Which content auto upload covers (manual uploads ignore these)
+upload_lfr = true
+upload_normal = true
+upload_heroic = true
+upload_mythic = true
+upload_mplus = true
 
 # Warcraft Recorder Cloud settings
 wcr_username =
@@ -466,6 +488,20 @@ proton_folder =
     @property
     def CLOUD_DELETE_AFTER_UPLOAD(self) -> bool:
         return self.config.getboolean('CloudUpload', 'delete_after_upload', fallback=False)
+
+    def is_upload_kind_enabled(self, kind: str) -> bool:
+        """Whether auto upload covers a kind from UPLOAD_CONTENT_KINDS."""
+        return self.config.getboolean('CloudUpload', f'upload_{kind}', fallback=True)
+
+    def should_upload_content(self, category: str, difficulty_id: Optional[int]) -> bool:
+        """Per-content auto-upload filter. Content without its own toggle
+        (timewalking, manual recordings) is always allowed."""
+        if category == RecordingCategory.MYTHIC_PLUS:
+            return self.is_upload_kind_enabled('mplus')
+        for kind in ('lfr', 'normal', 'heroic', 'mythic'):
+            if difficulty_id in self.DIFFICULTY_IDS[kind]:
+                return self.is_upload_kind_enabled(kind)
+        return True
 
     @property
     def WCR_USERNAME(self) -> str:

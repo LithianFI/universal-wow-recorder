@@ -328,13 +328,16 @@ async def initialize_cloud_upload(
     return None
 
 
-def should_auto_upload(config, recording_duration: float) -> bool:
+def should_auto_upload(config, recording_duration: float,
+                       category: str, difficulty_id: Optional[int]) -> bool:
     """
     Determine if a recording should be automatically uploaded.
     
     Args:
         config: ConfigManager instance
         recording_duration: Duration of the recording in seconds
+        category: RecordingCategory string of the recording
+        difficulty_id: WoW difficulty ID, if known
         
     Returns:
         True if recording should be uploaded, False otherwise
@@ -348,6 +351,10 @@ def should_auto_upload(config, recording_duration: float) -> bool:
     # Don't upload very short recordings
     min_duration = config.MIN_RECORDING_DURATION
     if recording_duration < min_duration:
+        return False
+
+    if not config.should_upload_content(category, difficulty_id):
+        print(f"[Cloud] Auto upload not enabled for this content ({category}, difficulty {difficulty_id}); keeping local only")
         return False
     
     return True

@@ -304,6 +304,7 @@ def get_config():
             'provider': cm.CLOUD_UPLOAD_PROVIDER,
             'auto_upload': cm.CLOUD_AUTO_UPLOAD,
             'delete_after_upload': cm.CLOUD_DELETE_AFTER_UPLOAD,
+            **{f'upload_{kind}': cm.is_upload_kind_enabled(kind) for kind in cm.UPLOAD_CONTENT_KINDS},
             'wcr_username': cm.WCR_USERNAME,
             'wcr_password': '[set]' if cm.WCR_PASSWORD else '',
             'wcr_guild': cm.WCR_GUILD,
@@ -1490,7 +1491,11 @@ def handle_recording_saved(recording_info: dict = None):
     info = recording_info or {}
     duration = info.get('duration', 0)
 
-    if not should_auto_upload(s.config_manager, duration):
+    # The parser's current_metadata may already belong to the next pull.
+    parsed_meta = info.get('metadata') or s.combat_parser.current_metadata
+
+    if not should_auto_upload(s.config_manager, duration,
+                              parsed_meta.category, parsed_meta.difficulty_id):
         return
 
     if not info.get('path'):
@@ -1499,9 +1504,6 @@ def handle_recording_saved(recording_info: dict = None):
 
     try:
         file_path = Path(info['path'])
-
-        # The parser's current_metadata may already belong to the next pull.
-        parsed_meta = info.get('metadata') or s.combat_parser.current_metadata
 
         from cloud_upload import VideoMetadata
 
