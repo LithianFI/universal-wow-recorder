@@ -3,6 +3,5 @@ __pycache__
 .venv/
 config.ini
 build/
-.claude
 node_modules/
 dist/
