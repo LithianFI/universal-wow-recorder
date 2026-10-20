@@ -225,7 +225,7 @@
                     <div class="px-3 py-2.5">
                         <!-- Rename input -->
                         <div x-show="renamingClip === clip.name" class="mb-1.5" @click.stop>
-                            <input :id="'rename-input-' + clip.name"
+                            <input data-rename-input
                                 x-model="renameValue"
                                 @keydown.enter="commitRename(clip)"
                                 @keydown.escape="cancelRename()"
@@ -287,7 +287,7 @@
                             <td class="py-2 px-2">
                                 <!-- Inline rename -->
                                 <div x-show="renamingClip === clip.name" class="flex items-center gap-1">
-                                    <input :id="'rename-input-' + clip.name"
+                                    <input data-rename-input
                                         x-model="renameValue"
                                         @keydown.enter="commitRename(clip)"
                                         @keydown.escape="cancelRename()"
@@ -558,7 +558,9 @@ function clipsPage() {
             const wcrMatch = withoutClipSuffix.match(/^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2} - .+? - (.+?)(?:\s*\[[^\]]+\])?(?:\s*\([^)]+\))?$/);
             this.renameValue = wcrMatch ? wcrMatch[1].trim() : (parsed.encounter || withoutClipSuffix);
             this.$nextTick(() => {
-                const el = document.getElementById('rename-input-' + CSS.escape(clip.name));
+                // Only the renamed clip's input is shown, in whichever view is active.
+                const el = [...document.querySelectorAll('[data-rename-input]')]
+                    .find(input => input.offsetParent !== null);
                 if (el) { el.focus(); el.select(); }
             });
         },
@@ -700,6 +702,9 @@ function clipsPage() {
         handleKey(e) {
             if (!this.playerClip) return;
             if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+            // Leave browser shortcuts (Ctrl+F, ...) and Space-on-a-button alone.
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key === ' ' && e.target.closest?.('button, a')) return;
             if (e.key === ' ' || e.key === 'k') { e.preventDefault(); this.togglePlay(); }
             else if (e.key === 'ArrowRight' || e.key === 'l' || e.key === 'L') { e.preventDefault(); if (this.$refs.player) this.$refs.player.currentTime = Math.min(this.$refs.player.duration, this.$refs.player.currentTime + 10); }
             else if (e.key === 'ArrowLeft'  || e.key === 'j' || e.key === 'J') { e.preventDefault(); if (this.$refs.player) this.$refs.player.currentTime = Math.max(0, this.$refs.player.currentTime - 10); }

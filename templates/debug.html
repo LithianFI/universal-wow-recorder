@@ -196,7 +196,7 @@
 
         <!-- Terminal output -->
         <div id="terminal" x-ref="terminal" @scroll="onScroll()">
-            <template x-for="(entry, i) in filtered" :key="i">
+            <template x-for="entry in filtered" :key="entry._id">
                 <div class="log-line">
                     <span class="log-ts" x-text="formatTs(entry.ts)"></span>
                     <span class="log-text" :class="entry.stream"
@@ -212,9 +212,14 @@
     </div>
 
     <script>
+        // Same as the backend's console buffer (MAX_CONSOLE_LOG); a raid night
+        // would otherwise grow the DOM without bound.
+        const MAX_LINES = 2000;
+
         function debugConsole() {
             return {
                 lines: [],
+                _seq: 0,
                 filtered: [],
                 filter: '',
                 showStdout: true,
@@ -230,14 +235,19 @@
 
                     // Full history on connect
                     this.socket.on('console_log_init', (entries) => {
-                        this.lines = entries;
+                        this.lines = entries.slice(-MAX_LINES).map(e => this.tagEntry(e));
                         this.applyFilter();
                         this.$nextTick(() => this.scrollToBottom());
                     });
 
                     // Incremental lines
-                    this.socket.on('log_line', (entry) => {
+                    this.socket.on('log_line', (raw) => {
+                        const entry = this.tagEntry(raw);
                         this.lines.push(entry);
+                        if (this.lines.length > MAX_LINES) {
+                            const dropped = this.lines.shift();
+                            if (this.filtered[0] === dropped) this.filtered.shift();
+                        }
                         if (this.lineVisible(entry)) {
                             this.filtered.push(entry);
                             if (this.autoScroll) {
@@ -245,6 +255,10 @@
                             }
                         }
                     });
+                },
+
+                tagEntry(entry) {
+                    return { ...entry, _id: ++this._seq };
                 },
 
                 lineVisible(entry) {
@@ -276,10 +290,8 @@
                 onScroll() {
                     const el = this.$refs.terminal;
                     if (!el) return;
-                    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-                    if (!atBottom) {
-                        this.autoScroll = false;
-                    }
+                    // Follow new output again once the user scrolls back down.
+                    this.autoScroll = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
                 },
 
                 formatTs(ts) {

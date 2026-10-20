@@ -1234,6 +1234,21 @@
                 },
 
                 // ── Parsing & metadata hydration ─────────────────────
+                recordingInfo(rec) {
+                    // Prefer the JSON sidecar summary: it is right for any filename.
+                    const fromName = this.parseFilename(rec?.name);
+                    const meta = rec?.meta;
+                    if (!meta) return fromName;
+                    return {
+                        date: fromName.date,
+                        player: meta.player || fromName.player,
+                        encounter: meta.encounterName || fromName.encounter,
+                        difficulty: meta.difficulty || fromName.difficulty,
+                        result: typeof meta.result === 'boolean'
+                            ? (meta.result ? 'KILL' : 'WIPE') : fromName.result,
+                    };
+                },
+
                 parseFilename(name) {
                     if (!name) return {};
                     const base = name.split('/').pop().replace(/\.[^.]+$/, '');
@@ -1253,7 +1268,7 @@
                         const data = await res.json();
                         const recs = data.recordings || [];
                         for (const r of recs) {
-                            r._parsed = this.parseFilename(r.name);
+                            r._parsed = this.recordingInfo(r);
                             r._meta = r.meta || null;
                         }
                         this.recordings = recs;
@@ -1262,7 +1277,7 @@
                         // Drop selection if file vanished
                         if (this.selectedRecording) {
                             const stillExists = this.recordings.find(r => r.name === this.selectedRecording.name);
-                            if (!stillExists) this.selectedRecording = null;
+                            if (!stillExists) this.deselectRecording();
                         }
                     } catch (e) {
                         console.error('Failed to fetch recordings:', e);
@@ -1322,15 +1337,16 @@
                 },
 
                 async fetchLocalPovs() {
-                    if (!this.selectedRecording) return;
+                    const rec = this.selectedRecording;
+                    if (!rec) return;
                     try {
                         const url = '/api/recordings/' +
-                            this.selectedRecording.name.split('/').map(encodeURIComponent).join('/') +
+                            rec.name.split('/').map(encodeURIComponent).join('/') +
                             '/local-povs';
                         const res = await fetch(url);
                         if (res.ok) {
                             const data = await res.json();
-                            this.localPovs = data.povs || [];
+                            if (this.selectedRecording === rec) this.localPovs = data.povs || [];
                         }
                     } catch (_) {}
                 },
@@ -1352,7 +1368,8 @@
                 },
 
                 playAllPovs() {
-                    this.localPovs.forEach((_, i) => {
+                    this.localPovs.forEach((pov, i) => {
+                        if (this.disabledPovNames.has(pov.name)) return;
                         const el = this._povVideoEl(i);
                         if (el && el.paused) el.play().catch(() => {});
                     });
@@ -1519,11 +1536,12 @@
                     }
                 },
                 async runCooldownScan() {
-                    if (!this.selectedLogFile || !this.selectedRecording) return;
+                    const rec = this.selectedRecording;
+                    if (!this.selectedLogFile || !rec) return;
                     this.cooldownScanBusy = true;
                     try {
                         const url = '/api/recordings/'
-                            + this.selectedRecording.name.split('/').map(encodeURIComponent).join('/')
+                            + rec.name.split('/').map(encodeURIComponent).join('/')
                             + '/scan-cooldowns';
                         const res = await fetch(url, {
                             method: 'POST',
@@ -1534,8 +1552,11 @@
                         if (!res.ok) {
                             this.toast('Scan failed: ' + (data.error || res.statusText), 'error');
                         } else {
-                            this.recordingMetadata = { ...this.recordingMetadata, cooldownCasts: data.cooldownCasts };
-                            if (this.selectedRecording._meta) this.selectedRecording._meta = this.recordingMetadata;
+                            // The user may have switched recordings during a slow scan.
+                            rec._meta = { ...(rec._meta || {}), cooldownCasts: data.cooldownCasts };
+                            if (this.selectedRecording === rec) {
+                                this.recordingMetadata = { ...this.recordingMetadata, cooldownCasts: data.cooldownCasts };
+                            }
                             this.showCooldownScanPanel = false;
                             this.toast(data.count + ' cooldown cast' + (data.count !== 1 ? 's' : '') + ' found', 'success');
                         }
@@ -1663,6 +1684,7 @@
                     const targets = [...this.bulkDeleteTargets];
                     this.showDeleteModal = false;
                     this.bulkDeleteTargets = [];
+                    if (targets.includes(this.selectedRecording?.name)) this.deselectRecording();
                     let failed = 0;
                     for (const name of targets) {
                         try {
@@ -1678,8 +1700,27 @@
                 },
 
                 // ── Single-recording actions ─────────────────────────
+                // Changing a <video> src doesn't fire 'pause', so stop the
+                // main player and POVs explicitly before switching away.
+                stopPlayback() {
+                    this.$refs.videoPlayer?.pause();
+                    this.pauseAllPovs();
+                    this.isPlaying = false;
+                    this.localPovs = [];
+                    this.multiPovMode = false;
+                    this.disabledPovNames = new Set();
+                },
+
+                deselectRecording() {
+                    this.stopPlayback();
+                    this.selectedRecording = null;
+                },
+
                 async selectRecording(rec) {
+                    this.stopPlayback();
                     this.selectedRecording = rec;
+                    // Responses for a recording clicked earlier must not land on this one.
+                    const isStillSelected = () => this.selectedRecording === rec;
                     this.recordingMetadata = rec._meta || null;
                     this.deathMarkerPositions = [];
                     this.deathTimesSeconds = [];
@@ -1705,18 +1746,18 @@
                             '/metadata';
                         const res = await fetch(url);
                         if (res.ok) {
-                            this.recordingMetadata = await res.json();
-                            rec._meta = this.recordingMetadata;
+                            const meta = await res.json();
+                            rec._meta = meta;
+                            if (!isStillSelected()) return;
+                            this.recordingMetadata = meta;
                             this.buildDeathMarkers();
                         }
                     } catch (_) {}
+                    if (!isStillSelected()) return;
 
                     // Load local downloaded POVs for multi-panel playback.
-                    this.localPovs = [];
-                    this.multiPovMode = false;
-                    this.disabledPovNames = new Set();
                     await this.fetchLocalPovs();
-                    if (this.localPovs.length > 0) this.multiPovMode = true;
+                    if (isStillSelected() && this.localPovs.length > 0) this.multiPovMode = true;
                 },
                 confirmDelete(rec) {
                     this.deleteTarget = rec;
@@ -1725,14 +1766,13 @@
                 },
                 async deleteRecording() {
                     if (!this.deleteTarget) return;
+                    // Release the file before deleting it (Windows won't delete an open file).
+                    if (this.selectedRecording?.name === this.deleteTarget.name) this.deselectRecording();
                     try {
                         const url = '/api/recordings/' +
                             this.deleteTarget.name.split('/').map(encodeURIComponent).join('/');
                         const res = await fetch(url, { method: 'DELETE' });
                         if (res.ok) {
-                            if (this.selectedRecording?.name === this.deleteTarget.name) {
-                                this.selectedRecording = null;
-                            }
                             await this.fetchRecordings();
                         } else {
                             const data = await res.json();
@@ -1842,6 +1882,9 @@
                 handleKey(e) {
                     if (!this.selectedRecording) return;
                     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+                    // Leave browser shortcuts (Ctrl+F, ...) and Space-on-a-button alone.
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (e.key === ' ' && e.target.closest?.('button, a')) return;
                     if (e.key === ' ' || e.key === 'k') { e.preventDefault(); this.togglePlay(); }
                     else if (e.key === 'ArrowRight' || e.key === 'l' || e.key === 'L') { e.preventDefault(); if (this.$refs.videoPlayer) this.$refs.videoPlayer.currentTime = Math.min(this.$refs.videoPlayer.duration, this.$refs.videoPlayer.currentTime + 10); }
                     else if (e.key === 'ArrowLeft'  || e.key === 'j' || e.key === 'J') { e.preventDefault(); if (this.$refs.videoPlayer) this.$refs.videoPlayer.currentTime = Math.max(0, this.$refs.videoPlayer.currentTime - 10); }

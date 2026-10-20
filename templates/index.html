@@ -531,16 +531,16 @@
                             <tr class="border-t border-ink-500 hover:bg-ink-700/50 cursor-pointer transition-colors"
                                 @click="openPreview(rec)">
                                 <td class="px-2 py-2 text-parchment-700 truncate max-w-xs"
-                                    x-text="parseRecordingName(rec.name).encounter"></td>
+                                    x-text="recordingInfo(rec).encounter"></td>
                                 <td class="px-2 py-2">
                                     <span class="diff-badge"
-                                        :class="diffClassFromShort(parseRecordingName(rec.name).difficulty)"
-                                        x-text="parseRecordingName(rec.name).difficulty || '—'"></span>
+                                        :class="diffClassFromShort(recordingInfo(rec).difficulty)"
+                                        x-text="recordingInfo(rec).difficulty || '—'"></span>
                                 </td>
                                 <td class="px-2 py-2">
                                     <span class="tag"
-                                        :class="parseRecordingName(rec.name).result === 'KILL' ? 'tag-kill' : 'tag-wipe'"
-                                        x-text="parseRecordingName(rec.name).result || '—'"></span>
+                                        :class="recordingInfo(rec).result === 'KILL' ? 'tag-kill' : 'tag-wipe'"
+                                        x-text="recordingInfo(rec).result || '—'"></span>
                                 </td>
                                 <td class="px-2 py-2 text-right font-mono text-parchment-700"
                                     x-text="formatDuration(rec.duration_estimate || 0) || '—'"></td>
@@ -948,6 +948,21 @@
                 },
                 // Parse the WCR-style filename for table display:
                 // "2024-08-12 21:45:03 - Tezranok - Queen Ansurek [M] (Wipe).mp4"
+                recordingInfo(rec) {
+                    // Prefer the JSON sidecar summary: it is right for any filename.
+                    const fromName = this.parseRecordingName(rec?.name);
+                    const meta = rec?.meta;
+                    if (!meta) return fromName;
+                    return {
+                        date: fromName.date,
+                        player: meta.player || fromName.player,
+                        encounter: meta.encounterName || fromName.encounter,
+                        difficulty: meta.difficulty || fromName.difficulty,
+                        result: typeof meta.result === 'boolean'
+                            ? (meta.result ? 'KILL' : 'WIPE') : fromName.result,
+                    };
+                },
+
                 parseRecordingName(name) {
                     if (!name) return {};
                     const base = name.split('/').pop().replace(/\.[^.]+$/, '');
@@ -1080,7 +1095,7 @@
 
                     for (const rec of this.recordings) {
                         if (/_clip_\d+-\d+/.test(rec.name)) continue;
-                        const parsed = this.parseRecordingName(rec.name);
+                        const parsed = this.recordingInfo(rec);
                         if (!parsed.encounter) continue;
                         if (lastModified && (lastModified - rec.modified) > SESSION_GAP) break;
                         if (currentBoss && parsed.encounter !== currentBoss) break;
@@ -1350,6 +1365,9 @@
                     // Only act when the preview modal is open and focus isn't in an input
                     if (!this.previewRecording) return;
                     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+                    // Leave browser shortcuts (Ctrl+F, ...) and Space-on-a-button alone.
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (e.key === ' ' && e.target.closest?.('button, a')) return;
                     if (e.key === ' ' || e.key === 'k') {
                         e.preventDefault();
                         this.previewTogglePlay();
