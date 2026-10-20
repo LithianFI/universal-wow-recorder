@@ -6,10 +6,9 @@ Deletes old recordings according to two rules applied in sequence:
   2. Count-based: for each (category, difficulty, boss) group, keep only
      the RETENTION_MAX_PER_GROUP newest recordings; delete the rest.
 
-Grouping uses the JSON sidecar metadata when available; otherwise it falls
-back to parsing the filename. Manual clips (see cloud_upload/clip export)
-are excluded because their filenames contain "_clip_" and they shouldn't
-compete with the source recordings they were cut from.
+Only videos with a JSON sidecar are considered: the sidecar marks a file as
+made by this app, so other footage in the OBS folder (streams, other games,
+a recording still in progress) is never deleted. Grouping uses the sidecar.
 
 Clips are skipped entirely: a user exporting a 20-second highlight shouldn't
 have it evicted by retention.
@@ -35,40 +34,25 @@ def _is_clip(path: Path) -> bool:
     return bool(_CLIP_SUFFIX_RE.search(path.stem))
 
 
-def _group_key(video_path: Path) -> Tuple[str, str, str, bool]:
-    """Compute a grouping key for a recording.
-
-    Preference order:
-      1. Companion .json sidecar (most accurate)
-      2. Parsed filename (simple scheme: YYYY-MM-DD_HH-MM-SS_Boss_Difficulty)
-
-    Returns a 4-tuple: (category, difficulty, encounter_name, is_kill).
-    Falls back to ("Unknown", "Unknown", <filename stem minus timestamp>, False)
-    when neither source is usable.
-    """
+def _load_sidecar(video_path: Path) -> Optional[dict]:
+    """Return the recording's JSON sidecar, or None if it has no readable one."""
     json_path = video_path.with_suffix('.json')
-    if json_path.exists():
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-            return (
-                str(meta.get('category', 'Unknown')),
-                str(meta.get('difficulty', meta.get('difficulty_id', 'Unknown'))),
-                str(meta.get('encounter_name', video_path.stem)),
-                bool(meta.get('result', False)),
-            )
-        except (OSError, json.JSONDecodeError):
-            pass  # Fall through to filename parsing
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            meta = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    return meta if isinstance(meta, dict) else None
 
-    # Filename fallback. Simple scheme produced by generate_filename():
-    #   YYYY-MM-DD_HH-MM-SS_BossName_Difficulty.ext
-    # Strip the "YYYY-MM-DD_HH-MM-SS_" prefix and treat the remainder as the
-    # grouping signature. This collapses all Heroic Broodtwister pulls into
-    # one group regardless of timestamp.
-    stem = video_path.stem
-    m = re.match(r'^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_(.+)$', stem)
-    tail = m.group(1) if m else stem
-    return ("Unknown", "Unknown", tail, False)
+
+def _group_key(video_path: Path, meta: dict) -> Tuple[str, str, str, bool]:
+    """Grouping key (category, difficulty, encounter, is_kill) from the sidecar."""
+    return (
+        str(meta.get('category', 'Unknown')),
+        str(meta.get('difficulty', meta.get('difficultyID', 'Unknown'))),
+        str(meta.get('encounterName', video_path.stem)),
+        bool(meta.get('result', False)),
+    )
 
 
 def _list_video_files(record_dir: Path) -> List[Path]:
@@ -119,7 +103,12 @@ def apply_retention(
         print(f"{LOG_PREFIXES['FILE']} [Retention] Skipped: directory missing")
         return result
 
-    all_files = [f for f in _list_video_files(record_dir) if not _is_clip(f)]
+    sidecars: Dict[Path, dict] = {}
+    for f in _list_video_files(record_dir):
+        meta = None if _is_clip(f) else _load_sidecar(f)
+        if meta is not None:
+            sidecars[f] = meta
+    all_files = list(sidecars)
     result['scanned'] = len(all_files)
 
     if not all_files:
@@ -149,7 +138,7 @@ def apply_retention(
     if max_per_group > 0 and survivors:
         groups: Dict[tuple, List[Path]] = defaultdict(list)
         for f in survivors:
-            groups[_group_key(f)].append(f)
+            groups[_group_key(f, sidecars[f])].append(f)
 
         for key, members in groups.items():
             if len(members) <= max_per_group:
