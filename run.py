@@ -30,6 +30,7 @@ from log_watcher import LogMonitor
 from typing import Optional
 
 
+from sidecar_cache import sidecars
 from constants import (
     DEFAULT_WEB_HOST,
     DEFAULT_WEB_PORT,
@@ -604,7 +605,6 @@ def create_clip(filename: str):
         try:
             result = export_clip(source_path, start, end)
             print(f"[CLIP] Created: {result.output_path.name}")
-            socketio.emit('recordings_updated')
             socketio.emit('clips_updated')
             socketio.emit('clip_complete', {
                 'source': filename,
@@ -814,15 +814,11 @@ def get_stats():
         # Skip JSON sidecars that belong to clip files
         if _clip_re.search(json_path.stem):
             continue
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            # Skip files that don't look like recording metadata
-            if 'encounterName' not in data and 'category' not in data:
-                continue
-            encounters.append(data)
-        except Exception:
+        data = sidecars.read(json_path)
+        # Skip files that don't look like recording metadata
+        if not data or ('encounterName' not in data and 'category' not in data):
             continue
+        encounters.append(data)
 
     return jsonify({'encounters': encounters})
 
@@ -886,8 +882,9 @@ def list_recording_files() -> list:
         summary = None
         if json_path.exists():
             try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f)
+                meta = sidecars.read(json_path)
+                if meta is None:
+                    continue
                 if meta.get('pov'):
                     continue
                 summary = {
@@ -899,6 +896,8 @@ def list_recording_files() -> list:
                     # Lets the UI show recordings regardless of filename scheme.
                     'encounterName': meta.get('encounterName'),
                     'difficulty': meta.get('difficulty'),
+                    'difficultyID': meta.get('difficultyID'),
+                    'bossPercent': meta.get('bossPercent'),
                     'category': meta.get('category'),
                     'player': (meta.get('player') or {}).get('_name'),
                 }
@@ -968,13 +967,8 @@ def get_local_povs_for_recording(filename: str):
         return jsonify({'error': 'Invalid path'}), 403
 
     json_path = video_path.with_suffix('.json')
-    if not json_path.exists():
-        return jsonify({'povs': []}), 200
-
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-    except Exception:
+    meta = sidecars.read(json_path)
+    if meta is None:
         return jsonify({'povs': []}), 200
 
     unique_hash = meta.get('uniqueHash', '')
@@ -996,9 +990,8 @@ def get_local_povs_for_recording(filename: str):
         if candidate_json == json_path:
             continue
         try:
-            with open(candidate_json, 'r', encoding='utf-8') as f:
-                pov_meta = json.load(f)
-            if pov_meta.get('uniqueHash') != unique_hash:
+            pov_meta = sidecars.read(candidate_json)
+            if not pov_meta or pov_meta.get('uniqueHash') != unique_hash:
                 continue
             if not pov_meta.get('pov'):
                 continue
@@ -1282,12 +1275,19 @@ def format_upload_speed(bytes_per_sec: float) -> str:
 # Status Broadcast Loop
 # -----------------------------------------------------------------------------
 
+def _reconnect_obs(s: AppState):
+    if s.obs_client.connect():
+        print(f"{LOG_PREFIXES['OBS']} ✅ Auto-reconnected to OBS")
+        _persist_obs_recording_path(s.obs_client, s.config_manager)
+
+
 def status_broadcast_loop():
     """Background thread that broadcasts status updates."""
     last_status = None
     last_cloud_broadcast = 0
     last_obs_reconnect_attempt = 0
     OBS_RECONNECT_INTERVAL = 15  # seconds between passive reconnect attempts
+    reconnect_thread: Optional[threading.Thread] = None
 
     while not shutdown_event.is_set():
         try:
@@ -1295,13 +1295,15 @@ def status_broadcast_loop():
 
             # Passively attempt to reconnect to OBS when disconnected.
             # This handles the case where OBS is started after the recorder.
-            if s.obs_client and not s.obs_client.is_connected:
+            # connect() blocks up to the OBS timeout; don't stall status pushes.
+            reconnect_idle = reconnect_thread is None or not reconnect_thread.is_alive()
+            if s.obs_client and not s.obs_client.is_connected and reconnect_idle:
                 now = time.time()
                 if now - last_obs_reconnect_attempt >= OBS_RECONNECT_INTERVAL:
                     last_obs_reconnect_attempt = now
-                    if s.obs_client.connect():
-                        print(f"{LOG_PREFIXES['OBS']} ✅ Auto-reconnected to OBS")
-                        _persist_obs_recording_path(s.obs_client, s.config_manager)
+                    reconnect_thread = threading.Thread(
+                        target=_reconnect_obs, args=(s,), name='obs-reconnect', daemon=True)
+                    reconnect_thread.start()
 
             status = build_status()
 

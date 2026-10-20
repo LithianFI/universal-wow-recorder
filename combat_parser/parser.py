@@ -26,12 +26,23 @@ from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
 
 from constants import LOG_PREFIXES
 
-_RELEVANT_EVENTS = frozenset((
+# Events that need a full CSV parse (CombatEvent) and a handler. Everything
+# else, including the very frequent SPELL_DAMAGE, is handled on the raw line.
+_DISPATCHED_EVENTS = frozenset((
     "ENCOUNTER_START", "ENCOUNTER_END",
     "CHALLENGE_MODE_START", "CHALLENGE_MODE_END",
-    "ZONE_CHANGE", "COMBATANT_INFO", "UNIT_DIED",
-    "SPELL_DAMAGE",
+    "ZONE_CHANGE",
 ))
+
+
+def _event_name(line: str) -> str:
+    """Event type of a log line ("TIMESTAMP  EVENT,..."), without parsing the rest."""
+    start = line.find('  ')
+    if start < 0:
+        return ''
+    start += 2
+    end = line.find(',', start)
+    return line[start:end] if end >= 0 else line[start:].strip()
 
 # WCR ignores any unit with maxHP below this on Retail to avoid tracking
 # adds/players before the boss takes its first SPELL_DAMAGE hit.
@@ -151,8 +162,21 @@ class CombatParser:
                 self.state.update_activity()
                 self._last_activity_update = now
 
-        # Fast pre-filter: skip CSV parse for lines with no actionable tokens.
-        if not any(tok in line for tok in _RELEVANT_EVENTS):
+        event_name = _event_name(line)
+
+        # COMBATANT_INFO is logged at every pull, so this also picks up spec changes.
+        if event_name == 'COMBATANT_INFO':
+            if self.player_guid:
+                self._parse_combatant_info(line)
+            return
+
+        # Track boss HP% live from SPELL_DAMAGE events (mirrors WCR handleSpellDamage).
+        if event_name == 'SPELL_DAMAGE':
+            if self.state.encounter_active:
+                self._track_boss_health(line)
+            return
+
+        if event_name not in _DISPATCHED_EVENTS:
             return
 
         # Parse the line
@@ -175,14 +199,6 @@ class CombatParser:
         # Deaths are collected by _scan_log_for_encounter_data() after the
         # encounter ends — see section 8 of the reference doc. Doing it live
         # on every UNIT_DIED line is pure overhead on the hot path.
-
-        # COMBATANT_INFO is logged at every pull, so this also picks up spec changes.
-        if self.player_guid and 'COMBATANT_INFO' in line:
-            self._parse_combatant_info(line)
-
-        # Track boss HP% live from SPELL_DAMAGE events (mirrors WCR handleSpellDamage).
-        if self.state.encounter_active and 'SPELL_DAMAGE' in line:
-            self._track_boss_health(line)
         
     def start_manual_recording(self) -> bool:
         """Start a manual recording triggered by the user."""

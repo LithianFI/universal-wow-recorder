@@ -14,7 +14,6 @@ Clips are skipped entirely: a user exporting a 20-second highlight shouldn't
 have it evicted by retention.
 """
 
-import json
 import re
 import time
 from collections import defaultdict
@@ -22,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from constants import VIDEO_EXTENSIONS, LOG_PREFIXES
+from sidecar_cache import sidecars
 
 
 # Clip files produced by the export endpoint are suffixed with "_clip_MMSS-MMSS"
@@ -36,13 +36,7 @@ def _is_clip(path: Path) -> bool:
 
 def _load_sidecar(video_path: Path) -> Optional[dict]:
     """Return the recording's JSON sidecar, or None if it has no readable one."""
-    json_path = video_path.with_suffix('.json')
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return None
-    return meta if isinstance(meta, dict) else None
+    return sidecars.read(video_path.with_suffix('.json'))
 
 
 def _group_key(video_path: Path, meta: dict) -> Tuple[str, str, str, bool]:

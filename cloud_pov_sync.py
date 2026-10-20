@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable, Any
 
 from constants import VIDEO_EXTENSIONS
+from sidecar_cache import sidecars
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +36,8 @@ _DIFF_MAP: Dict[str, str] = {
     'mythic+': 'mythic+', 'mythicplus': 'mythic+', '+': 'mythic+',
 }
 
+
+_PROGRESS_INTERVAL_SECONDS = 0.5
 
 # Separators and drive/stream markers that would let a key leave the download dir.
 _UNSAFE_KEY_CHARS = ('/', '\\', ':', '\0')
@@ -135,6 +138,7 @@ class PovSyncManager:
         self._active_download: Optional[str] = None
         self._download_work_event = threading.Event()
         self._progress_callbacks: List[Callable] = []
+        self._last_progress: Dict[str, tuple] = {}  # video_key -> (status, monotonic time)
 
     # ------------------------------------------------------------------
     # Public API
@@ -314,8 +318,9 @@ class PovSyncManager:
         if recording_dir and recording_dir.exists():
             for json_path in recording_dir.rglob('*.json'):
                 try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+                    data = sidecars.read(json_path)
+                    if data is None:
+                        continue
                     h = data.get('uniqueHash', '')
                     if h:
                         rel = str(json_path.with_suffix('').relative_to(recording_dir))
@@ -541,6 +546,13 @@ class PovSyncManager:
             print(f"[PovSync] Could not write sidecar for {dest.name}: {exc}")
 
     def _notify_progress(self, progress: DownloadProgress):
+        # Downloads report every 1 MB chunk; only forward a few updates per
+        # second, plus every status change.
+        now = time.monotonic()
+        last = self._last_progress.get(progress.video_key)
+        if last and last[0] == progress.status and now - last[1] < _PROGRESS_INTERVAL_SECONDS:
+            return
+        self._last_progress[progress.video_key] = (progress.status, now)
         for cb in self._progress_callbacks:
             try:
                 cb(progress)
