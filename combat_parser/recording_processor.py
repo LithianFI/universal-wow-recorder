@@ -110,9 +110,10 @@ class RecordingProcessor:
 
     def _process_recording_file(self, recording_path: Path, boss_info: BossInfo = None,
                                dungeon_info: DungeonInfo = None, recording_duration: float = 0,
-                               metadata: Optional[RecordingMetadata] = None,
+                               metadata: RecordingMetadata = None,
                                start_time: Optional[datetime] = None) -> Optional[Path]:
-        """Rename the recording (or delete it if too short). Returns the saved path."""
+        """Rename the recording WCR-style and write its JSON sidecar (or delete
+        it if too short). Returns the saved path."""
         min_duration = self.config.MIN_RECORDING_DURATION
         if recording_duration < min_duration:
             print(f"{LOG_PREFIXES['PROC']} Recording too short ({recording_duration:.1f}s)")
@@ -125,20 +126,8 @@ class RecordingProcessor:
         if start_time is None:
             start_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
 
-        naming_scheme = self.config.FILE_NAMING_SCHEME
-
-        if naming_scheme == 'wcr' and metadata:
-            new_path = self._rename_wcr_style(recording_path, metadata, start_time)
-        else:
-            # Simple naming (existing behavior) — kept for users not on WCR-style filenames.
-            if boss_info:
-                new_path = self.file_manager.rename_recording(recording_path, boss_info=boss_info)
-            elif dungeon_info:
-                new_path = self.file_manager.rename_recording(recording_path, dungeon_info=dungeon_info)
-            else:
-                new_path = self.file_manager.rename_recording(recording_path)
-
-        if new_path and metadata and self.config.GENERATE_METADATA_JSON:
+        new_path = self._rename_wcr_style(recording_path, metadata, start_time)
+        if new_path:
             self._save_metadata_json(new_path, metadata)
 
         # Move into date subfolder.
@@ -146,6 +135,9 @@ class RecordingProcessor:
             organised = self.file_manager.organize_into_date_subfolder(new_path)
             if organised:
                 new_path = organised
+
+        if new_path:
+            self.file_manager.last_renamed_path = new_path
 
         return new_path
 

@@ -5,6 +5,7 @@ Runs the recorder and web interface in a single process with WebSocket communica
 """
 
 import os
+import re
 import sys
 import json
 import time
@@ -272,13 +273,10 @@ def get_config():
         'recording': {
             'auto_rename': cm.AUTO_RENAME,
             'rename_delay': cm.RENAME_DELAY,
-            'max_rename_attempts': cm.MAX_RENAME_ATTEMPTS,
             'min_recording_duration': cm.MIN_RECORDING_DURATION,
             'delete_short_recordings': cm.DELETE_SHORT_RECORDINGS,
             'recording_path_fallback': str(cm.RECORDING_PATH_FALLBACK or ''),
             'dungeon_timeout_seconds': cm.DUNGEON_TIMEOUT_SECONDS,
-            'file_naming_scheme': cm.FILE_NAMING_SCHEME,
-            'generate_metadata_json': cm.GENERATE_METADATA_JSON,
             'track_player_deaths': cm.TRACK_PLAYER_DEATHS,
             'organize_by_date': cm.ORGANIZE_BY_DATE,
             'retention_max_age_days': cm.RETENTION_MAX_AGE_DAYS,
@@ -808,6 +806,9 @@ def get_recording_directory() -> Optional[Path]:
     return None
 
 
+_CLIP_STEM_RE = re.compile(r'_clip_\d+-\d+$')
+
+
 def list_recording_files() -> list:
     s = get_state()
     record_dir = get_recording_directory()
@@ -818,7 +819,8 @@ def list_recording_files() -> list:
     recordings = []
 
     for file in record_dir.rglob(f'*{ext}'):
-        if not file.is_file():
+        # Clips have their own page (/api/clips) and no sidecar.
+        if not file.is_file() or _CLIP_STEM_RE.search(file.stem):
             continue
         json_path = file.with_suffix('.json')
         summary = None
@@ -833,6 +835,12 @@ def list_recording_files() -> list:
                     'duration': meta.get('duration'),
                     'deaths': meta.get('deaths', []),
                     'uniqueHash': meta.get('uniqueHash'),
+                    'start': meta.get('start'),
+                    # Lets the UI show recordings regardless of filename scheme.
+                    'encounterName': meta.get('encounterName'),
+                    'difficulty': meta.get('difficulty'),
+                    'category': meta.get('category'),
+                    'player': (meta.get('player') or {}).get('_name'),
                 }
             except Exception:
                 continue

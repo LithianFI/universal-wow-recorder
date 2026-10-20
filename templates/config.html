@@ -360,29 +360,12 @@
 
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-parchment-700 text-sm font-medium">Generate metadata JSON</div>
-                            <div class="text-parchment-400 text-xs">
-                                Companion <code class="text-parchment-500">.json</code> with encounter info — required
-                                for death markers and the dashboard's pull view
-                            </div>
-                        </div>
-                        <button type="button" class="toggle"
-                            :class="config.recording.generate_metadata_json ? 'on' : 'off'"
-                            @click="config.recording.generate_metadata_json = !config.recording.generate_metadata_json">
-                            <span class="toggle-thumb"></span>
-                        </button>
-                    </div>
-
-                    <div class="flex items-center justify-between"
-                        :class="!config.recording.generate_metadata_json ? 'opacity-50' : ''">
-                        <div>
                             <div class="text-parchment-700 text-sm font-medium">Track player deaths</div>
                             <div class="text-parchment-400 text-xs">Record death events in the metadata JSON</div>
                         </div>
                         <button type="button" class="toggle"
                             :class="config.recording.track_player_deaths ? 'on' : 'off'"
-                            @click="config.recording.track_player_deaths = !config.recording.track_player_deaths"
-                            :disabled="!config.recording.generate_metadata_json">
+                            @click="config.recording.track_player_deaths = !config.recording.track_player_deaths">
                             <span class="toggle-thumb"></span>
                         </button>
                     </div>
@@ -403,14 +386,10 @@
                 <!-- Numeric -->
                 <div class="mt-6 pt-5 border-t border-ink-500">
                     <h3 class="label-cap mb-3">Timing</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label class="field-label">Rename delay (s)</label>
                             <input type="number" x-model.number="config.recording.rename_delay" min="0" class="input">
-                        </div>
-                        <div>
-                            <label class="field-label">Max rename attempts</label>
-                            <input type="number" x-model.number="config.recording.max_rename_attempts" min="1" class="input">
                         </div>
                         <div>
                             <label class="field-label">Min duration (s)</label>
@@ -430,18 +409,6 @@
                             <input type="text" x-model="config.recording.recording_path_fallback" class="input input-mono">
                             <p class="field-help">Used if OBS recording directory can't be detected.</p>
                         </div>
-                    </div>
-
-                    <div class="mt-4">
-                        <label class="field-label">File naming scheme</label>
-                        <select x-model="config.recording.file_naming_scheme" class="input">
-                            <option value="simple">Simple — YYYY-MM-DD_HH-MM-SS_Boss_Difficulty</option>
-                            <option value="wcr">Warcraft Recorder — YYYY-MM-DD HH-MM-SS - Player - Boss [Diff] (Result)</option>
-                        </select>
-                        <p class="field-help">
-                            <strong class="text-parchment-700">WCR scheme is recommended</strong> — the dashboard parses
-                            it for difficulty/result columns, the previous-pull card, and tonight's progression view.
-                        </p>
                     </div>
                 </div>
 
@@ -777,13 +744,10 @@
                     recording: {
                         auto_rename: true,
                         rename_delay: 3,
-                        max_rename_attempts: 10,
                         min_recording_duration: 5,
                         delete_short_recordings: true,
                         recording_path_fallback: '',
                         dungeon_timeout_seconds: 120,
-                        file_naming_scheme: 'simple',
-                        generate_metadata_json: false,
                         track_player_deaths: false,
                         organize_by_date: false,
                         retention_max_age_days: 0,
@@ -833,13 +797,10 @@
                         this.config.recording = {
                             auto_rename: data.recording?.auto_rename !== false,
                             rename_delay: data.recording?.rename_delay ?? 3,
-                            max_rename_attempts: data.recording?.max_rename_attempts ?? 10,
                             min_recording_duration: data.recording?.min_recording_duration ?? 5,
                             delete_short_recordings: data.recording?.delete_short_recordings !== false,
                             recording_path_fallback: data.recording?.recording_path_fallback ?? '',
                             dungeon_timeout_seconds: data.recording?.dungeon_timeout_seconds ?? 120,
-                            file_naming_scheme: data.recording?.file_naming_scheme ?? 'simple',
-                            generate_metadata_json: data.recording?.generate_metadata_json === true,
                             track_player_deaths: data.recording?.track_player_deaths === true,
                             organize_by_date: data.recording?.organize_by_date === true,
                             retention_max_age_days: data.recording?.retention_max_age_days ?? 0,

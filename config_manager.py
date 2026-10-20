@@ -41,12 +41,9 @@ class ConfigManager:
         'Recording': {
             'auto_rename': 'true',
             'rename_delay': '3',
-            'max_rename_attempts': '10',
             'min_recording_duration': '5',
             'delete_short_recordings': 'true',
             'dungeon_timeout_seconds': '120',
-            'file_naming_scheme': 'simple',
-            'generate_metadata_json': 'false',
             'track_player_deaths': 'false',
             'retention_max_age_days': '0',
             'retention_max_per_group': '0',
@@ -96,14 +93,12 @@ class ConfigManager:
         'recording': ('Recording', {
             'auto_rename':             lambda v: str(v).lower(),
             'rename_delay':            str,
-            'max_rename_attempts':     str,
             'min_recording_duration':  str,
             'delete_short_recordings': lambda v: str(v).lower(),
             'dungeon_timeout_seconds': str,
-            'file_naming_scheme':      str,
-            'generate_metadata_json':  lambda v: str(v).lower(),
             'track_player_deaths':     lambda v: str(v).lower(),
             'organize_by_date':        lambda v: str(v).lower(),
+            'recording_path_fallback': str,
             'retention_max_age_days':  str,
             'retention_max_per_group': str,
         }),
@@ -240,9 +235,6 @@ auto_rename = true
 # Delay in seconds before renaming (to ensure OBS finished writing)
 rename_delay = 3
 
-# Maximum attempts before giving up on finding the recording file
-max_rename_attempts = 10
-
 # Minimum recording duration in seconds
 min_recording_duration = 5
 
@@ -254,13 +246,6 @@ recording_path_fallback = {recording_path}
 
 # Timeout in seconds for M+ dungeon idle detection
 dungeon_timeout_seconds = 120
-
-# File naming scheme
-# Options: 'simple' (YYYY-MM-DD_HH-MM-SS_Boss_Difficulty) or 'wcr' (Warcraft Recorder style)
-file_naming_scheme = simple
-
-# Generate companion JSON metadata files (WCR compatible)
-generate_metadata_json = false
 
 # Track player deaths in metadata
 track_player_deaths = false
@@ -394,11 +379,6 @@ proton_folder =
         return self.config.getint('Recording', 'rename_delay', fallback=3)
 
     @property
-    def MAX_RENAME_ATTEMPTS(self) -> int:
-        """Get maximum rename attempts."""
-        return self.config.getint('Recording', 'max_rename_attempts', fallback=10)
-
-    @property
     def MIN_RECORDING_DURATION(self) -> int:
         """Get minimum recording duration in seconds."""
         return self.config.getint('Recording', 'min_recording_duration', fallback=5)
@@ -460,16 +440,6 @@ proton_folder =
     def RECORD_MPLUS(self) -> bool:
         """Check if Mythic+ dungeons should be recorded."""
         return self.config.getboolean('Difficulties', 'record_mplus', fallback=True)
-
-    @property
-    def FILE_NAMING_SCHEME(self) -> str:
-        """Get file naming scheme ('wcr' or 'simple')."""
-        return self.config.get('Recording', 'file_naming_scheme', fallback='simple', raw=True)
-
-    @property
-    def GENERATE_METADATA_JSON(self) -> bool:
-        """Check if metadata JSON should be generated."""
-        return self.config.getboolean('Recording', 'generate_metadata_json', fallback=False)
 
     @property
     def TRACK_PLAYER_DEATHS(self) -> bool:
@@ -599,6 +569,25 @@ proton_folder =
         self.config.set('BossNames', str(boss_id), name)
         self.save()
 
+    def _replace_boss_names(self, overrides: dict):
+        """Replace all overrides with *overrides* ({boss_id: name}); no save.
+
+        The config page always sends the full map, so removed rows disappear.
+        """
+        if not isinstance(overrides, dict):
+            return
+        if self.config.has_section('BossNames'):
+            self.config.remove_section('BossNames')
+        self.config.add_section('BossNames')
+        for boss_id, name in overrides.items():
+            try:
+                key = str(int(boss_id))
+            except (TypeError, ValueError):
+                continue
+            name = str(name).strip()
+            if name:
+                self.config.set('BossNames', key, name)
+
     # ---------------------------------------------------------------------
     # Utility Methods
     # ---------------------------------------------------------------------
@@ -619,8 +608,11 @@ proton_folder =
         _UPDATE_MAP — nothing else needs to change.
         """
         for section_key, section_data in data.items():
+            if section_key == 'boss_names':
+                self._replace_boss_names(section_data)
+                continue
             if section_key not in self._UPDATE_MAP:
-                continue  # e.g. 'boss_names' — handled separately
+                continue
             ini_section, key_map = self._UPDATE_MAP[section_key]
             if not self.config.has_section(ini_section):
                 self.config.add_section(ini_section)

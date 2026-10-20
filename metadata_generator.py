@@ -284,6 +284,7 @@ class RecordingMetadata:
             2: "H",   # Heroic (5-player)
             3: "M",   # Mythic
             4: "M+",  # Mythic+
+            8: "M+",  # Mythic Keystone (set for dungeon runs by the parser)
             7: "LFR", # LFR
             14: "N",  # Normal (raid)
             15: "H",  # Heroic (raid)

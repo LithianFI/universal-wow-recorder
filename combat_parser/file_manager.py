@@ -10,12 +10,9 @@ from typing import Optional
 
 from constants import (
     VIDEO_EXTENSIONS,
-    DIFFICULTY_NAMES,
     DEFAULT_FILE_STABILITY_CHECK_INTERVAL,
     LOG_PREFIXES,
 )
-
-from combat_parser.events import BossInfo, DungeonInfo
 
 
 class RecordingFileManager:
@@ -95,72 +92,6 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} Error validating file stability: {e}")
             return False
     
-    def generate_filename(self, boss_info: BossInfo = None, dungeon_info: DungeonInfo = None, 
-                         file_time: datetime = None) -> str:
-        """Generate a filename for a recording based on encounter info."""
-        if boss_info:
-            difficulty_name = DIFFICULTY_NAMES.get(boss_info.difficulty_id,
-                                                  f"Difficulty_{boss_info.difficulty_id}")
-
-            if not file_time:
-                file_time = datetime.now()
-            date_str = file_time.strftime("%Y-%m-%d")
-            time_str = file_time.strftime("%H-%M-%S")
-
-            filename = f"{date_str}_{time_str}_{boss_info.formatted_name}_{difficulty_name}"
-
-        elif dungeon_info:
-            if not file_time:
-                file_time = datetime.now()
-            date_str = file_time.strftime("%Y-%m-%d")
-            time_str = file_time.strftime("%H-%M-%S")
-
-            filename = f"{date_str}_{time_str}_{dungeon_info.formatted_name}_M+{dungeon_info.dungeon_level}"
-
-        else:
-            if not file_time:
-                file_time = datetime.now()
-            date_str = file_time.strftime("%Y-%m-%d")
-            time_str = file_time.strftime("%H-%M-%S")
-            filename = f"{date_str}_{time_str}_Recording"
-        
-        filename += self.config.RECORDING_EXTENSION
-        
-        return filename
-    
-    
-    def rename_recording(self, recording_path: Path, boss_info: BossInfo = None, 
-                        dungeon_info: DungeonInfo = None) -> Optional[Path]:
-        """Rename a recording file with encounter information."""
-        try:
-            file_time = datetime.fromtimestamp(recording_path.stat().st_mtime)
-
-            if boss_info:
-                new_filename = self.generate_filename(boss_info=boss_info, file_time=file_time)
-            elif dungeon_info:
-                new_filename = self.generate_filename(dungeon_info=dungeon_info, file_time=file_time)
-            else:
-                new_filename = self.generate_filename(file_time=file_time)
-
-            new_path = recording_path.parent / new_filename
-
-            if boss_info:
-                new_path = self._handle_duplicate_filename(new_path, boss_info, file_time)
-            elif dungeon_info:
-                new_path = self._handle_duplicate_dungeon_filename(new_path, dungeon_info, file_time)
-            else:
-                new_path = self._handle_duplicate_generic_filename(new_path, file_time)
-
-            recording_path.rename(new_path)
-            print(f"[FILE] Renamed to: {new_path.name}")
-            
-            self.last_renamed_path = new_path
-            return new_path
-            
-        except Exception as e:
-            print(f"[FILE] Error renaming recording: {e}")
-            return None
-    
     def delete_recording(self, recording_path: Path, reason: str = "") -> bool:
         """Delete a recording file."""
         try:
@@ -197,78 +128,11 @@ class RecordingFileManager:
         }
         return difficulties.get(difficulty_id, f"Difficulty_{difficulty_id}")
     
-    def _handle_duplicate_filename(self, path: Path, boss_info: BossInfo, 
-                                 file_time: datetime) -> Path:
-        """Handle duplicate filenames by adding attempt counters."""
-        counter = 1
-        original_path = path
-        
-        while path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
-            boss_with_counter = f"{boss_info.name}_attempt{counter}"
-            boss_info_copy = BossInfo(
-                boss_id=boss_info.boss_id,
-                name=boss_with_counter,
-                difficulty_id=boss_info.difficulty_id,
-                instance_id=boss_info.instance_id,
-                timestamp=boss_info.timestamp
-            )
-            
-            new_filename = self.generate_filename(boss_info=boss_info_copy, file_time=file_time)
-            path = original_path.parent / new_filename
-            counter += 1
-        
-        if path.exists():
-            print(f"[FILE] Max rename attempts reached, keeping: {original_path.name}")
-            return original_path
-        
-        return path
-    
-    def _handle_duplicate_dungeon_filename(self, path: Path, dungeon_info: DungeonInfo,
-                                         file_time: datetime) -> Path:
-        """Handle duplicate dungeon filenames by adding attempt counters."""
-        counter = 1
-        original_path = path
-        
-        while path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
-            dungeon_with_counter = f"{dungeon_info.name}_attempt{counter}"
-            dungeon_info_copy = DungeonInfo(
-                dungeon_id=dungeon_info.dungeon_id,
-                name=dungeon_with_counter,
-                dungeon_level=dungeon_info.dungeon_level,
-                timestamp=dungeon_info.timestamp
-            )
-            
-            new_filename = self.generate_filename(dungeon_info=dungeon_info_copy, file_time=file_time)
-            path = original_path.parent / new_filename
-            counter += 1
-        
-        if path.exists():
-            print(f"[FILE] Max rename attempts reached, keeping: {original_path.name}")
-            return original_path
-        
-        return path
-    
-    def _handle_duplicate_generic_filename(self, path: Path, file_time: datetime) -> Path:
-        """Handle duplicate generic filenames."""
-        counter = 1
-        original_path = path
-        
-        while path.exists() and counter <= self.config.MAX_RENAME_ATTEMPTS:
-            new_filename = f"{file_time.strftime('%Y-%m-%d_%H-%M-%S')}_Recording_{counter}{self.config.RECORDING_EXTENSION}"
-            path = original_path.parent / new_filename
-            counter += 1
-        
-        if path.exists():
-            print(f"[FILE] Max rename attempts reached, keeping: {original_path.name}")
-            return original_path
-        
-        return path
-
     def organize_into_date_subfolder(self, file_path: Path) -> Optional[Path]:
         """Move *file_path* (and its companion .json) into a YYYY-MM-DD subfolder.
 
         The date is extracted from the filename when it starts with the
-        standard ``YYYY-MM-DD_`` prefix produced by :meth:`generate_filename`.
+        ``YYYY-MM-DD`` prefix of WCR-style names.
         If the filename doesn't match, the file's modification time is used as
         a fallback so no recording is ever left behind.
 
@@ -282,8 +146,8 @@ class RecordingFileManager:
         # Determine the date.
         date_str: Optional[str] = None
 
-        # Filenames produced by generate_filename start with YYYY-MM-DD_
-        m = re.match(r'^(\d{4}-\d{2}-\d{2})_', file_path.name)
+        # WCR names start "YYYY-MM-DD HH-MM-SS - ..."; older simple names used "_".
+        m = re.match(r'^(\d{4}-\d{2}-\d{2})[ _]', file_path.name)
         if m:
             date_str = m.group(1)
         else:

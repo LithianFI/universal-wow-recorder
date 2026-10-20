@@ -43,15 +43,20 @@ def _format_seconds_for_name(seconds: float) -> str:
 
 
 def _unique_output_path(candidate: Path) -> Path:
-    """Return *candidate* or, if it exists, a variant with _2/_3/... appended."""
+    """Return *candidate* or, if it exists, "<base> (2)_clip_X-Y.ext" etc.
+
+    The counter goes before the _clip_ suffix: clips are recognised by a name
+    ending in _clip_X-Y, and "..._clip_10-20_2" would vanish from the Clips page.
+    """
     if not candidate.exists():
         return candidate
-    stem = candidate.stem
-    suffix = candidate.suffix
-    parent = candidate.parent
+    base, separator, clip_range = candidate.stem.rpartition('_clip_')
+    if not separator:
+        base, clip_range = candidate.stem, ''
+    clip_suffix = f"_clip_{clip_range}" if separator else ''
     n = 2
     while True:
-        alt = parent / f"{stem}_{n}{suffix}"
+        alt = candidate.parent / f"{base} ({n}){clip_suffix}{candidate.suffix}"
         if not alt.exists():
             return alt
         n += 1

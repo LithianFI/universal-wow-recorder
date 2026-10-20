@@ -621,9 +621,6 @@ class CombatParser:
 
     def _init_metadata_for_encounter(self, boss_info: BossInfo):
         """Initialize metadata for a new raid/boss encounter."""
-        if not (self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr'):
-            return
-
         self.current_metadata.reset()
 
         # Explicit category for boss encounters
@@ -650,9 +647,6 @@ class CombatParser:
 
     def _init_metadata_for_dungeon(self, dungeon_info: DungeonInfo):
         """Initialize metadata for a Mythic+ dungeon run."""
-        if not (self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr'):
-            return
-
         self.current_metadata.reset()
 
         # Explicit category for M+ dungeons
@@ -678,9 +672,6 @@ class CombatParser:
 
     def _finalize_metadata(self, is_kill: bool, duration: float, fight_percentage: float = 0.0):
         """Finalize metadata with encounter result."""
-        if not (self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr'):
-            return
-
         # On a kill the log reports 0% remaining; store as 0 (dead).
         # On a wipe it reports the actual HP% remaining — use that directly.
         boss_percent = 0 if is_kill else fight_percentage
@@ -917,10 +908,6 @@ class CombatParser:
             print(f"{LOG_PREFIXES['PARSER']} Error parsing timestamp: {e}")
             return int(datetime.now().timestamp() * 1000)
 
-    @property
-    def _writes_metadata(self) -> bool:
-        return self.config.GENERATE_METADATA_JSON or self.config.FILE_NAMING_SCHEME == 'wcr'
-
     def _submit_obs_job(self, job: Callable, *args) -> Future:
         """Queue an OBS step. Exceptions are logged (a Future would hide them)."""
         def run():
@@ -964,15 +951,14 @@ class CombatParser:
     def _process_dungeon_end_thread(self, stop_result: StopResult, dungeon_info: DungeonInfo,
                                     duration: float, reason: str, context: _RecordingContext):
         """Thread function: scan the log and save the stopped dungeon recording."""
-        if self._writes_metadata:
-            self._scan_log_for_encounter_data(context)
+        self._scan_log_for_encounter_data(context)
 
         result = self.processor.process_dungeon_end(
             stop_result,
             dungeon_info,
             duration,
             reason,
-            metadata=context.metadata if self._writes_metadata else None,
+            metadata=context.metadata,
             start_time=context.start_time
         )
 
@@ -990,14 +976,13 @@ class CombatParser:
     def _process_encounter_end_thread(self, stop_result: StopResult, boss_info: BossInfo,
                                       duration: float, context: _RecordingContext):
         """Thread function: scan the log and save the stopped encounter recording."""
-        if self._writes_metadata:
-            self._scan_log_for_encounter_data(context)
+        self._scan_log_for_encounter_data(context)
 
         result = self.processor.process_encounter_end(
             stop_result,
             boss_info,
             duration,
-            metadata=context.metadata if self._writes_metadata else None,
+            metadata=context.metadata,
             start_time=context.start_time
         )
 
