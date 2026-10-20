@@ -5,11 +5,14 @@ Monitors WoW log directory and tails new combat log files.
 
 import os
 import time
+import traceback
 from threading import Event, Thread
 from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 
 from constants import LOG_PREFIXES
+
+_POLL_INTERVAL_SECONDS = 0.05
 
 
 class LogTailer:
@@ -21,12 +24,14 @@ class LogTailer:
         self._stop_event = Event()
         self._tail_thread: Thread = None
     
-    def start_tailing(self, log_path: Path) -> bool:
+    def start_tailing(self, log_path: Path, from_start: bool = False) -> bool:
         """Start tailing a log file.
-        
+
         Args:
             log_path: Path to the log file to tail
-            
+            from_start: Read existing content too (a log created just now may
+                already hold the pull's ENCOUNTER_START / COMBATANT_INFO).
+
         Returns:
             True if started successfully, False otherwise
         """
@@ -44,7 +49,7 @@ class LogTailer:
 
         self._tail_thread = Thread(
             target=self._tail_file,
-            args=(log_path, self._stop_event),
+            args=(log_path, self._stop_event, from_start),
             daemon=True
         )
         self._tail_thread.start()
@@ -80,33 +85,54 @@ class LogTailer:
         self._tail_thread = None
         return True
     
-    def _tail_file(self, log_path: Path, stop_event: Event):
+    def _tail_file(self, log_path: Path, stop_event: Event, from_start: bool):
         """Thread function to tail a file and process new lines."""
         try:
-            with open(log_path, 'r', encoding='utf-8') as file:
-                # Start at the end of the file (ignore existing content)
-                file.seek(0, os.SEEK_END)
-                
-                print(f"{LOG_PREFIXES['WATCHER']} 📖 Now reading new entries from {log_path.name}")
-                
-                while not stop_event.is_set():
-                    line = file.readline()
+            # Binary so line offsets are byte positions the parser can seek to.
+            with open(log_path, 'rb') as file:
+                if not from_start:
+                    file.seek(0, os.SEEK_END)
 
-                    if line:
-                        self.parser.process_line(line)
-                    else:
-                        time.sleep(0.05)
-                        
+                print(f"{LOG_PREFIXES['WATCHER']} 📖 Now reading new entries from {log_path.name}")
+                self._read_lines(file, stop_event)
+
         except FileNotFoundError:
             print(f"{LOG_PREFIXES['WATCHER']} ❌ Log file disappeared: {log_path.name}")
         except Exception as e:
             print(f"{LOG_PREFIXES['WATCHER']} ❌ Error tailing file {log_path.name}: {e}")
         finally:
             print(f"{LOG_PREFIXES['WATCHER']} 📕 Stopped reading {log_path.name}")
-    
+
+    def _read_lines(self, file, stop_event: Event):
+        # WoW flushes in blocks, so readline() at EOF can return half a line.
+        # Hold it back until the rest arrives instead of parsing a fragment.
+        partial = b''
+        partial_offset = 0
+        while not stop_event.is_set():
+            offset = file.tell()
+            chunk = file.readline()
+            if not chunk:
+                time.sleep(_POLL_INTERVAL_SECONDS)
+                continue
+            if not partial:
+                partial_offset = offset
+            partial += chunk
+            if not partial.endswith(b'\n'):
+                continue
+            line, line_offset, partial = partial, partial_offset, b''
+            self._process_line(line.decode('utf-8', errors='replace'), line_offset)
+
+    def _process_line(self, line: str, offset: int):
+        # One bad line (or a failing callback) must not end tailing for good.
+        try:
+            self.parser.process_line(line, offset)
+        except Exception:
+            print(f"{LOG_PREFIXES['WATCHER']} ⚠️ Error processing log line, skipping:")
+            traceback.print_exc()
+
     def is_alive(self) -> bool:
         """Check if tailer is currently active."""
-        return self.is_tailing and self._tail_thread is not None
+        return self.is_tailing and self._tail_thread is not None and self._tail_thread.is_alive()
 
 
 class LogDirHandler(FileSystemEventHandler):
@@ -124,7 +150,7 @@ class LogDirHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         
-        self._handle_new_file(Path(event.src_path))
+        self._handle_new_file(Path(event.src_path), is_new_log=True)
     
     def on_moved(self, event):
         """Handle file move/rename in watched directory.
@@ -134,18 +160,28 @@ class LogDirHandler(FileSystemEventHandler):
         if event.is_directory:
             return
         
-        self._handle_new_file(Path(event.dest_path))
+        self._handle_new_file(Path(event.dest_path), is_new_log=True)
     
-    def _handle_new_file(self, file_path: Path):
-        """Handle a new or renamed log file."""
+    def _handle_new_file(self, file_path: Path, is_new_log: bool = False):
+        """Handle a new or renamed log file.
+
+        *is_new_log* is False only for the log found at startup, whose existing
+        content is history we skip.
+        """
         # Use stored pattern instead of creating new config
         if not self.log_pattern.match(file_path.name):
             return
-        
+        if file_path == self.current_log:
+            return
+
         print(f"{LOG_PREFIXES['WATCHER']} 🔍 New combat log detected: {file_path.name}")
-        
+
+        if self.current_log is not None:
+            self.tailer.stop_tailing()
+            self.parser.on_log_switched()
+
         # Start tailing the new file
-        if self.tailer.start_tailing(file_path):
+        if self.tailer.start_tailing(file_path, from_start=is_new_log):
             self.current_log = file_path
             print(f"{LOG_PREFIXES['WATCHER']} ✅ Now monitoring: {file_path.name}")
         else:
