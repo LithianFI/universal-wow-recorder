@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable, Any
 
+from constants import VIDEO_EXTENSIONS
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -32,6 +34,17 @@ _DIFF_MAP: Dict[str, str] = {
     'lfr': 'lfr', 'l': 'lfr', 'looking for raid': 'lfr',
     'mythic+': 'mythic+', 'mythicplus': 'mythic+', '+': 'mythic+',
 }
+
+
+# Separators and drive/stream markers that would let a key leave the download dir.
+_UNSAFE_KEY_CHARS = ('/', '\\', ':', '\0')
+
+
+def _is_safe_video_key(key: str) -> bool:
+    """videoKey comes from other guild members, so it must be a plain video filename."""
+    if not key or key in ('.', '..') or any(c in key for c in _UNSAFE_KEY_CHARS):
+        return False
+    return Path(key).suffix.lower() in VIDEO_EXTENSIONS
 
 
 def _normalize_difficulty(d: str) -> str:
@@ -388,7 +401,8 @@ class PovSyncManager:
 
     def _download_video(self, cloud_video: dict):
         key = cloud_video.get('videoKey', '')
-        if not key:
+        if not _is_safe_video_key(key):
+            print(f"[PovSync] Refusing unsafe video key: {key!r}")
             return
 
         recording_dir = self._get_recording_dir()
