@@ -415,10 +415,10 @@
             </div>
 
             <!-- Player + analysis -->
-            <div x-show="selectedRecording" x-cloak class="flex-1 flex flex-col overflow-hidden">
+            <div x-show="selectedRecording" x-cloak x-ref="playerSection" class="flex-1 flex flex-col overflow-hidden">
 
                 <!-- Sticky: player + POV toggles -->
-                <div class="shrink-0">
+                <div class="shrink-0" x-ref="playerSticky">
 
                 <!-- ── Unified video grid + shared controls ── -->
                 <div x-ref="playerWrapper"
@@ -429,7 +429,7 @@
                     @keydown.window="handleKey($event)">
 
                     <!-- Grid: 1 = full-width, 2–4 = 2-column -->
-                    <div class="grid"
+                    <div class="grid" x-ref="videoGrid"
                         :class="totalVideoCount === 1 ? 'grid-cols-1' : 'grid-cols-2'"
                         :style="'gap:2px; background:#060504; grid-template-rows:1fr;' + (isFullscreen ? 'height:100%;' : 'height:' + playerHeight + 'px;')">
 
@@ -640,23 +640,11 @@
                 </div>
                 </div><!-- /sticky: player + POV toggles -->
 
-                <!-- Resize handle -->
+                <!-- Resize handle (double-click resets to auto-fit) -->
                 <div class="shrink-0 relative h-2 group/resize cursor-ns-resize select-none"
-                    style="background:#0a0806;"
-                    @mousedown.prevent="
-                        const startY = $event.clientY;
-                        const startH = playerHeight;
-                        const onMove = e => {
-                            playerHeight = Math.max(160, Math.min(window.innerHeight - 200, startH + (e.clientY - startY)));
-                        };
-                        const onUp = () => {
-                            localStorage.setItem('playerHeight', playerHeight);
-                            window.removeEventListener('mousemove', onMove);
-                            window.removeEventListener('mouseup', onUp);
-                        };
-                        window.addEventListener('mousemove', onMove);
-                        window.addEventListener('mouseup', onUp);
-                    ">
+                    style="background:#0a0806;" title="Drag to resize · double-click to auto-fit"
+                    @mousedown.prevent="startPlayerResize($event)"
+                    @dblclick="resetPlayerHeight()">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px transition-colors group-hover/resize:bg-gold-500/60"
                         style="background:#221d15;"></div>
                     <div class="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 group-hover/resize:opacity-100 transition-opacity pointer-events-none">
@@ -668,6 +656,7 @@
 
                 <!-- Scrollable: cooldown timeline -->
                 <div class="flex-1 overflow-y-auto custom-scrollbar">
+                <div x-ref="timelineContent">
                 <!-- ── Cooldown Timeline ── -->
                 <template x-if="(recordingMetadata?.cooldownCasts || []).length > 0">
                     <div class="border-t seam">
@@ -785,6 +774,7 @@
                         </div>
                     </div>
                 </template>
+                </div>
                 </div><!-- /scrollable: timeline -->
 
             </div><!-- /player section -->
@@ -1114,6 +1104,34 @@
             71:'warrior',72:'warrior',73:'warrior',
         };
 
+        // Player sizing. A dragged size is stored as a fraction of the player
+        // section height so it carries over between monitors of different sizes.
+        const PLAYER_HEIGHT_RATIO_KEY = 'playerHeightRatio';
+        const MIN_PLAYER_HEIGHT = 160;
+        const MIN_TIMELINE_HEIGHT = 200;
+        // Auto-fit never shrinks the video below this share of the section,
+        // so a large raid's timeline scrolls instead of squashing the player.
+        const AUTO_FIT_MIN_PLAYER_SHARE = 0.55;
+        const RESIZE_HANDLE_HEIGHT = 8;
+        const VIDEO_GRID_GAP = 2;
+        const DEFAULT_VIDEO_ASPECT = 16 / 9;
+
+        function loadPlayerHeightRatio() {
+            try {
+                const ratio = parseFloat(localStorage.getItem(PLAYER_HEIGHT_RATIO_KEY));
+                return ratio > 0 && ratio < 1 ? ratio : null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function savePlayerHeightRatio(ratio) {
+            try {
+                if (ratio === null) localStorage.removeItem(PLAYER_HEIGHT_RATIO_KEY);
+                else localStorage.setItem(PLAYER_HEIGHT_RATIO_KEY, ratio.toFixed(4));
+            } catch (_) {}
+        }
+
         function recordingsPage() {
             return {
                 recordings: [],
@@ -1138,7 +1156,8 @@
                 volume: 1,
                 speed: 1,
                 isFullscreen: false,
-                playerHeight: parseInt(localStorage.getItem('playerHeight') || '480'),
+                playerHeight: 480,
+                playerHeightRatio: loadPlayerHeightRatio(),
                 controlsVisible: true,
                 _controlsTimer: null,
                 currentTime: 0,
@@ -1186,6 +1205,7 @@
                     this.fetchRecordings();
                     this.fetchPovs();
                     this.connectSocket();
+                    this.$nextTick(() => this.observePlayerLayout());
                 },
 
                 connectSocket() {
@@ -1355,6 +1375,77 @@
                     if (this.disabledPovNames.has(name)) this.disabledPovNames.delete(name);
                     else this.disabledPovNames.add(name);
                     this.disabledPovNames = new Set(this.disabledPovNames);
+                },
+
+                // ── Player sizing ────────────────────────────────────
+                observePlayerLayout() {
+                    const observer = new ResizeObserver(() => this.updatePlayerHeight());
+                    observer.observe(this.$refs.playerSection);
+                    observer.observe(this.$refs.timelineContent);
+                    this.$watch('totalVideoCount', () => this.$nextTick(() => this.updatePlayerHeight()));
+                    this.$watch('multiPovMode', () => this.$nextTick(() => this.updatePlayerHeight()));
+                },
+                // Height of everything in the player section except the video
+                // grid and the timeline: controls, POV toggles, resize handle.
+                _playerChromeHeight() {
+                    const { playerSticky, videoGrid } = this.$refs;
+                    return playerSticky.offsetHeight - videoGrid.offsetHeight + RESIZE_HANDLE_HEIGHT;
+                },
+                // Tallest the grid can be before videos get letterboxed.
+                _aspectFitHeight() {
+                    const video = this.$refs.videoPlayer;
+                    const aspect = video?.videoWidth && video?.videoHeight
+                        ? video.videoWidth / video.videoHeight
+                        : DEFAULT_VIDEO_ASPECT;
+                    const columns = this.totalVideoCount === 1 ? 1 : 2;
+                    const rows = Math.ceil(this.totalVideoCount / columns);
+                    const cellWidth = (this.$refs.videoGrid.clientWidth - VIDEO_GRID_GAP * (columns - 1)) / columns;
+                    return rows * (cellWidth / aspect) + VIDEO_GRID_GAP * (rows - 1);
+                },
+                _maxPlayerHeight(sectionHeight) {
+                    const available = sectionHeight - this._playerChromeHeight() - MIN_TIMELINE_HEIGHT;
+                    return Math.max(MIN_PLAYER_HEIGHT, Math.min(available, this._aspectFitHeight()));
+                },
+                // Auto-fit sizes the player so the whole timeline fits below it
+                // (down to a minimum share of the section);
+                // a dragged ratio overrides that. Both are clamped so the
+                // timeline keeps a usable area on short screens.
+                updatePlayerHeight() {
+                    const sectionHeight = this.$refs.playerSection?.clientHeight;
+                    if (!sectionHeight || this.isFullscreen) return;
+                    const target = this.playerHeightRatio !== null
+                        ? this.playerHeightRatio * sectionHeight
+                        : Math.max(sectionHeight * AUTO_FIT_MIN_PLAYER_SHARE,
+                            sectionHeight - this._playerChromeHeight() - this.$refs.timelineContent.offsetHeight);
+                    this.playerHeight = Math.round(
+                        Math.max(MIN_PLAYER_HEIGHT, Math.min(target, this._maxPlayerHeight(sectionHeight))));
+                },
+                startPlayerResize(event) {
+                    const startY = event.clientY;
+                    const startHeight = this.playerHeight;
+                    const sectionHeight = this.$refs.playerSection.clientHeight;
+                    const maxHeight = this._maxPlayerHeight(sectionHeight);
+                    let hasMoved = false;
+                    const onMove = e => {
+                        hasMoved = true;
+                        this.playerHeight = Math.max(MIN_PLAYER_HEIGHT,
+                            Math.min(maxHeight, startHeight + (e.clientY - startY)));
+                    };
+                    const onUp = () => {
+                        if (hasMoved) {
+                            this.playerHeightRatio = this.playerHeight / sectionHeight;
+                            savePlayerHeightRatio(this.playerHeightRatio);
+                        }
+                        window.removeEventListener('mousemove', onMove);
+                        window.removeEventListener('mouseup', onUp);
+                    };
+                    window.addEventListener('mousemove', onMove);
+                    window.addEventListener('mouseup', onUp);
+                },
+                resetPlayerHeight() {
+                    this.playerHeightRatio = null;
+                    savePlayerHeightRatio(null);
+                    this.updatePlayerHeight();
                 },
 
                 // ── Cooldown timeline ────────────────────────────────
@@ -1698,6 +1789,7 @@
                     this.duration = this.$refs.videoPlayer.duration || 0;
                     this.$refs.videoPlayer.playbackRate = this.speed;
                     this.buildDeathMarkers();
+                    this.updatePlayerHeight();
                 },
                 buildDeathMarkers() {
                     this.deathMarkerPositions = [];
