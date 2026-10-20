@@ -462,7 +462,7 @@
                                     :class="disabledPovNames.has(pov.name) ? 'hidden' : ''">
                                     <video
                                         :id="'pov-video-' + i"
-                                        :src="'/video/' + pov.name.split('/').map(encodeURIComponent).join('/')"
+                                        :src="pov.url"
                                         class="w-full h-full object-contain block"
                                         preload="auto" muted playsinline
                                         @loadedmetadata="$el.playbackRate = speed; syncPovPlayers($refs.videoPlayer)">

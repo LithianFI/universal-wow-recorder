@@ -578,17 +578,6 @@
                                 <span class="toggle-thumb"></span>
                             </button>
                         </div>
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <div class="text-parchment-700 text-sm font-medium">Upload on startup</div>
-                                <div class="text-parchment-400 text-xs">Upload any pending files when the recorder starts</div>
-                            </div>
-                            <button type="button" class="toggle"
-                                :class="config.cloud_upload.upload_on_startup ? 'on' : 'off'"
-                                @click="config.cloud_upload.upload_on_startup = !config.cloud_upload.upload_on_startup">
-                                <span class="toggle-thumb"></span>
-                            </button>
-                        </div>
                     </div>
 
                     <!-- WCR creds -->
@@ -766,7 +755,6 @@
                         provider: 'warcraft_recorder',
                         auto_upload: true,
                         delete_after_upload: false,
-                        upload_on_startup: false,
                         wcr_username: '',
                         wcr_password: '',
                         wcr_guild: '',
@@ -822,7 +810,6 @@
                                 provider: data.cloud_upload.provider ?? 'warcraft_recorder',
                                 auto_upload: data.cloud_upload.auto_upload !== false,
                                 delete_after_upload: data.cloud_upload.delete_after_upload === true,
-                                upload_on_startup: data.cloud_upload.upload_on_startup === true,
                                 wcr_username: data.cloud_upload.wcr_username ?? '',
                                 wcr_password: data.cloud_upload.wcr_password ?? '',
                                 wcr_guild: data.cloud_upload.wcr_guild ?? '',

@@ -47,6 +47,14 @@ def _is_safe_video_key(key: str) -> bool:
     return Path(key).suffix.lower() in VIDEO_EXTENSIONS
 
 
+def resolve_pov_download_dir(config, recording_dir: Path) -> Path:
+    """Where POVs are downloaded: the configured dir, else <recordings>/other_povs."""
+    custom = getattr(config, 'POV_DOWNLOAD_DIR', '')
+    if custom and str(custom).strip():
+        return Path(custom)
+    return recording_dir / 'other_povs'
+
+
 def _normalize_difficulty(d: str) -> str:
     """Normalise difficulty strings to a canonical lowercase form."""
     return _DIFF_MAP.get(str(d).lower().strip(), str(d).lower().strip())
@@ -323,6 +331,11 @@ class PovSyncManager:
                     continue
             for vf in recording_dir.rglob(f'*{ext}'):
                 local_keys.add(vf.name)
+            # A custom download dir outside the recordings tree isn't covered above.
+            download_dir = self._get_download_dir(recording_dir)
+            if download_dir.exists() and not download_dir.resolve().is_relative_to(recording_dir.resolve()):
+                for vf in download_dir.rglob(f'*{ext}'):
+                    local_keys.add(vf.name)
 
         # 2. Fetch cloud video list
         g = requests.utils.quote(self._cloud.guild_name)
@@ -499,10 +512,7 @@ class PovSyncManager:
             raise
 
     def _get_download_dir(self, recording_dir: Path) -> Path:
-        custom = getattr(self._config, 'POV_DOWNLOAD_DIR', '')
-        if custom and str(custom).strip():
-            return Path(custom)
-        return recording_dir / 'other_povs'
+        return resolve_pov_download_dir(self._config, recording_dir)
 
     def _write_pov_sidecar(self, dest: Path, cloud_video: dict):
         """Write a JSON sidecar alongside a downloaded POV using cloud metadata."""

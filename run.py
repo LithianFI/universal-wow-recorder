@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from collections import deque
 
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
@@ -296,7 +296,6 @@ def get_config():
             'provider': cm.CLOUD_UPLOAD_PROVIDER,
             'auto_upload': cm.CLOUD_AUTO_UPLOAD,
             'delete_after_upload': cm.CLOUD_DELETE_AFTER_UPLOAD,
-            'upload_on_startup': cm.CLOUD_UPLOAD_ON_STARTUP,
             'wcr_username': cm.WCR_USERNAME,
             'wcr_password': '[set]' if cm.WCR_PASSWORD else '',
             'wcr_guild': cm.WCR_GUILD,
@@ -310,6 +309,9 @@ def get_config():
     }
 
     return jsonify(config_data)
+
+
+_cloud_reinit_lock = threading.Lock()
 
 
 @app.route('/api/config', methods=['POST'])
@@ -328,6 +330,7 @@ def save_config():
             'cloud_upload_enabled', 'cloud_upload_provider',
             'wcr_username', 'wcr_password', 'wcr_guild',
             'gdrive_credentials_file', 'gdrive_folder_id',
+            'pov_sync_enabled',
         }
         before = {k: getattr(s.config_manager, k.upper(), None) for k in _CLOUD_KEYS}
 
@@ -339,6 +342,12 @@ def save_config():
         if cloud_changed:
             # Shut down existing manager (if any) then reinitialise.
             def _reinit_cloud():
+                # Saves in quick succession must not build several managers
+                # (each with its own upload worker) at once.
+                with _cloud_reinit_lock:
+                    _replace_cloud_manager()
+
+            def _replace_cloud_manager():
                 if s.cloud_manager:
                     try:
                         asyncio.run(s.cloud_manager.shutdown())
@@ -357,7 +366,6 @@ def save_config():
                     broadcast_cloud_status()
                     print("[Cloud] Cloud upload disabled — manager shut down")
 
-            import threading
             threading.Thread(target=_reinit_cloud, daemon=True).start()
 
         return jsonify({'success': True, 'message': 'Configuration saved'})
@@ -419,6 +427,35 @@ def serve_video(filename: str):
     except _PathTraversalError:
         abort(403)
     if not file_path.exists() or not file_path.is_file():
+        abort(404)
+    return send_file(file_path, conditional=True)
+
+
+def _external_pov_dir(record_dir: Path) -> Optional[Path]:
+    """The POV download dir if it lies outside the recordings tree, else None."""
+    from cloud_pov_sync import resolve_pov_download_dir
+    s = get_state()
+    if not s.config_manager:
+        return None
+    pov_dir = resolve_pov_download_dir(s.config_manager, record_dir).resolve()
+    if not pov_dir.exists() or pov_dir.is_relative_to(record_dir.resolve()):
+        return None
+    return pov_dir
+
+
+@app.route('/pov-video/<path:filename>')
+def serve_pov_video(filename: str):
+    """Serve a downloaded POV from a download dir outside the recordings tree."""
+    from flask import send_file, abort
+    record_dir = get_recording_directory()
+    pov_dir = _external_pov_dir(record_dir) if record_dir else None
+    if not pov_dir:
+        abort(404)
+    try:
+        file_path = _resolve_recording_path(pov_dir, filename)
+    except _PathTraversalError:
+        abort(403)
+    if not file_path.is_file():
         abort(404)
     return send_file(file_path, conditional=True)
 
@@ -584,6 +621,47 @@ def create_clip(filename: str):
     threading.Thread(target=_worker, daemon=True).start()
     return jsonify({'success': True, 'message': 'Clip export started'})
 
+def _video_metadata_from_sidecar(file_path: Path):
+    """Cloud metadata for an existing recording, from its JSON sidecar if any."""
+    from cloud_upload import VideoMetadata
+    try:
+        meta = json.loads(file_path.with_suffix('.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        meta = {}
+    return VideoMetadata(
+        video_name=file_path.stem,
+        video_key=file_path.name,
+        file_path=str(file_path),
+        file_size=file_path.stat().st_size,
+        start=meta.get('start') or int(file_path.stat().st_mtime * 1000),
+        unique_hash=meta.get('uniqueHash') or '',
+        category=meta.get('category') or 'Manual',
+        flavour=meta.get('flavour') or 'Retail',
+        encounter_name=meta.get('encounterName') or file_path.stem,
+        encounter_id=meta.get('encounterID'),
+        difficulty_id=meta.get('difficultyID'),
+        difficulty=meta.get('difficulty'),
+        duration=meta.get('duration'),
+        result=bool(meta.get('result', False)),
+        boss_percent=meta.get('bossPercent') or 0,
+        zone_id=meta.get('zoneID') or 0,
+        zone_name=meta.get('zoneName') or 'Unknown',
+        player=meta.get('player'),
+        combatants=meta.get('combatants') or [],
+        deaths=meta.get('deaths') or [],
+        overrun=meta.get('overrun') or 0,
+    )
+
+
+@app.route('/api/cloud/upload/retry-failed', methods=['POST'])
+def retry_failed_uploads():
+    s = get_state()
+    if not s.cloud_manager or not s.cloud_manager.is_ready():
+        return jsonify({'error': 'Cloud upload not available'}), 503
+    count = s.cloud_manager.retry_failed_uploads()
+    return jsonify({'success': True, 'requeued': count})
+
+
 @app.route('/api/cloud/upload/<path:filename>', methods=['POST'])
 def queue_cloud_upload(filename: str):
     s = get_state()
@@ -600,25 +678,7 @@ def queue_cloud_upload(filename: str):
         if not file_path.exists():
             return jsonify({'error': 'File not found'}), 404
 
-        # Parse what we can from the filename; fall back gracefully if the
-        # name doesn't match the expected pattern.
-        stem = file_path.stem
-        parts = stem.split('_')
-        boss_name = parts[2] if len(parts) >= 4 else stem
-        difficulty = parts[3] if len(parts) >= 4 else None
-
-        from cloud_upload import VideoMetadata
-        metadata = VideoMetadata(
-            video_name=stem,
-            video_key=file_path.name,
-            file_path=str(file_path),
-            file_size=file_path.stat().st_size,
-            start=int(time.time() * 1000),
-            unique_hash='',
-            category='Manual',
-            encounter_name=boss_name,
-            difficulty=difficulty,
-        )
+        metadata = _video_metadata_from_sidecar(file_path)
 
         success = s.cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
         if success:
@@ -926,7 +986,13 @@ def get_local_povs_for_recording(filename: str):
     ext = s.config_manager.RECORDING_EXTENSION.lower() if s.config_manager else '.mp4'
     povs = []
 
-    for candidate_json in record_dir.rglob('*.json'):
+    roots = [(record_dir, '/video/')]
+    pov_dir = _external_pov_dir(record_dir)
+    if pov_dir:
+        roots.append((pov_dir, '/pov-video/'))
+
+    for root, url_prefix, candidate_json in (
+            (root, prefix, j) for root, prefix in roots for j in root.rglob('*.json')):
         if candidate_json == json_path:
             continue
         try:
@@ -942,8 +1008,10 @@ def get_local_povs_for_recording(filename: str):
             video_file = candidate_json.with_suffix(ext)
             if not video_file.exists():
                 continue
+            name = video_file.relative_to(root).as_posix()
             povs.append({
-                'name': str(video_file.relative_to(record_dir)),
+                'name': name,
+                'url': url_prefix + '/'.join(quote(part) for part in name.split('/')),
                 'start': pov_meta.get('start', 0),
                 'duration': pov_meta.get('duration', 0),
                 'player': pov_meta.get('player'),
@@ -1066,11 +1134,11 @@ def test_cloud_connection():
 
 
 async def _test_cloud_connection_async():
-    """Async implementation of cloud connection test."""
+    """Log in with the saved settings; nothing is started, so nothing leaks."""
+    from cloud_integration import CloudUploadManager
     s = get_state()
     try:
-        manager = await initialize_cloud_upload(s.config_manager)
-        if manager:
+        if await CloudUploadManager(s.config_manager).authenticate_only():
             return {'success': True, 'message': 'Connection successful'}
         return {'success': False, 'error': 'Failed to connect'}
     except Exception as e:
@@ -1390,6 +1458,7 @@ async def init_cloud_manager():
 
         if s.cloud_manager:
             s.cloud_manager.set_progress_callback(broadcast_upload_progress)
+            s.cloud_manager.on_local_copy_deleted = lambda: socketio.emit('recordings_updated')
             s.cloud_manager.set_pov_progress_callback(broadcast_download_progress)
             print("[Cloud] ✅ Cloud manager initialized")
         else:

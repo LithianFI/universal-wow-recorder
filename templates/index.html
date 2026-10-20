@@ -599,6 +599,9 @@
                             :style="(cloudStatus.queue?.failed_count || 0) > 0 ? 'color:#e07070;' : 'color:#a89c82;'"
                             x-text="cloudStatus.queue?.failed_count || 0"></div>
                         <div class="label-cap mt-1">Failed</div>
+                        <button x-show="(cloudStatus.queue?.failed_count || 0) > 0" x-cloak
+                            @click="retryFailedUploads()"
+                            class="text-[11px] mt-1 text-gold-500 hover:underline">Retry</button>
                     </div>
                 </div>
 
@@ -1266,6 +1269,20 @@
                 },
 
                 // ── Cloud upload (per-recording) ─────────────────────
+                async retryFailedUploads() {
+                    try {
+                        const res = await fetch('/api/cloud/upload/retry-failed', { method: 'POST' });
+                        const data = await res.json();
+                        if (!res.ok) {
+                            this.toast('Retry failed: ' + (data.error || 'unknown'), 'error');
+                            return;
+                        }
+                        this.toast(data.requeued + ' upload(s) queued again', 'success');
+                    } catch (e) {
+                        this.toast('Retry failed: ' + e.message, 'error');
+                    }
+                },
+
                 async uploadToCloud(rec) {
                     if (!rec) return;
                     try {

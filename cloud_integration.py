@@ -18,6 +18,9 @@ from cloud_upload import (
 )
 from cloud_pov_sync import PovSyncManager, DownloadProgress
 
+# Pending/failed uploads, kept next to config.ini so they survive restarts.
+UPLOAD_QUEUE_STATE_FILE = 'upload_queue.json'
+
 # How long shutdown waits for an in-flight upload. Together with the parser's
 # thread join this must stay under Electron's kill timeout (30 s).
 UPLOAD_SHUTDOWN_GRACE_SECONDS = 10
@@ -45,6 +48,8 @@ class CloudUploadManager:
         self.pov_sync: Optional[PovSyncManager] = None
         self._get_recording_dir: Optional[Callable] = None
         self._is_recording: Optional[Callable] = None
+        # Called after delete_after_upload removed a recording, to refresh the UI.
+        self.on_local_copy_deleted: Optional[Callable[[], None]] = None
 
     async def initialize(self,
                          get_recording_dir_fn: Optional[Callable] = None,
@@ -67,7 +72,12 @@ class CloudUploadManager:
             return False
 
         if success:
-            self.upload_queue = CloudUploadQueue(self.provider)
+            self.upload_queue = CloudUploadQueue(
+                self.provider,
+                provider_name=provider_name,
+                state_file=Path(self.config.config_path).parent / UPLOAD_QUEUE_STATE_FILE,
+                on_uploaded=self._after_upload,
+            )
 
             if self.progress_callback:
                 self.upload_queue.add_progress_callback(self.progress_callback)
@@ -84,6 +94,29 @@ class CloudUploadManager:
 
         return success
     
+    def _after_upload(self, file_path: Path):
+        """Delete the local recording and its sidecar if the user asked for it."""
+        if not self.config.CLOUD_DELETE_AFTER_UPLOAD:
+            return
+        for path in (file_path, file_path.with_suffix('.json')):
+            path.unlink(missing_ok=True)
+        print(f"[Cloud Manager] Deleted local copy after upload: {file_path.name}")
+        if self.on_local_copy_deleted:
+            self.on_local_copy_deleted()
+
+    async def authenticate_only(self) -> bool:
+        """Log in to the configured provider without starting queue or POV sync."""
+        provider_name = self.config.CLOUD_UPLOAD_PROVIDER
+        if provider_name == 'warcraft_recorder':
+            return await self._init_warcraft_recorder()
+        if provider_name == 'google_drive':
+            return await self._init_google_drive()
+        print(f"[Cloud Manager] Unknown/unsupported provider: {provider_name}")
+        return False
+
+    def retry_failed_uploads(self) -> int:
+        return self.upload_queue.retry_failed() if self.upload_queue else 0
+
     async def _init_warcraft_recorder(self) -> bool:
         """Initialize Warcraft Recorder cloud provider."""
         username = self.config.WCR_USERNAME

@@ -60,7 +60,6 @@ class ConfigManager:
             'provider': 'warcraft_recorder',
             'auto_upload': 'true',
             'delete_after_upload': 'false',
-            'upload_on_startup': 'false',
             'wcr_username': '',
             'wcr_password': '',
             'wcr_guild': '',
@@ -115,7 +114,6 @@ class ConfigManager:
             'provider':            str,
             'auto_upload':         lambda v: str(v).lower(),
             'delete_after_upload': lambda v: str(v).lower(),
-            'upload_on_startup':   lambda v: str(v).lower(),
             'wcr_username':        str,
             'wcr_password':        lambda v: None if v == '[set]' else str(v),
             'wcr_guild':           str,
@@ -274,9 +272,6 @@ auto_upload = true
 
 # Delete local file after successful upload
 delete_after_upload = false
-
-# Upload pending files on startup
-upload_on_startup = false
 
 # Warcraft Recorder Cloud settings
 wcr_username =
@@ -461,10 +456,6 @@ proton_folder =
     @property
     def CLOUD_DELETE_AFTER_UPLOAD(self) -> bool:
         return self.config.getboolean('CloudUpload', 'delete_after_upload', fallback=False)
-
-    @property
-    def CLOUD_UPLOAD_ON_STARTUP(self) -> bool:
-        return self.config.getboolean('CloudUpload', 'upload_on_startup', fallback=False)
 
     @property
     def WCR_USERNAME(self) -> str:
