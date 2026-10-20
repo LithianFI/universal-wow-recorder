@@ -56,7 +56,19 @@ function getDevPython() {
   return 'python3'
 }
 
+// When launched without a terminal (e.g. AppImage from a desktop entry) our
+// stdout/stderr are closed pipes. EPIPE arrives as an async 'error' event that
+// try/catch can't see, and unhandled it crashes the main process.
+function ignoreClosedOutputPipes() {
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on('error', err => {
+      if (err.code !== 'EPIPE') throw err
+    })
+  }
+}
+
 function startBackend() {
+  ignoreClosedOutputPipes()
   pythonProcess = spawnBackend()
   pythonProcess.stdout.on('data', d => { try { process.stdout.write(d) } catch (_) {} })
   pythonProcess.stderr.on('data', d => { try { process.stderr.write(d) } catch (_) {} })
