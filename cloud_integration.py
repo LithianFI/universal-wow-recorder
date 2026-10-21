@@ -17,6 +17,7 @@ from cloud_upload import (
     UploadProgress,
 )
 from cloud_pov_sync import PovSyncManager, DownloadProgress
+import wcr_format
 
 # Pending/failed uploads, kept next to config.ini so they survive restarts.
 UPLOAD_QUEUE_STATE_FILE = 'upload_queue.json'
@@ -97,6 +98,9 @@ class CloudUploadManager:
     def _after_upload(self, file_path: Path):
         """Delete the local recording and its sidecar if the user asked for it."""
         if not self.config.CLOUD_DELETE_AFTER_UPLOAD:
+            return
+        if wcr_format.read_sidecar(file_path).get('protected'):
+            print(f"[Cloud Manager] Kept local copy of protected recording: {file_path.name}")
             return
         for path in (file_path, file_path.with_suffix('.json')):
             path.unlink(missing_ok=True)
@@ -268,6 +272,19 @@ class CloudUploadManager:
         if not self.pov_sync:
             return 0
         return self.pov_sync.queue_all_for_hash(unique_hash)
+
+    def set_cloud_protection(self, video_name: str, protect: bool) -> bool:
+        """Mirror a recording's keep flag to its cloud copy, in the background.
+
+        False when the provider has no such concept (Google Drive) or isn't
+        ready. A recording not uploaded yet carries the flag in its sidecar.
+        """
+        if not self.is_ready() or not isinstance(self.provider, WarcraftRecorderCloud):
+            return False
+        provider = self.provider
+        Thread(target=lambda: asyncio.run(provider.protect_videos([video_name], protect)),
+               daemon=True).start()
+        return True
 
     def is_ready(self) -> bool:
         """Check if cloud upload is ready."""

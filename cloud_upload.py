@@ -573,6 +573,30 @@ class WarcraftRecorderCloud(CloudUploadProvider):
 
         return None
 
+    async def protect_videos(self, video_names: List[str], protect: bool) -> bool:
+        """POST /guild/{g}/bulk/protect. Protected videos survive the housekeeper."""
+        g = requests.utils.quote(self.guild_name)
+        for attempt in (1, 2):
+            try:
+                resp = requests.post(
+                    f"{self.API_BASE}/guild/{g}/bulk/protect",
+                    headers={**self._headers, 'Content-Type': 'application/json'},
+                    json={'videos': video_names, 'protect': protect},
+                    timeout=15,
+                )
+            except requests.RequestException as e:
+                print(f"[WCR Cloud] Error setting protection: {e}")
+                return False
+            if resp.status_code == 401 and attempt == 1:
+                await self.authenticate()
+                continue
+            if resp.status_code in (200, 201, 204):
+                print(f"[WCR Cloud] {'Protected' if protect else 'Unprotected'}: {', '.join(video_names)}")
+                return True
+            print(f"[WCR Cloud] Setting protection failed: {resp.status_code} {resp.text[:200]}")
+            return False
+        return False
+
     def _run_housekeeping(self, encoded_guild: str):
         """POST /guild/{g}/housekeeper — fire-and-forget after each upload.
 

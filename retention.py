@@ -92,7 +92,8 @@ def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int =
     Rule 1 deletes files older than *max_age_days*. Rule 2 then keeps the
     newest *max_per_group* of each (category, difficulty, boss, result) group
     among the remaining own recordings; downloaded POVs don't count towards it,
-    so other players' videos can't push out your own pulls.
+    so other players' videos can't push out your own pulls. Protected
+    recordings (WCR's `protected` flag) are neither deleted nor counted.
     """
     plan = RetentionPlan()
     if (max_age_days <= 0 and max_per_group <= 0) or not record_dir or not record_dir.exists():
@@ -101,7 +102,7 @@ def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int =
     sidecars: Dict[Path, dict] = {}
     for f in _list_video_files(record_dir):
         meta = None if _is_clip(f) else _load_sidecar(f)
-        if meta is not None:
+        if meta is not None and not meta.get('protected'):
             sidecars[f] = meta
     plan.scanned = len(sidecars)
 

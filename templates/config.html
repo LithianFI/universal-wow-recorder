@@ -385,7 +385,7 @@
                 <div class="mt-6 pt-5 border-t border-ink-500">
                     <h3 class="label-cap mb-1">Retention</h3>
                     <p class="text-parchment-400 text-xs mb-4">
-                        Automatically delete old recordings. Exported clips are never affected.
+                        Automatically delete old recordings. Exported clips and recordings marked Keep (★) are never affected.
                         Set a value to <code>0</code> to disable that rule.
                     </p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -568,7 +568,7 @@
                         <div class="flex items-center justify-between">
                             <div>
                                 <div class="text-parchment-700 text-sm font-medium">Delete after upload</div>
-                                <div class="text-parchment-400 text-xs">Remove the local file once it's safely in the cloud</div>
+                                <div class="text-parchment-400 text-xs">Remove the local file once it's safely in the cloud (recordings marked Keep stay)</div>
                             </div>
                             <button type="button" class="toggle"
                                 :class="config.cloud_upload.delete_after_upload ? 'on' : 'off'"

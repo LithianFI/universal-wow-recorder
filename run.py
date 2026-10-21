@@ -571,6 +571,55 @@ def get_recording_metadata(filename: str):
         return jsonify({'error': str(e)}), 500
 
 
+def _write_sidecar(json_path: Path, data: dict):
+    """Replace a sidecar atomically so a crash can't leave half a file."""
+    tmp = json_path.with_name(json_path.name + '.tmp')
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+    os.replace(tmp, json_path)
+
+
+@app.route('/api/recordings/<path:filename>/protect', methods=['POST'])
+def protect_recording(filename: str):
+    """Keep (or stop keeping) a recording. Body: {"protected": true|false}.
+
+    Uses WCR's `protected` field: retention and delete-after-upload skip the
+    file, and the cloud copy is protected from WCR's housekeeper too.
+    """
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body.get('protected'), bool):
+        return jsonify({'error': '"protected" must be true or false'}), 400
+    protect = body['protected']
+
+    record_dir = get_recording_directory()
+    if not record_dir:
+        return jsonify({'error': 'Recording directory not available'}), 500
+    try:
+        video_path = _resolve_recording_path(record_dir, filename)
+    except _PathTraversalError:
+        return jsonify({'error': 'Invalid path'}), 403
+    if not video_path.is_file():
+        return jsonify({'error': 'File not found'}), 404
+
+    json_path = video_path.with_suffix('.json')
+    try:
+        data = json.loads(json_path.read_text(encoding='utf-8')) if json_path.exists() else {}
+    except (OSError, ValueError) as e:
+        return jsonify({'error': f'Could not read metadata: {e}'}), 500
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Metadata is not a JSON object'}), 500
+
+    data['protected'] = protect
+    try:
+        _write_sidecar(json_path, data)
+    except OSError as e:
+        return jsonify({'error': f'Could not write metadata: {e}'}), 500
+
+    s = get_state()
+    cloud_synced = bool(s.cloud_manager) and s.cloud_manager.set_cloud_protection(video_path.stem, protect)
+    socketio.emit('recordings_updated')
+    return jsonify({'protected': protect, 'cloud': cloud_synced})
+
+
 @app.route('/api/recordings/<path:filename>/scan-cooldowns', methods=['POST'])
 def scan_recording_cooldowns(filename: str):
     """Retroactively scan a combat log file for cooldown casts for this recording.
@@ -942,6 +991,7 @@ def list_recording_files() -> list:
                     'bossPercent': meta.get('bossPercent'),
                     'category': meta.get('category'),
                     'player': (meta.get('player') or {}).get('_name'),
+                    'protected': bool(meta.get('protected')),
                 }
             except Exception:
                 continue
