@@ -175,23 +175,23 @@ class RecordingMetadata:
           e.g. "Raids Retail trueName1 Name2"
         - The combatantMap includes the player — WCR adds the player via addCombatant
           the same way as any other combatant, so we include player_info here too.
+        - combatantMap is keyed by GUID: two players sharing a name (different
+          realms) contribute the name twice, so names are not deduplicated.
+        - JS sort() orders by UTF-16 code units, not code points.
         """
         import hashlib
 
         result_str = 'true' if self.result else 'false'
         deterministic = f"{self.category} {self.flavour} {result_str}"
 
-        # Build the full name set: combatants + player (WCR's combatantMap holds both)
-        all_names = set()
-        for c in self.combatants:
+        # One name per GUID, like WCR's combatantMap (player included).
+        names_by_guid = {}
+        for c in [*self.combatants, self.player_info]:
             name = c.get('_name')
             if name:
-                all_names.add(name)
-        player_name = self.player_info.get('_name')
-        if player_name:
-            all_names.add(player_name)
+                names_by_guid[c.get('_GUID') or name] = name
 
-        sorted_names = sorted(all_names)
+        sorted_names = sorted(names_by_guid.values(), key=lambda n: n.encode('utf-16-be'))
 
         # Mirror JS: deterministicFields.join(' ') + sortedNames.join(' ')
         # No space between the two halves — that's what WCR produces.

@@ -31,4 +31,3 @@
 - Not done: OBS replay-buffer pre-roll, tray icon.
 - main.py is an unused legacy CLI entry (run.py / Electron is the real app).
 - M+ upgradeLevel is always 0 (needs WCR's dungeonTimersByMapId table); no challengeModeTimeline.
-- uniqueHash dedups combatant names with a set; WCR keeps one entry per GUID, so two same-named players from different realms hash differently.
