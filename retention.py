@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 from constants import VIDEO_EXTENSIONS, LOG_PREFIXES
 from sidecar_cache import sidecars
+from wcr_format import normalize_category
 
 
 # Clip files produced by the export endpoint are suffixed with "_clip_MMSS-MMSS"
@@ -43,7 +44,7 @@ def _load_sidecar(video_path: Path) -> Optional[dict]:
 def _group_key(video_path: Path, meta: dict) -> Tuple[str, str, str, bool]:
     """Grouping key (category, difficulty, encounter, is_kill) from the sidecar."""
     return (
-        str(meta.get('category', 'Unknown')),
+        str(normalize_category(meta.get('category', 'Unknown'))),
         str(meta.get('difficulty', meta.get('difficultyID', 'Unknown'))),
         str(meta.get('encounterName', video_path.stem)),
         bool(meta.get('result', False)),

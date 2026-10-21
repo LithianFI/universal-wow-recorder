@@ -676,6 +676,13 @@ class CombatParser:
             encounter_name=f"{dungeon_info.name} +{dungeon_info.dungeon_level}",
             difficulty_id=8,  # Mythic+ difficulty ID
         )
+        self.current_metadata.set_keystone_info(
+            zone_id=dungeon_info.dungeon_id,
+            zone_name=dungeon_info.name,
+            map_id=dungeon_info.challenge_mode_id,
+            keystone_level=dungeon_info.dungeon_level,
+            affixes=dungeon_info.affixes,
+        )
 
         if self.player_guid and self.player_name:
             self.current_metadata.set_player_info(

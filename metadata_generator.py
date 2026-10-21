@@ -12,7 +12,7 @@ from datetime import datetime
 class RecordingCategory:
     """Valid category strings matching WCR VideoCategory enum."""
     RAIDS   = "Raids"
-    MYTHIC_PLUS = "MythicPlus"
+    MYTHIC_PLUS = "Mythic+"
     MANUAL  = "Manual"
 
 
@@ -60,6 +60,15 @@ class RecordingMetadata:
         self.zone_name = zone_name
         self.difficulty = self._get_difficulty_shorthand(difficulty_id)
     
+    def set_keystone_info(self, zone_id: int, zone_name: str, map_id: int,
+                          keystone_level: int, affixes: List[int]):
+        """Set the Mythic+ fields WCR's ChallengeModeDungeon metadata carries."""
+        self.zone_id = zone_id
+        self.zone_name = zone_name
+        self.map_id = map_id
+        self.keystone_level = keystone_level
+        self.affixes = list(affixes)
+
     def set_player_info(self, guid: str, name: str, realm: str, spec_id: int, team_id: int = 1):
         """Set information about the recording player."""
         self.player_info = {
@@ -235,7 +244,7 @@ class RecordingMetadata:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert metadata to dictionary matching WCR format."""
-        return {
+        data = {
             "category": self.category,
             "zoneID": self.zone_id,
             "zoneName": self.zone_name,
@@ -257,6 +266,14 @@ class RecordingMetadata:
             "bossPercent": self.boss_percent,
             "appVersion": self.app_version
         }
+        if self.keystone_level is not None:
+            data.update({
+                "mapID": self.map_id,
+                "keystoneLevel": self.keystone_level,
+                "upgradeLevel": self.upgrade_level,
+                "affixes": self.affixes or [],
+            })
+        return data
     
     def save_json(self, filepath: Path) -> bool:
         """

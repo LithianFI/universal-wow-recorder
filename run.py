@@ -35,6 +35,7 @@ from typing import Optional
 
 
 from sidecar_cache import sidecars
+from wcr_format import normalize_category
 from constants import (
     DEFAULT_WEB_HOST,
     DEFAULT_WEB_PORT,
@@ -858,7 +859,8 @@ def get_stats():
         # Skip files that don't look like recording metadata
         if not data or ('encounterName' not in data and 'category' not in data):
             continue
-        encounters.append(data)
+        # Cached sidecars are shared: copy before correcting old category spellings.
+        encounters.append({**data, 'category': normalize_category(data.get('category'))})
 
     return jsonify({'encounters': encounters})
 

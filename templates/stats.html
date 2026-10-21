@@ -193,9 +193,9 @@
             <div class="w-px h-4 bg-ink-400 hidden md:block"></div>
             <div class="flex items-center gap-1.5">
                 <span class="label-cap">Category</span>
-                <template x-for="c in ['All','Raids','MythicPlus','Manual']" :key="c">
+                <template x-for="c in ['All','Raids','Mythic+','Manual']" :key="c">
                     <button class="filter-pill" :class="{ active: catFilter === c }"
-                        @click="catFilter = c" x-text="c === 'MythicPlus' ? 'M+' : c"></button>
+                        @click="catFilter = c" x-text="c === 'Mythic+' ? 'M+' : c"></button>
                 </template>
             </div>
             <div class="ml-auto text-xs text-parchment-300">
@@ -240,7 +240,7 @@
                                         <span class="font-display text-sm text-parchment-900" x-text="boss.name"></span>
                                         <span class="diff-badge" :class="'diff-' + boss.difficulty.replace('+','p')"
                                             x-text="boss.difficulty"></span>
-                                        <span x-show="boss.category === 'MythicPlus'" class="text-[11px] text-parchment-300"
+                                        <span x-show="boss.category === 'Mythic+'" class="text-[11px] text-parchment-300"
                                             x-text="boss.keystoneRange"></span>
                                     </div>
                                 </div>

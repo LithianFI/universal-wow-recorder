@@ -5,7 +5,7 @@ Event classes for combat log parsing.
 import csv
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime
 
@@ -49,6 +49,8 @@ class DungeonInfo:
     name: str
     dungeon_level: int
     timestamp: str = ""
+    challenge_mode_id: int = 0  # WCR's mapID
+    affixes: List[int] = field(default_factory=list)
     
     @property
     def formatted_name(self) -> str:
@@ -215,18 +217,31 @@ class CombatEvent:
             dungeon_name = self.fields[1]
             instance_id = int(self.fields[2])
             keystone_level = int(self.fields[4])
-            
+
             return DungeonInfo(
                 dungeon_id=instance_id,
                 name=dungeon_name,
                 dungeon_level=keystone_level,
-                timestamp=self.timestamp
+                timestamp=self.timestamp,
+                challenge_mode_id=int(self.fields[3]),
+                affixes=self._parse_affixes(self.fields[5:]),
             )
             
         except (ValueError, IndexError) as e:
             print(f"[PARSER] Error parsing dungeon info: {e}")
             return None
     
+    @staticmethod
+    def _parse_affixes(fields: List[str]) -> List[int]:
+        """Affix IDs from the bracketed list, which the CSV split cuts at its
+        commas: "[10", "9", "147]" -> [10, 9, 147]."""
+        affixes = []
+        for raw in fields:
+            value = raw.strip().strip('[]')
+            if value.isdigit():
+                affixes.append(int(value))
+        return affixes
+
     def get_encounter_end_info(self) -> tuple[bool, Optional[str], float]:
         """Get kill/wipe status from ENCOUNTER_END event.
 
