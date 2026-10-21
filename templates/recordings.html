@@ -442,8 +442,29 @@
                     x-text="allFilteredSelected ? 'Deselect all' : 'Select all'"></button>
             </div>
 
+            <!-- The pull being recorded right now; the saved file replaces it -->
+            <div x-show="isRecordingLive" x-cloak
+                class="shrink-0 rec-row cursor-default"
+                style="border-left-color:#e84545; background:rgba(232,69,69,0.06);"
+                title="Recording in progress">
+                <div class="w-2 h-2 rounded-full pulse-rec shrink-0 ml-2" style="background:#e84545;"></div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <span class="diff-badge shrink-0" :class="liveDifficultyClass" x-text="liveDifficultyShort"></span>
+                        <span class="text-parchment-700 text-xs truncate" x-text="liveTitle"></span>
+                        <span class="shrink-0 ml-auto font-mono text-[11px] text-parchment-700 mr-2"
+                            x-text="formatVideoTime(liveRecordingDuration)"></span>
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-0.5">
+                        <span class="text-[11px] text-red-400">Recording…</span>
+                        <span x-show="status.recorder?.boss_name && !status.recorder?.manual_recording"
+                            class="text-[11px] text-parchment-300" x-text="'attempt #' + liveAttemptNumber"></span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Empty states -->
-            <div x-show="recordings.length === 0"
+            <div x-show="recordings.length === 0 && !isRecordingLive"
                 class="flex-1 flex flex-col items-center justify-center p-6 text-center gap-2">
                 <p class="text-parchment-400 text-sm">No recordings found</p>
                 <p class="text-parchment-300 text-xs">Recordings appear after completing an encounter</p>
@@ -1474,6 +1495,21 @@
                     const r = this.status.recorder || {};
                     return this.status.recorder_running !== false
                         && !r.recording && !r.encounter_active && !r.dungeon_active;
+                },
+
+                get isRecordingLive() {
+                    return this.connected && this.status.recorder?.recording === true;
+                },
+
+                get liveDifficultyShort() {
+                    const r = this.status.recorder || {};
+                    if (r.dungeon_active) return '+' + (r.dungeon_level || '?');
+                    return DIFFICULTY_SHORT[r.difficulty_id] || (r.manual_recording ? '●' : '?');
+                },
+
+                get liveDifficultyClass() {
+                    const r = this.status.recorder || {};
+                    return r.dungeon_active ? 'diff-mplus' : this.diffClassFromShort(DIFFICULTY_SHORT[r.difficulty_id] || '');
                 },
 
                 get liveTitle() {
