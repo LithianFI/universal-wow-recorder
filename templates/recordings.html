@@ -197,7 +197,8 @@
         </nav>
 
         <!-- Inline stat chips -->
-        <div class="flex items-center gap-2 ml-auto flex-wrap" x-show="recordings.length > 0" x-cloak>
+        <!-- Library chips are the first to go when the header gets narrow; Stats has them too -->
+        <div class="hidden xl:flex items-center gap-2 ml-auto flex-wrap" x-show="recordings.length > 0" x-cloak>
             <span class="stat-chip" x-text="recordings.length + ' vods'"></span>
             <span class="stat-chip" style="color: #8a8270;">·</span>
             <span class="stat-chip" x-text="formatFileSize(totalBytes)"></span>
@@ -215,7 +216,7 @@
         </div>
 
         <!-- Live status: cloud queue, connections, manual recording -->
-        <div class="flex items-center gap-2 shrink-0" :class="recordings.length > 0 ? 'ml-3' : 'ml-auto'">
+        <div class="flex items-center gap-2 shrink-0 ml-auto" :class="recordings.length > 0 ? 'xl:ml-3' : ''">
             <div class="relative" x-show="cloudStatus.enabled" x-cloak @click.outside="showCloudPanel = false">
                 <button class="pill hover:text-parchment-700" @click="showCloudPanel = !showCloudPanel"
                     title="Cloud upload status">
@@ -225,12 +226,12 @@
                     <span x-text="cloudChipLabel"></span>
                 </button>
                 <div x-show="showCloudPanel" x-cloak
-                    class="absolute right-0 top-full mt-2 w-72 z-50 p-3 rounded-sm border seam text-xs"
+                    class="absolute right-0 top-full mt-2 w-80 z-50 p-3 rounded-sm border seam text-xs"
                     style="background:#141109; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="label-cap">Cloud upload</span>
-                        <span :class="cloudStatus.authenticated ? 'text-parchment-400' : 'text-red-400'"
-                            x-text="(cloudStatus.provider || 'cloud') + ' · ' + (cloudStatus.authenticated ? 'authenticated' : 'not authenticated')"></span>
+                    <div class="flex items-center justify-between gap-3 mb-2">
+                        <span class="label-cap whitespace-nowrap">Cloud upload</span>
+                        <span class="truncate" :class="cloudStatus.authenticated ? 'text-parchment-400' : 'text-red-400'"
+                            x-text="providerLabel(cloudStatus.provider) + ' · ' + (cloudStatus.authenticated ? 'signed in' : 'not signed in')"></span>
                     </div>
                     <div x-show="cloudStatus.active_upload" class="mb-3">
                         <div class="flex justify-between mb-1">
@@ -482,10 +483,10 @@
                         <!-- Encounter group header -->
                         <div class="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5"
                             style="background:#0a0806; border-bottom:1px solid #111009;">
-                            <span class="label-cap text-parchment-300" x-text="group.label"></span>
-                            <span class="font-mono text-[11px]" style="color: #8a8270;"
+                            <span class="label-cap text-parchment-300 truncate min-w-0" :title="group.label" x-text="group.label"></span>
+                            <span class="font-mono text-[11px] shrink-0" style="color: #8a8270;"
                                 x-text="'(' + group.items.length + ')'"></span>
-                            <span class="ml-auto font-mono text-[11px]" x-show="group.headline"
+                            <span class="ml-auto font-mono text-[11px] shrink-0 whitespace-nowrap" x-show="group.headline"
                                 :class="group.kills > 0 ? 'text-green-400' : 'text-parchment-400'"
                                 x-text="group.headline"></span>
                         </div>
@@ -704,8 +705,8 @@
                                 x-text="formatVideoTime(seekPreviewTime)"></div>
                         </div>
 
-                        <!-- Controls row -->
-                        <div class="flex items-center gap-3">
+                        <!-- Controls row (wraps onto two lines in a narrow centre column) -->
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                             <!-- Play/pause -->
                             <button @click="togglePlay()" class="text-white/80 hover:text-white transition-colors shrink-0">
                                 <svg x-show="!isPlaying" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -1369,6 +1370,7 @@
         const LIVE_TIMER_INTERVAL_MS = 1000;
         const CLIP_NAME_PATTERN = /_clip_\d+-\d+/;
         const MIN_PULLS_FOR_SUMMARY = 2;
+        const CLOUD_PROVIDER_LABELS = { warcraft_recorder: 'Warcraft Recorder', google_drive: 'Google Drive' };
         const FIRST_DEATH_RANKING_SIZE = 3;
 
         function average(values) {
@@ -1548,6 +1550,10 @@
                         lastModified = rec.modified;
                     }
                     return previous + 1;
+                },
+
+                providerLabel(provider) {
+                    return CLOUD_PROVIDER_LABELS[provider] || provider || 'Cloud';
                 },
 
                 get cloudChipLabel() {
