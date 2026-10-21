@@ -52,6 +52,29 @@ _MIN_BOSS_HP = 100 * 10 ** 6
 
 _LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
 
+
+def _local_player_in(parts: List[str]) -> Optional[tuple]:
+    """(guid, name, realm) of the local player in a combat event, else None.
+
+    *parts* is the event split on ',' after the timestamp:
+    eventType, srcGUID, "srcName", srcFlags, srcRaidFlags,
+    dstGUID, "dstName", dstFlags, dstRaidFlags, ...
+    """
+    if len(parts) < 9:
+        return None
+    for guid_idx, name_idx, flags_idx in ((1, 2, 3), (5, 6, 7)):
+        guid = parts[guid_idx].strip()
+        if not guid.startswith('Player-') or parts[flags_idx].strip() not in _LOCAL_PLAYER_FLAGS:
+            continue
+        raw_name = parts[name_idx].strip().strip('"')
+        if not raw_name or raw_name in ('nil', 'Unknown'):
+            continue
+        # "Isalith-Ravencrest-EU" -> ("Isalith", "Ravencrest")
+        name, realm = parse_player_name_realm(raw_name)
+        if name:
+            return guid, name, realm
+    return None
+
 # Video kept after ENCOUNTER_END (matches metadata overrun). Also gives WoW
 # time to flush the end of the fight to the log before we scan it. A new
 # pull cuts it short so its start isn't lost.
@@ -309,43 +332,23 @@ class CombatParser:
             # Split into the first 9 fields (event + 4 src fields + 4 dst fields)
             # Use a limit so we don't split the whole (potentially huge) line
             parts = data.split(',', 9)
-            if len(parts) < 9:
-                return
-
-            # parts[0] = eventType
-            # parts[1] = srcGUID   parts[2] = srcName   parts[3] = srcFlags
-            # parts[5] = dstGUID   parts[6] = dstName   parts[7] = dstFlags
-
-            for guid_idx, name_idx, flags_idx in ((1, 2, 3), (5, 6, 7)):
-                guid = parts[guid_idx].strip()
-                flags = parts[flags_idx].strip()
-
-                if not guid.startswith('Player-'):
-                    continue
-                if flags not in _LOCAL_PLAYER_FLAGS:
-                    continue
-
-                raw_name = parts[name_idx].strip().strip('"')
-                if not raw_name or raw_name in ('nil', 'Unknown'):
-                    continue
-
-                # Name format: "CharName-RealmName-Region"
-                # e.g. "Isalith-Ravencrest-EU"
-                # We want CharName and RealmName, dropping the trailing region code.
-                # Region codes are always 2-3 uppercase letters (EU, US, TW, KR, CN).
-                name, realm = parse_player_name_realm(raw_name)
-                if not name:
-                    continue
-
-                self.player_guid = guid
-                self.player_name = name
-                self.player_realm = realm
-                print(f"{LOG_PREFIXES['PARSER']} Player identified: "
-                      f"{name}-{realm} (GUID: {guid})")
-                return
+            local_player = _local_player_in(parts)
+            if local_player:
+                self._set_player(*local_player)
 
         except Exception as e:
             print(f"{LOG_PREFIXES['PARSER']} Error in player identification: {e}")
+
+    def _set_player(self, guid: str, name: str, realm: str):
+        with self._event_lock:
+            if guid == self.player_guid:
+                return
+            self.player_guid = guid
+            self.player_name = name
+            self.player_realm = realm
+            self.player_spec_id = None
+        print(f"{LOG_PREFIXES['PARSER']} Player identified: "
+              f"{name}-{realm} (GUID: {guid})")
             
     
     def _parse_combatant_info(self, line: str):
@@ -794,6 +797,9 @@ class CombatParser:
 
         # GUID -> (name, realm) map built from any combat event in the window
         guid_to_name: dict = {}
+        # Like WCR, the fight's own lines say who recorded it: the live
+        # identity goes stale when the user swaps characters in one log.
+        local_player = None
 
         # Build GUID->name map from src/dest fields in combat event lines.
         # Standard combat event format (after timestamp double-space):
@@ -813,6 +819,8 @@ class CombatParser:
                 parts = event_data.split(',', 9)
                 if len(parts) < 7:
                     continue
+                if local_player is None:
+                    local_player = _local_player_in(parts)
                 for guid_idx, name_idx in ((1, 2), (5, 6)):
                     guid = parts[guid_idx].strip()
                     if not guid.startswith('Player-'):
@@ -828,6 +836,9 @@ class CombatParser:
                         guid_to_name[guid] = (name, realm)
             except Exception:
                 continue
+
+        if local_player:
+            self._apply_fight_player(metadata, *local_player)
 
         guid_to_spec: dict = {}
         for line in window_lines:
@@ -875,10 +886,10 @@ class CombatParser:
  
                     name, realm = guid_to_name[guid]
  
-                    if guid == self.player_guid and spec_id > 0:
-                        self.player_spec_id = spec_id
-                        if metadata.player_info:
-                            metadata.player_info["_specID"] = spec_id
+                    if metadata.player_info.get("_GUID") == guid and spec_id > 0:
+                        metadata.player_info["_specID"] = spec_id
+                        if guid == self.player_guid:
+                            self.player_spec_id = spec_id
  
                     metadata.add_combatant(
                         guid=guid,
@@ -913,6 +924,14 @@ class CombatParser:
         # had an empty combatants list — WCR only writes metadata after all
         # processing is done, so we match that by recomputing here.
         metadata._recompute_hash()
+
+    def _apply_fight_player(self, metadata: RecordingMetadata, guid: str, name: str, realm: str):
+        """Make the player seen in the fight's lines its recording player."""
+        if metadata.player_info.get("_GUID") != guid:
+            print(f"{LOG_PREFIXES['PARSER']} Recording player is {name}-{realm}, "
+                  f"not {metadata.player_info.get('_name', 'unknown')}")
+            metadata.set_player_info(guid=guid, name=name, realm=realm, spec_id=0)
+        self._set_player(guid, name, realm)
 
     def _parse_timestamp_to_ms(self, timestamp: str) -> int:
         """Parse combat log timestamp to milliseconds."""
