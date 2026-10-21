@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Set, Callable, Any
 
 from constants import VIDEO_EXTENSIONS
 from sidecar_cache import sidecars
+import wcr_format
 
 
 # ---------------------------------------------------------------------------
@@ -537,21 +538,11 @@ class PovSyncManager:
 
     def _write_pov_sidecar(self, dest: Path, cloud_video: dict):
         """Write a JSON sidecar alongside a downloaded POV using cloud metadata."""
+        # Everything WCR knows about the video (deaths, bossPercent, M+ fields,
+        # ...) minus the cloud-only keys, so the POV shows like a local pull.
         sidecar = {
+            **wcr_format.to_wcr_metadata(cloud_video),
             'videoKey': cloud_video.get('videoKey', dest.name),
-            'encounterName': cloud_video.get('encounterName', ''),
-            'difficulty': cloud_video.get('difficulty', ''),
-            'difficultyID': cloud_video.get('difficultyID'),
-            'result': cloud_video.get('result'),
-            'start': cloud_video.get('start', 0),
-            'duration': cloud_video.get('duration', 0),
-            'uniqueHash': cloud_video.get('uniqueHash', ''),
-            'player': cloud_video.get('player'),
-            'combatants': cloud_video.get('combatants', []),
-            'zoneID': cloud_video.get('zoneID', 0),
-            'zoneName': cloud_video.get('zoneName', ''),
-            'category': cloud_video.get('category', ''),
-            'flavour': cloud_video.get('flavour', 'Retail'),
             'pov': True,
         }
         try:
