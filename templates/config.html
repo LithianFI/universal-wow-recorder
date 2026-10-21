@@ -202,8 +202,8 @@
         <div x-show="message" x-cloak
             class="mb-5 px-4 py-3 rounded-sm border flex items-center justify-between"
             :style="messageType === 'success'
-                ? 'background: rgba(112,194,89,0.10); border-color: rgba(112,194,89,0.4); color:#8fd06b;'
-                : 'background: rgba(220,80,80,0.10); border-color: rgba(220,80,80,0.4); color:#e07070;'">
+                ? { background: 'rgba(112,194,89,0.10)', borderColor: 'rgba(112,194,89,0.4)', color: '#8fd06b' }
+                : { background: 'rgba(220,80,80,0.10)', borderColor: 'rgba(220,80,80,0.4)', color: '#e07070' }">
             <span class="text-sm" x-text="message"></span>
             <button @click="message = ''" class="text-parchment-400 hover:text-parchment-900 text-lg leading-none">&times;</button>
         </div>
@@ -310,8 +310,8 @@
 
                 <div x-show="obsTestResult" x-cloak class="mt-4 px-3 py-2 rounded-sm text-xs"
                     :style="obsTestSuccess
-                        ? 'background: rgba(112,194,89,0.10); border:1px solid rgba(112,194,89,0.3); color:#8fd06b;'
-                        : 'background: rgba(220,80,80,0.10); border:1px solid rgba(220,80,80,0.3); color:#e07070;'">
+                        ? { background: 'rgba(112,194,89,0.10)', border: '1px solid rgba(112,194,89,0.3)', color: '#8fd06b' }
+                        : { background: 'rgba(220,80,80,0.10)', border: '1px solid rgba(220,80,80,0.3)', color: '#e07070' }">
                     <span x-text="obsTestResult"></span>
                 </div>
             </section>
@@ -679,8 +679,8 @@
 
                     <div x-show="cloudTestResult" x-cloak class="px-3 py-2 rounded-sm text-xs"
                         :style="cloudTestSuccess
-                            ? 'background: rgba(112,194,89,0.10); border:1px solid rgba(112,194,89,0.3); color:#8fd06b;'
-                            : 'background: rgba(220,80,80,0.10); border:1px solid rgba(220,80,80,0.3); color:#e07070;'">
+                            ? { background: 'rgba(112,194,89,0.10)', border: '1px solid rgba(112,194,89,0.3)', color: '#8fd06b' }
+                            : { background: 'rgba(220,80,80,0.10)', border: '1px solid rgba(220,80,80,0.3)', color: '#e07070' }">
                         <span x-text="cloudTestResult"></span>
                     </div>
                 </div>

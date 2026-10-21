@@ -25,6 +25,7 @@
 - Category strings must be WCR's VideoCategory values ("Mythic+", not the old "MythicPlus"); the category is part of uniqueHash, so a wrong spelling breaks multi-POV grouping. Old files are normalised by `wcr_format.normalize_category`.
 - CHALLENGE_MODE_START's affix list "[10,9,147]" is cut at its commas by the CSV split; `CombatEvent._parse_affixes` rejoins it.
 - Claude's sandbox has no Node and Python 3.13 while venv/ is 3.14 — test via a scratch venv (`pip install -r requirements.txt`), JS syntax via tree-sitter, page logic via py_mini_racer, layout via Playwright headless Chromium.
+- Alpine: never combine x-show with a string `:style` — re-evaluating the string replaces the style attribute and wipes x-show's display:none (the REC banner showed while idle). Use object form `:style="{ left: x + '%' }"`.
 - Bar charts with percentage heights need a definite-height box per bar (column `h-full`, bar in its own `flex-1 min-h-0` box, fixed-height labels); otherwise the bars collapse to 0.
 - npm audit (2026-10-21): remaining braces (via @tailwindcss/cli watcher) and sprintf-js (via electron-builder's @electron/get) are build-time only with no fixed release; `npm audit fix --force` downgrades and reintroduces tar issues — don't run it.
 

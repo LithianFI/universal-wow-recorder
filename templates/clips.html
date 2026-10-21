@@ -371,7 +371,7 @@
                         <!-- Hover tooltip -->
                         <div x-show="seekPreviewTime !== null"
                             class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
-                            :style="'left:' + seekPreviewPct + '%;'"
+                            :style="{ left: seekPreviewPct + '%' }"
                             x-text="fmtTime(seekPreviewTime)"></div>
                     </div>
 

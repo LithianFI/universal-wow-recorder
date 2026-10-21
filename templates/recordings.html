@@ -333,8 +333,8 @@
     <div x-show="status.recorder?.recording === true || status.recorder?.dungeon_active === true" x-cloak
         class="shrink-0 flex items-center gap-3 px-4 py-2 border-b"
         :style="status.recorder?.dungeon_active
-            ? 'background: linear-gradient(90deg, rgba(157,157,255,0.12), rgba(157,157,255,0) 60%), #0d0b08; border-color:#2a2440;'
-            : 'background: linear-gradient(90deg, rgba(232,69,69,0.12), rgba(232,69,69,0) 60%), #0d0b08; border-color:#3a1a14;'">
+            ? { background: 'linear-gradient(90deg, rgba(157,157,255,0.12), rgba(157,157,255,0) 60%), #0d0b08', borderColor: '#2a2440' }
+            : { background: 'linear-gradient(90deg, rgba(232,69,69,0.12), rgba(232,69,69,0) 60%), #0d0b08', borderColor: '#3a1a14' }">
         <div class="w-2 h-2 rounded-full pulse-rec shrink-0"
             :style="status.recorder?.recording ? 'background:#e84545;' : 'background:#9d9dff;'"></div>
         <span class="font-display text-xs tracking-[0.25em]"
@@ -671,15 +671,15 @@
                             <div x-show="clipInPercent !== null || clipOutPercent !== null"
                                 class="absolute top-0 h-full pointer-events-none"
                                 style="background:rgba(201,169,97,0.28);"
-                                :style="'left:' + (clipInPercent ?? 0) + '%;width:' + ((clipOutPercent ?? 100) - (clipInPercent ?? 0)) + '%;'"></div>
+                                :style="{ left: (clipInPercent ?? 0) + '%', width: ((clipOutPercent ?? 100) - (clipInPercent ?? 0)) + '%' }"></div>
                             <div x-show="clipInPercent !== null"
                                 class="absolute top-0 bottom-0 w-0.5 pointer-events-none"
                                 style="background:#c9a961;"
-                                :style="'left:' + clipInPercent + '%;'"></div>
+                                :style="{ left: clipInPercent + '%' }"></div>
                             <div x-show="clipOutPercent !== null"
                                 class="absolute top-0 bottom-0 w-0.5 pointer-events-none"
                                 style="background:#c9a961;"
-                                :style="'left:' + clipOutPercent + '%;'"></div>
+                                :style="{ left: clipOutPercent + '%' }"></div>
 
                             <!-- Death markers -->
                             <template x-for="(pct, i) in deathMarkerPositions" :key="i">
@@ -701,7 +701,7 @@
                             <!-- Seek preview -->
                             <div x-show="seekPreviewTime !== null"
                                 class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
-                                :style="'left:' + seekPreviewPercent + '%;'"
+                                :style="{ left: seekPreviewPercent + '%' }"
                                 x-text="formatVideoTime(seekPreviewTime)"></div>
                         </div>
 
@@ -1112,13 +1112,13 @@
                         <button x-show="localPovs.length > 0"
                             @click="multiPovMode = !multiPovMode"
                             class="quick-btn text-[11px]"
-                            :style="multiPovMode ? 'color:#3a9080;border-color:rgba(51,147,127,0.35);' : ''"
+                            :style="multiPovMode ? { color: '#3a9080', borderColor: 'rgba(51,147,127,0.35)' } : {}"
                             x-text="multiPovMode ? 'Hide POVs' : 'POVs (' + localPovs.length + ')'">
                         </button>
                         <button x-show="recordingMetadata"
                             @click="openCooldownScanPanel()"
                             class="quick-btn text-[11px]"
-                            :style="cooldownCasts.length > 0 ? 'color:#c9a961;border-color:rgba(201,169,97,0.35);' : ''"
+                            :style="cooldownCasts.length > 0 ? { color: '#c9a961', borderColor: 'rgba(201,169,97,0.35)' } : {}"
                             x-text="cooldownCasts.length > 0 ? 'Rescan CDs' : 'Scan CDs'">
                         </button>
                         <button x-show="cloudStatus.enabled" @click="uploadToCloud(selectedRecording)"
