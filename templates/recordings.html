@@ -1053,51 +1053,6 @@
                     </div>
                 </div>
 
-                <!-- ── Progress on this boss (all local pulls, same difficulty) ── -->
-                <div class="panel-section" x-show="bossSummary" x-cloak>
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="label-cap">This boss</div>
-                        <span class="font-mono text-[11px]" style="color: #a89c82;"
-                            x-text="bossSummary?.difficulty || ''"></span>
-                    </div>
-                    <div class="grid grid-cols-3 gap-1.5 text-center mb-2">
-                        <div class="p-1.5 bg-ink-600 rounded-sm">
-                            <div class="font-mono text-sm text-parchment-900" x-text="bossSummary?.pulls"></div>
-                            <div class="label-cap mt-0.5">Pulls</div>
-                        </div>
-                        <div class="p-1.5 bg-ink-600 rounded-sm">
-                            <div class="font-mono text-sm" style="color:#8fd06b;" x-text="bossSummary?.kills"></div>
-                            <div class="label-cap mt-0.5">Kills</div>
-                        </div>
-                        <div class="p-1.5 bg-ink-600 rounded-sm">
-                            <div class="font-mono text-sm text-parchment-900"
-                                x-text="bossSummary?.bestWipePercent != null ? bossSummary?.bestWipePercent + '%' : '—'"></div>
-                            <div class="label-cap mt-0.5">Best wipe</div>
-                        </div>
-                    </div>
-                    <div class="text-[12px] space-y-1" style="color:#a89c82;">
-                        <div class="flex justify-between">
-                            <span>Average pull</span>
-                            <span class="font-mono" x-text="formatVideoTime(bossSummary?.averageDuration || 0)"></span>
-                        </div>
-                        <div class="flex justify-between" x-show="bossSummary?.averageFirstDeath != null">
-                            <span>First death on average at</span>
-                            <span class="font-mono" x-text="formatVideoTime(bossSummary?.averageFirstDeath || 0)"></span>
-                        </div>
-                    </div>
-                    <div x-show="bossSummary?.firstDeaths.length > 0" class="mt-2">
-                        <div class="label-cap mb-1">Died first</div>
-                        <template x-for="fd in (bossSummary?.firstDeaths || [])" :key="fd.name">
-                            <div class="flex justify-between text-[12px] py-0.5">
-                                <span class="truncate" :class="classColor(fd.specId)" :title="fd.name"
-                                    x-text="shortPlayerName(fd.name)"></span>
-                                <span class="font-mono shrink-0 ml-2" style="color: #8a8270;"
-                                    x-text="fd.count + ' of ' + bossSummary.pullsWithDeaths"></span>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-
                 <!-- ── Actions ── -->
                 <div class="panel-section">
                     <div class="label-cap mb-2">Actions</div>
@@ -1369,13 +1324,7 @@
         const SESSION_GAP_SECONDS = 2 * 3600;
         const LIVE_TIMER_INTERVAL_MS = 1000;
         const CLIP_NAME_PATTERN = /_clip_\d+-\d+/;
-        const MIN_PULLS_FOR_SUMMARY = 2;
         const CLOUD_PROVIDER_LABELS = { warcraft_recorder: 'Warcraft Recorder', google_drive: 'Google Drive' };
-        const FIRST_DEATH_RANKING_SIZE = 3;
-
-        function average(values) {
-            return values.length ? values.reduce((sum, v) => sum + v, 0) / values.length : null;
-        }
 
         // Per-viewer preferences; the page works the same without storage.
         function loadPref(key, fallback) {
@@ -2111,50 +2060,6 @@
                     if (kills > 0) headline = kills === 1 ? '1 kill' : kills + ' kills';
                     else if (bestWipePercent !== null) headline = 'best ' + bestWipePercent + '%';
                     return { kills, bestWipePercent, headline };
-                },
-
-                // Every local pull of the selected recording's boss and difficulty.
-                get bossSummary() {
-                    const selected = this.selectedRecording?._parsed;
-                    if (!selected?.encounter) return null;
-                    const pulls = this.recordings.filter(r =>
-                        r._parsed?.encounter === selected.encounter && r._parsed?.difficulty === selected.difficulty);
-                    if (pulls.length < MIN_PULLS_FOR_SUMMARY) return null;
-
-                    const firstDeaths = pulls.map(r => this.firstFriendlyDeath(r)).filter(Boolean);
-                    const durations = pulls.map(r => r._meta?.duration || 0).filter(d => d > 0);
-                    return {
-                        difficulty: selected.difficulty,
-                        pulls: pulls.length,
-                        ...this.groupProgress(pulls),
-                        averageDuration: average(durations) ?? 0,
-                        averageFirstDeath: average(firstDeaths.map(d => d.timestamp || 0)),
-                        pullsWithDeaths: firstDeaths.length,
-                        firstDeaths: this.rankFirstDeaths(firstDeaths),
-                    };
-                },
-
-                firstFriendlyDeath(rec) {
-                    const deaths = (rec._meta?.deaths || []).filter(d => d.friendly !== false && d.name);
-                    if (!deaths.length) return null;
-                    return deaths.reduce((first, d) => (d.timestamp || 0) < (first.timestamp || 0) ? d : first);
-                },
-
-                rankFirstDeaths(deaths) {
-                    const byName = new Map();
-                    for (const d of deaths) {
-                        const entry = byName.get(d.name) || { name: d.name, specId: d.specId, count: 0 };
-                        entry.count++;
-                        byName.set(d.name, entry);
-                    }
-                    return [...byName.values()]
-                        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-                        .slice(0, FIRST_DEATH_RANKING_SIZE);
-                },
-
-                // "Tølip-Draenor-EU" → "Tølip"; the full name stays in the tooltip.
-                shortPlayerName(name) {
-                    return (name || '').split('-')[0];
                 },
 
                 // "WIPE 23%" when the boss HP at the wipe is known.
