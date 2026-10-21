@@ -171,7 +171,7 @@ class CloudUploadManager:
 
         Args:
             file_path: Path to the recording file
-            metadata:  Fully populated VideoMetadata instance
+            metadata:  VideoMetadata identifying the file (WCR metadata is read from its sidecar at upload)
 
         Returns:
             True if queued successfully, False otherwise

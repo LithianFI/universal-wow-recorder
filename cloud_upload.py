@@ -18,6 +18,8 @@ from datetime import datetime
 
 import requests
 
+import wcr_format
+
 
 # Retries for one HTTP step (a part PUT, the metadata POST, a Drive chunk).
 # Backoff doubles per attempt: 1, 2, 4, 8 s ... capped.
@@ -59,78 +61,28 @@ class UploadProgress:
 
 @dataclass
 class VideoMetadata:
-    """Metadata for uploaded videos — matches WCR CloudMetadata / Metadata shape exactly."""
+    """Identifies a queued video. The WCR metadata itself is read from the
+    sidecar at upload time (see wcr_format), as WCR does, so edits made while
+    the video waits in the queue are sent and our own fields never are."""
     video_name: str       # stem without extension
     video_key: str        # filename with extension, exactly as stored in R2
     file_path: str
     file_size: int
-    start: int            # epoch ms
-    unique_hash: str
-    category: str = 'Raids'          # must be a VideoCategory string: 'Raids', 'Mythic+', etc.
-    flavour: str = 'Retail'
-    encounter_name: Optional[str] = None
-    encounter_id: Optional[int] = None
-    difficulty_id: Optional[int] = None
-    difficulty: Optional[str] = None
-    duration: Optional[int] = None
-    result: bool = False
-    boss_percent: int = 0
-    zone_id: int = 0
-    zone_name: str = 'Unknown'
-    player: Optional[Dict] = None
-    combatants: Optional[List] = None
-    deaths: Optional[List] = None
-    overrun: int = 0
-    app_version: str = '1.0.0'
-    # M+ specific fields (maps to ChallengeModeDungeon.getMetadata())
-    keystone_level: Optional[int] = None
-    map_id: Optional[int] = None
-    upgrade_level: int = 0
-    affixes: Optional[List[int]] = None
 
-    def to_cloud_metadata(self) -> dict:
-        """Build the payload for POST /guild/{g}/video matching WCR CloudMetadata type."""
-        d = {
-            'videoName': self.video_name,
-            'videoKey': self.video_key,
-            'start': self.start,
-            'uniqueHash': self.unique_hash,
-            'category': self.category,
-            'flavour': self.flavour,
-            'duration': self.duration or 0,
-            'result': self.result,
-            'bossPercent': self.boss_percent,
-            'zoneID': self.zone_id,
-            'zoneName': self.zone_name,
-            'overrun': self.overrun,
-            'combatants': self.combatants or [],
-            'appVersion': self.app_version,
-        }
+    @classmethod
+    def for_file(cls, file_path: Path) -> 'VideoMetadata':
+        return cls(
+            video_name=file_path.stem,
+            video_key=file_path.name,
+            file_path=str(file_path),
+            file_size=file_path.stat().st_size,
+        )
 
-        if self.encounter_name:
-            d['encounterName'] = self.encounter_name
-        if self.encounter_id:
-            d['encounterID'] = self.encounter_id
-        if self.difficulty_id:
-            d['difficultyID'] = self.difficulty_id
-        if self.difficulty:
-            d['difficulty'] = self.difficulty
-        if self.player:
-            d['player'] = self.player
-        if self.deaths:
-            d['deaths'] = self.deaths
-
-        # M+ specific fields — only include when present
-        if self.keystone_level is not None:
-            d['keystoneLevel'] = self.keystone_level
-        if self.map_id is not None:
-            d['mapID'] = self.map_id
-        if self.upgrade_level:
-            d['upgradeLevel'] = self.upgrade_level
-        if self.affixes:
-            d['affixes'] = self.affixes
-
-        return d
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> 'VideoMetadata':
+        """Load a persisted queue entry; older entries carried every metadata field."""
+        names = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in names})
 
 # =============================================================================
 # Abstract Base
@@ -536,7 +488,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
     async def _post_video_metadata(self, metadata: VideoMetadata) -> bool:
         """POST /guild/{g}/video with CloudMetadata payload. True if registered."""
         g = requests.utils.quote(self.guild_name)
-        payload = metadata.to_cloud_metadata()
+        payload = wcr_format.cloud_metadata_for_video(Path(metadata.file_path))
 
         for attempt in range(1, HTTP_STEP_ATTEMPTS + 1):
             if attempt > 1:
@@ -693,7 +645,7 @@ class CloudUploadQueue:
             return None
         return {
             'file_path': path,
-            'metadata': VideoMetadata(**data['metadata']),
+            'metadata': VideoMetadata.from_json(data['metadata']),
             'added_at': data.get('added_at', time.time()),
             'attempts': data.get('attempts', 0),
         }

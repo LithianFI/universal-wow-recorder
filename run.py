@@ -692,38 +692,6 @@ def create_clip(filename: str):
     threading.Thread(target=_worker, daemon=True).start()
     return jsonify({'success': True, 'message': 'Clip export started'})
 
-def _video_metadata_from_sidecar(file_path: Path):
-    """Cloud metadata for an existing recording, from its JSON sidecar if any."""
-    from cloud_upload import VideoMetadata
-    try:
-        meta = json.loads(file_path.with_suffix('.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        meta = {}
-    return VideoMetadata(
-        video_name=file_path.stem,
-        video_key=file_path.name,
-        file_path=str(file_path),
-        file_size=file_path.stat().st_size,
-        start=meta.get('start') or int(file_path.stat().st_mtime * 1000),
-        unique_hash=meta.get('uniqueHash') or '',
-        category=meta.get('category') or 'Manual',
-        flavour=meta.get('flavour') or 'Retail',
-        encounter_name=meta.get('encounterName') or file_path.stem,
-        encounter_id=meta.get('encounterID'),
-        difficulty_id=meta.get('difficultyID'),
-        difficulty=meta.get('difficulty'),
-        duration=meta.get('duration'),
-        result=bool(meta.get('result', False)),
-        boss_percent=meta.get('bossPercent') or 0,
-        zone_id=meta.get('zoneID') or 0,
-        zone_name=meta.get('zoneName') or 'Unknown',
-        player=meta.get('player'),
-        combatants=meta.get('combatants') or [],
-        deaths=meta.get('deaths') or [],
-        overrun=meta.get('overrun') or 0,
-    )
-
-
 @app.route('/api/cloud/upload/retry-failed', methods=['POST'])
 def retry_failed_uploads():
     s = get_state()
@@ -749,7 +717,8 @@ def queue_cloud_upload(filename: str):
         if not file_path.exists():
             return jsonify({'error': 'File not found'}), 404
 
-        metadata = _video_metadata_from_sidecar(file_path)
+        from cloud_upload import VideoMetadata
+        metadata = VideoMetadata.for_file(file_path)
 
         success = s.cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
         if success:
@@ -1498,39 +1467,7 @@ def handle_recording_saved(recording_info: dict = None):
         file_path = Path(info['path'])
 
         from cloud_upload import VideoMetadata
-
-        stem = file_path.stem
-        video_key = file_path.name
-
-        metadata = VideoMetadata(
-            video_name=stem,
-            video_key=video_key,
-            file_path=str(file_path),
-            file_size=file_path.stat().st_size,
-            start=parsed_meta.start_timestamp or int(time.time() * 1000),
-            unique_hash=parsed_meta.unique_hash or '',
-            category=parsed_meta.category,
-            flavour=parsed_meta.flavour,
-            encounter_name=parsed_meta.encounter_name,
-            encounter_id=parsed_meta.encounter_id,
-            difficulty_id=parsed_meta.difficulty_id,
-            difficulty=parsed_meta.difficulty,
-            duration=parsed_meta.duration or int(duration),
-            result=parsed_meta.result,
-            boss_percent=parsed_meta.boss_percent,
-            zone_id=parsed_meta.zone_id,
-            zone_name=parsed_meta.zone_name,
-            player=parsed_meta.player_info or None,
-            combatants=parsed_meta.combatants or [],
-            deaths=parsed_meta.deaths or [],
-            overrun=parsed_meta.overrun,
-            app_version=parsed_meta.app_version,
-            keystone_level=getattr(parsed_meta, 'keystone_level', None),
-            map_id=getattr(parsed_meta, 'map_id', None),
-            upgrade_level=getattr(parsed_meta, 'upgrade_level', 0),
-            affixes=getattr(parsed_meta, 'affixes', None),
-        )
-
+        metadata = VideoMetadata.for_file(file_path)
         s.cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
         print(f"[Cloud] Queued for upload: {file_path.name}")
 
