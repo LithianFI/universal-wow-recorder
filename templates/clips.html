@@ -97,7 +97,6 @@
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
         <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
         <nav class="flex items-center h-full">
-            <a href="/dashboard" class="nav-tab">Dashboard</a>
             <a href="/" class="nav-tab">Recordings</a>
             <a href="/stats" class="nav-tab">Stats</a>
             <a href="/clips" class="nav-tab nav-tab-active">Clips</a>
@@ -129,7 +128,7 @@
     <!-- Empty state -->
     <div x-show="!loading && clips.length === 0" x-cloak class="text-center py-24">
         <div class="text-4xl font-display text-parchment-300 mb-3">No clips yet</div>
-        <p class="text-parchment-400 text-sm">Export clips from the video player on the dashboard or recordings page.</p>
+        <p class="text-parchment-400 text-sm">Export clips from the video player on the recordings page.</p>
         <a href="/" class="inline-block mt-4 quick-btn">Go to Dashboard</a>
     </div>
 

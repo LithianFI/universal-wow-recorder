@@ -173,12 +173,6 @@ def index():
     return render_template('recordings.html')
 
 
-@app.route('/dashboard')
-def dashboard_page():
-    """Serve the live status dashboard."""
-    return render_template('index.html')
-
-
 @app.route('/config')
 def config_page():
     """Serve the configuration page."""

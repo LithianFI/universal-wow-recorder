@@ -101,7 +101,6 @@
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
         <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
         <nav class="flex items-center h-full">
-            <a href="/dashboard" class="nav-tab">Dashboard</a>
             <a href="/" class="nav-tab">Recordings</a>
             <a href="/stats" class="nav-tab nav-tab-active">Stats</a>
             <a href="/clips" class="nav-tab">Clips</a>
@@ -126,6 +125,41 @@
     </div>
 
     <div x-show="!loading && allEncounters.length > 0" x-cloak>
+
+        <!-- ── Latest session progression ──────────────────────── -->
+        <section x-show="progression.pulls.length > 1" x-cloak class="mb-5">
+            <div class="card">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="section-title">
+                        Latest session on <span x-text="progression.boss"></span>
+                        <span class="text-parchment-300 normal-case tracking-normal ml-1"
+                            x-text="'· ' + progression.dateLabel"></span>
+                    </h3>
+                    <span class="text-parchment-400 text-xs">
+                        <span x-text="progression.pulls.length"></span> pulls ·
+                        <span x-text="progression.kills"></span> kills ·
+                        best <span class="font-mono text-parchment-700"
+                            x-text="formatDuration(progression.bestDuration)"></span>
+                    </span>
+                </div>
+                <div class="flex items-end gap-1 h-14">
+                    <template x-for="(pull, idx) in progression.pulls" :key="idx">
+                        <div class="flex-1 flex flex-col items-center gap-1 min-w-0 cursor-default"
+                            :title="pullTooltip(pull)">
+                            <div class="w-full rounded-t-sm"
+                                :style="pullBarStyle(pull, progression.maxDuration)"></div>
+                            <span class="font-mono text-[10px]"
+                                :class="pull.result ? 'text-green-400' : 'text-parchment-300'"
+                                x-text="(idx + 1) + (pull.result ? '★' : '')"></span>
+                        </div>
+                    </template>
+                </div>
+                <div class="flex justify-between text-[11px] text-parchment-300 mt-1">
+                    <span>Bar height = pull duration</span>
+                    <span class="text-gold-500">★ kill</span>
+                </div>
+            </div>
+        </section>
 
         <!-- ── Summary tiles ───────────────────────────────────── -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -373,6 +407,10 @@
 </div><!-- /container -->
 
 <script>
+// A pull more than this long after the previous one starts a new session.
+const SESSION_GAP_MS = 2 * 3600 * 1000;
+const MAX_SESSION_PULLS = 30;
+
 function statsPage() {
     return {
         loading: true,
@@ -444,12 +482,7 @@ function statsPage() {
                 }
                 if (e.keystoneLevel) g.keystoneLevels.push(e.keystoneLevel);
                 if (e.start && e.start > g.lastTimestamp) g.lastTimestamp = e.start;
-                g.pulls_list.push({
-                    result: e.result === true,
-                    duration: e.duration || 0,
-                    deaths: deaths.length,
-                    bossPercent: e.bossPercent,
-                });
+                g.pulls_list.push(this.toPull(e));
             }
 
             return Object.values(groups).map(g => {
@@ -480,6 +513,51 @@ function statsPage() {
                 if (this.bossSort === 'recent') return b.lastTimestamp - a.lastTimestamp;
                 return 0;
             });
+        },
+
+        // Latest session's attempts on its most recent boss: walk pulls
+        // newest → oldest until the boss changes or a long gap ends the
+        // session. Ignores the filters so it always shows the last night.
+        get progression() {
+            const pulls = [];
+            let boss = null;
+            let previousStart = null;
+            for (const e of this.encountersNewestFirst) {
+                const name = e.encounterName || e.zoneName;
+                if (boss && name !== boss) break;
+                if (previousStart && previousStart - e.start > SESSION_GAP_MS) break;
+                boss = name;
+                previousStart = e.start;
+                pulls.push(this.toPull(e));
+                if (pulls.length >= MAX_SESSION_PULLS) break;
+            }
+            pulls.reverse();
+            const kills = pulls.filter(p => p.result);
+            const durations = (kills.length ? kills : pulls).map(p => p.duration);
+            return {
+                boss,
+                pulls,
+                kills: kills.length,
+                // Fastest kill, or the longest attempt while still progressing.
+                bestDuration: kills.length ? Math.min(...durations) : Math.max(0, ...durations),
+                maxDuration: Math.max(1, ...pulls.map(p => p.duration)),
+                dateLabel: previousStart ? new Date(previousStart).toLocaleDateString() : '',
+            };
+        },
+
+        get encountersNewestFirst() {
+            return this.allEncounters
+                .filter(e => e.start)
+                .sort((a, b) => b.start - a.start);
+        },
+
+        toPull(e) {
+            return {
+                result: e.result === true,
+                duration: e.duration || 0,
+                deaths: (e.deaths || []).length,
+                bossPercent: e.bossPercent,
+            };
         },
 
         get deathsByPlayer() {

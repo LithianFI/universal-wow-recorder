@@ -13,14 +13,10 @@ Built with AI assistance. While the code has been reviewed, mistakes happen — 
 - Detects the latest WoW combat log and watches it in real time
 - Automatically starts OBS recording when a boss encounter begins, stops a few seconds after it ends
 - Records Mythic+ dungeon runs as a single continuous VOD
-- Web dashboard at `http://localhost:5001` with:
-  - Live recording status and in-progress pull timer
-  - Previous pull summary with death timeline and markers
-  - Per-boss progression chart across the session
-  - Recent recordings list
-  - **Recordings page** — full library with search, filters, and sort
+- Web UI at `http://localhost:5001` with:
+  - **Recordings page** (home) — live recording status with in-progress pull timer, OBS / log / cloud upload status, manual recording, and the full library with search, filters, sort, video player, death markers and cooldown timeline; a newly saved pull opens automatically
   - **Clips page** — manage exported highlight clips (rename, delete, download)
-  - **Statistics page** — per-boss breakdown across all recordings: pull count, kill rate, best/average time, boss HP% progression on wipes, death leaderboard
+  - **Statistics page** — latest session progression chart, per-boss breakdown across all recordings: pull count, kill rate, best/average time, boss HP% progression on wipes, death leaderboard
   - **Debug page** (Electron client) — live-streamed backend log output, for troubleshooting
 - Video player with timeline scrubbing, death markers, volume control, playback speed (0.5×–2×), fullscreen, and keyboard shortcuts
 - **Cooldown timeline** — per-player row of tracked cooldowns (healer/tank/raid/DPS/utility) plotted against the fight, with class-colored spell icons and category filters
