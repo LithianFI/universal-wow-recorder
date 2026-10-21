@@ -464,6 +464,9 @@
                             <span class="label-cap text-parchment-300" x-text="group.label"></span>
                             <span class="font-mono text-[11px]" style="color: #8a8270;"
                                 x-text="'(' + group.items.length + ')'"></span>
+                            <span class="ml-auto font-mono text-[11px]" x-show="group.headline"
+                                :class="group.kills > 0 ? 'text-green-400' : 'text-parchment-400'"
+                                x-text="group.headline"></span>
                         </div>
 
                         <!-- Recording rows -->
@@ -510,7 +513,7 @@
                                         <span class="text-[11px]"
                                             :class="rec._parsed?.result === 'KILL' ? 'tag tag-kill' : (rec._parsed?.result === 'WIPE' ? 'tag tag-wipe' : '')"
                                             x-show="rec._parsed?.result"
-                                            x-text="rec._parsed?.result || ''"></span>
+                                            x-text="resultLabel(rec)"></span>
                                         <span x-show="rec._parsed?.player"
                                             class="text-[11px] text-parchment-300 truncate"
                                             x-text="rec._parsed?.player"></span>
@@ -1984,7 +1987,27 @@
                         groups.get(label).push(rec);
                     }
                     // Preserve sort order across groups.
-                    return Array.from(groups, ([label, items]) => ({ label, items }));
+                    return Array.from(groups, ([label, items]) => ({ label, items, ...this.groupProgress(items) }));
+                },
+
+                // Kills, or the lowest boss HP reached, across a group's pulls.
+                groupProgress(items) {
+                    const kills = items.filter(r => r._parsed?.result === 'KILL').length;
+                    const wipePercents = items
+                        .filter(r => r._parsed?.result === 'WIPE' && r._meta?.bossPercent > 0)
+                        .map(r => r._meta.bossPercent);
+                    const bestWipePercent = wipePercents.length ? Math.min(...wipePercents) : null;
+                    let headline = '';
+                    if (kills > 0) headline = kills === 1 ? '1 kill' : kills + ' kills';
+                    else if (bestWipePercent !== null) headline = 'best ' + bestWipePercent + '%';
+                    return { kills, bestWipePercent, headline };
+                },
+
+                // "WIPE 23%" when the boss HP at the wipe is known.
+                resultLabel(rec) {
+                    const result = rec._parsed?.result || '';
+                    const percent = rec._meta?.bossPercent;
+                    return result === 'WIPE' && percent > 0 ? `WIPE ${percent}%` : result;
                 },
 
                 // ── Selection / bulk delete ──────────────────────────

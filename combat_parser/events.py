@@ -254,9 +254,9 @@ class CombatEvent:
           [5] success   (1 = kill, 0 = wipe)
           [6] fightTime (fight duration in milliseconds — NOT boss HP%)
 
-        Note: there is no fightPercentage field in the combat log. Boss HP% at
-        wipe would require tracking UNIT_HEALTH events during the fight, which
-        this parser does not do. fight_percentage is always returned as 0.0.
+        Note: there is no fightPercentage field in the combat log, so
+        fight_percentage is always 0.0 here. CombatParser derives the boss HP%
+        at a wipe from the boss's currentHP/maxHP in damage events instead.
         """
         is_kill = False
         boss_name = None
