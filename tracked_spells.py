@@ -1,177 +1,437 @@
 """
-Major raid cooldowns tracked for the timeline display.
+Cooldowns, defensives, utility and crowd control tracked for the timeline display.
 
-Spell IDs sourced from WoWAnalyzer and Wowhead. Verify flagged entries (# ?)
-on major patches. Icon names resolve via: https://wow.zamimg.com/images/wow/icons/medium/{icon}.jpg
+The ability list follows the class info sheet by @Baratus (Midnight tab):
+https://docs.google.com/spreadsheets/d/1lXIRuETd3s3wxLHE8mOwhXtz0xm71ayhrlYxwi6herU
+plus tank and healer cooldowns the sheet doesn't list. Abilities that are never
+cast (passives, procs, buffs) and rotational presses are left out.
+
+Spell IDs come from the game data on wago.tools, checked against Wowhead tooltips.
+Verify flagged entries (# ?) on major patches. Icon names resolve via:
+https://wow.zamimg.com/images/wow/icons/medium/{icon}.jpg
 """
 
-# category values used for UI filtering:
-#   healer_cd  — major healing throughput cooldowns
-#   external   — single-target defensive casts on others
-#   tank_cd    — tank personal defensives
-#   raid_cd    — raid-wide defensive (e.g. AMZ, Darkness, Rallying Cry)
-#   dps_cd     — major offensive damage cooldowns
-#   utility    — lust, battle rez, movement, etc.
+# category values used for UI filtering, matching the sheet's columns:
+#   offensive  — offensive cooldowns
+#   defensive  — personal defensives (incl. tank cooldowns)
+#   immunity   — personal immunities
+#   external   — cooldowns cast on another player
+#   raid_cd    — raid-wide defensive and healing cooldowns
+#   utility    — lust, battle rez, movement and other utility
+#   interrupt  — interrupts
+#   dispel     — dispels and soothes
+#   stun_st    — single-target stuns
+#   stun_aoe   — AoE stuns
+#   cc_hard    — hard crowd control
+#   cc_aoe     — soft AoE crowd control
+#   cc_slow    — AoE slows
+#   cc_other   — other crowd control (roots, knockbacks, grips)
 
 TRACKED_SPELLS = {
 
-    # --- Healer Cooldowns ---
+    # --- offensive ---
 
-    # Discipline Priest
-    62618:  {"name": "Power Word: Barrier", "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_holy_powerwordbarrier"},
-    246287: {"name": "Evangelism",          "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "spell_holy_divineillumination"},
-    421453: {"name": "Ultimate Penitence",  "class": "Priest",       "spec": "Discipline", "category": "healer_cd", "icon": "ability_priest_ascendance"},
+    439843:   {"name": "Reaper's Mark",                 "class": "Death Knight", "spec": None,            "category": "offensive", "icon": "inv_ability_deathbringerdeathknight_reapersmark"},
+    279302:   {"name": "Frostwyrm's Fury",              "class": "Death Knight", "spec": "Frost",         "category": "offensive", "icon": "achievement_boss_sindragosa"},
+    51271:    {"name": "Pillar of Frost",               "class": "Death Knight", "spec": "Frost",         "category": "offensive", "icon": "ability_deathknight_pillaroffrost"},
+    42650:    {"name": "Army of the Dead",              "class": "Death Knight", "spec": "Unholy",        "category": "offensive", "icon": "spell_deathknight_armyofthedead"},
+    1233448:  {"name": "Dark Transformation",           "class": "Death Knight", "spec": "Unholy",        "category": "offensive", "icon": "achievement_boss_festergutrotface"},
+    1247378:  {"name": "Putrefy",                       "class": "Death Knight", "spec": "Unholy",        "category": "offensive", "icon": "inv12_ability_deathknight_putrefy"},
+    370965:   {"name": "The Hunt",                      "class": "Demon Hunter", "spec": None,            "category": "offensive", "icon": "inv_ability_demonhunter_thehunt"},
+    1246167:  {"name": "The Hunt",                      "class": "Demon Hunter", "spec": None,            "category": "offensive", "icon": "inv_12_voiddh_ability_thehunt"},
+    471306:   {"name": "Void Metamorphosis",            "class": "Demon Hunter", "spec": "Devourer",      "category": "offensive", "icon": "inv_112_ability_demonhunter_metamorphasisvoid"},  # ?
+    1217605:  {"name": "Void Metamorphosis",            "class": "Demon Hunter", "spec": "Devourer",      "category": "offensive", "icon": "inv_112_ability_demonhunter_metamorphasisvoid"},  # ?
+    191427:   {"name": "Metamorphosis",                 "class": "Demon Hunter", "spec": "Havoc",         "category": "offensive", "icon": "ability_demonhunter_metamorphasisdps"},
+    391528:   {"name": "Convoke the Spirits",           "class": "Druid",        "spec": None,            "category": "offensive", "icon": "inv_ability_druid_convokethespirits"},
+    194223:   {"name": "Celestial Alignment",           "class": "Druid",        "spec": "Balance",       "category": "offensive", "icon": "spell_nature_natureguardian"},
+    102560:   {"name": "Incarnation: Chosen of Elune",  "class": "Druid",        "spec": "Balance",       "category": "offensive", "icon": "spell_druid_incarnation"},
+    106951:   {"name": "Berserk",                       "class": "Druid",        "spec": "Feral",         "category": "offensive", "icon": "ability_druid_berserk"},
+    102543:   {"name": "Incarnation: Avatar of Ashamane", "class": "Druid",        "spec": "Feral",         "category": "offensive", "icon": "spell_druid_incarnation"},
+    50334:    {"name": "Berserk",                       "class": "Druid",        "spec": "Guardian",      "category": "offensive", "icon": "ability_druid_berserk"},
+    357210:   {"name": "Deep Breath",                   "class": "Evoker",       "spec": None,            "category": "offensive", "icon": "ability_evoker_deepbreath"},
+    403631:   {"name": "Breath of Eons",                "class": "Evoker",       "spec": "Augmentation",  "category": "offensive", "icon": "ability_evoker_breathofeons"},
+    375087:   {"name": "Dragonrage",                    "class": "Evoker",       "spec": "Devastation",   "category": "offensive", "icon": "ability_evoker_dragonrage"},
+    19574:    {"name": "Bestial Wrath",                 "class": "Hunter",       "spec": "Beast Mastery", "category": "offensive", "icon": "ability_druid_ferociousbite"},
+    288613:   {"name": "Trueshot",                      "class": "Hunter",       "spec": "Marksmanship",  "category": "offensive", "icon": "ability_trueshot"},
+    1261193:  {"name": "Boomstick",                     "class": "Hunter",       "spec": "Survival",      "category": "offensive", "icon": "inv_musket_04"},
+    1251592:  {"name": "Flamefang Pitch",               "class": "Hunter",       "spec": "Survival",      "category": "offensive", "icon": "inv_10_blacksmithing_craftedoptional_blacksmithdye_fire"},  # ?
+    1250646:  {"name": "Takedown",                      "class": "Hunter",       "spec": "Survival",      "category": "offensive", "icon": "inv12_ability_hunter_takedown"},
+    365350:   {"name": "Arcane Surge",                  "class": "Mage",         "spec": "Arcane",        "category": "offensive", "icon": "ability_mage_arcanesurge"},
+    321507:   {"name": "Touch of the Magi",             "class": "Mage",         "spec": "Arcane",        "category": "offensive", "icon": "inv_ability_mage_radiantspark"},
+    190319:   {"name": "Combustion",                    "class": "Mage",         "spec": "Fire",          "category": "offensive", "icon": "spell_fire_sealoffire"},
+    153561:   {"name": "Meteor",                        "class": "Mage",         "spec": "Fire",          "category": "offensive", "icon": "spell_mage_meteor"},
+    84714:    {"name": "Frozen Orb",                    "class": "Mage",         "spec": "Frost",         "category": "offensive", "icon": "spell_frost_frozenorb"},
+    205021:   {"name": "Ray of Frost",                  "class": "Mage",         "spec": "Frost",         "category": "offensive", "icon": "ability_mage_rayoffrost"},
+    443028:   {"name": "Celestial Conduit",             "class": "Monk",         "spec": None,            "category": "offensive", "icon": "inv_ability_conduitofthecelestialsmonk_celestialconduit"},
+    322109:   {"name": "Touch of Death",                "class": "Monk",         "spec": None,            "category": "offensive", "icon": "ability_monk_touchofdeath"},
+    132578:   {"name": "Invoke Niuzao, the Black Ox",   "class": "Monk",         "spec": "Brewmaster",    "category": "offensive", "icon": "spell_monk_brewmaster_spec"},
+    123904:   {"name": "Invoke Xuen, the White Tiger",  "class": "Monk",         "spec": "Windwalker",    "category": "offensive", "icon": "ability_monk_summontigerstatue"},
+    1249625:  {"name": "Zenith",                        "class": "Monk",         "spec": "Windwalker",    "category": "offensive", "icon": "inv_ability_monk_weaponsoforder"},
+    31884:    {"name": "Avenging Wrath",                "class": "Paladin",      "spec": None,            "category": "offensive", "icon": "spell_holy_avenginewrath"},
+    231895:   {"name": "Avenging Wrath",                "class": "Paladin",      "spec": None,            "category": "offensive", "icon": "spell_holy_avenginewrath"},
+    343527:   {"name": "Execution Sentence",            "class": "Paladin",      "spec": "Retribution",   "category": "offensive", "icon": "spell_paladin_executionsentence"},
+    205273:   {"name": "Wake of Ashes",                 "class": "Paladin",      "spec": "Retribution",   "category": "offensive", "icon": "inv_sword_2h_artifactashbringer_d_01"},
+    255937:   {"name": "Wake of Ashes",                 "class": "Paladin",      "spec": "Retribution",   "category": "offensive", "icon": "inv_sword_2h_artifactashbringerfire_d_03"},
+    228260:   {"name": "Voidform",                      "class": "Priest",       "spec": "Shadow",        "category": "offensive", "icon": "spell_priest_void-blast"},
+    1856:     {"name": "Vanish",                        "class": "Rogue",        "spec": None,            "category": "offensive", "icon": "ability_vanish"},
+    360194:   {"name": "Deathmark",                     "class": "Rogue",        "spec": "Assassination", "category": "offensive", "icon": "ability_rogue_deathmark"},
+    385627:   {"name": "Kingsbane",                     "class": "Rogue",        "spec": "Assassination", "category": "offensive", "icon": "inv_knife_1h_artifactgarona_d_01"},
+    13750:    {"name": "Adrenaline Rush",               "class": "Rogue",        "spec": "Outlaw",        "category": "offensive", "icon": "spell_shadow_shadowworddominate"},
+    51690:    {"name": "Killing Spree",                 "class": "Rogue",        "spec": "Outlaw",        "category": "offensive", "icon": "inv_112_rogue_betweentheeyes"},
+    121471:   {"name": "Shadow Blades",                 "class": "Rogue",        "spec": "Subtlety",      "category": "offensive", "icon": "inv_knife_1h_grimbatolraid_d_03"},
+    185313:   {"name": "Shadow Dance",                  "class": "Rogue",        "spec": "Subtlety",      "category": "offensive", "icon": "ability_rogue_shadowdance"},
+    443454:   {"name": "Ancestral Swiftness",           "class": "Shaman",       "spec": None,            "category": "offensive", "icon": "inv_ability_farseershaman_ancestralswiftness"},
+    114050:   {"name": "Ascendance",                    "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "spell_fire_elementaldevastation"},
+    191634:   {"name": "Stormkeeper",                   "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "ability_thunderking_lightningwhip"},
+    205495:   {"name": "Stormkeeper",                   "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "inv_hand_1h_artifactstormfist_d_01"},
+    383009:   {"name": "Stormkeeper",                   "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "ability_thunderking_lightningwhip"},
+    114051:   {"name": "Ascendance",                    "class": "Shaman",       "spec": "Enhancement",   "category": "offensive", "icon": "spell_fire_elementaldevastation"},
+    384352:   {"name": "Doom Winds",                    "class": "Shaman",       "spec": "Enhancement",   "category": "offensive", "icon": "ability_ironmaidens_swirlingvortex"},
+    197214:   {"name": "Sundering",                     "class": "Shaman",       "spec": "Enhancement",   "category": "offensive", "icon": "ability_rhyolith_lavapool"},
+    444995:   {"name": "Surging Totem",                 "class": "Shaman",       "spec": "Enhancement",   "category": "offensive", "icon": "inv_ability_totemicshaman_surgingtotem"},
+    1257052:  {"name": "Dark Harvest",                  "class": "Warlock",      "spec": "Affliction",    "category": "offensive", "icon": "inv_ability_warlock_soulrot"},  # ?
+    205180:   {"name": "Summon Darkglare",              "class": "Warlock",      "spec": "Affliction",    "category": "offensive", "icon": "inv_beholderwarlock"},
+    1276467:  {"name": "Grimoire: Fel Ravager",         "class": "Warlock",      "spec": "Demonology",    "category": "offensive", "icon": "spell_shadow_summonfelhunter"},
+    1276452:  {"name": "Grimoire: Imp Lord",            "class": "Warlock",      "spec": "Demonology",    "category": "offensive", "icon": "inv_imp3_purple"},
+    265187:   {"name": "Summon Demonic Tyrant",         "class": "Warlock",      "spec": "Demonology",    "category": "offensive", "icon": "inv_summondemonictyrant"},
+    1276672:  {"name": "Summon Doomguard",              "class": "Warlock",      "spec": "Demonology",    "category": "offensive", "icon": "warlock_summon_doomguard"},
+    80240:    {"name": "Havoc",                         "class": "Warlock",      "spec": "Destruction",   "category": "offensive", "icon": "ability_warlock_baneofhavoc"},
+    1122:     {"name": "Summon Infernal",               "class": "Warlock",      "spec": "Destruction",   "category": "offensive", "icon": "spell_shadow_summoninfernal"},
+    107574:   {"name": "Avatar",                        "class": "Warrior",      "spec": None,            "category": "offensive", "icon": "warrior_talent_icon_avatar"},
+    227847:   {"name": "Bladestorm",                    "class": "Warrior",      "spec": None,            "category": "offensive", "icon": "ability_warrior_bladestorm"},
+    167105:   {"name": "Colossus Smash",                "class": "Warrior",      "spec": "Arms",          "category": "offensive", "icon": "inv_warbreaker"},
+    260708:   {"name": "Sweeping Strikes",              "class": "Warrior",      "spec": "Arms",          "category": "offensive", "icon": "ability_rogue_slicedice"},
+    205545:   {"name": "Odyn's Fury",                   "class": "Warrior",      "spec": "Fury",          "category": "offensive", "icon": "inv_sword_1h_artifactvigfus_d_01"},
+    385059:   {"name": "Odyn's Fury",                   "class": "Warrior",      "spec": "Fury",          "category": "offensive", "icon": "inv_sword_1h_artifactvigfus_d_01"},
+    1719:     {"name": "Recklessness",                  "class": "Warrior",      "spec": "Fury",          "category": "offensive", "icon": "warrior_talent_icon_innerrage"},
 
-    # Holy Priest
-    64843:  {"name": "Divine Hymn",         "class": "Priest",       "spec": "Holy",       "category": "healer_cd", "icon": "spell_holy_divinehymn"},
-    265339: {"name": "Holy Word: Salvation","class": "Priest",       "spec": "Holy",       "category": "healer_cd", "icon": "spell_holy_restoration"},           # ?
-    200183: {"name": "Apotheosis",          "class": "Priest",       "spec": "Holy",       "category": "healer_cd", "icon": "ability_priest_apotheosis"},
+    # --- defensive ---
 
-    # Restoration Druid
-    740:    {"name": "Tranquility",         "class": "Druid",        "spec": "Restoration","category": "healer_cd", "icon": "spell_nature_tranquility"},
-    33891:  {"name": "Incarnation: Tree of Life", "class": "Druid",  "spec": "Restoration","category": "healer_cd", "icon": "ability_druid_treeoflife"},
-    197721: {"name": "Flourish",            "class": "Druid",        "spec": "Restoration","category": "healer_cd", "icon": "spell_druid_flourish"},
-    391528: {"name": "Convoke the Spirits", "class": "Druid",        "spec": "Restoration","category": "healer_cd", "icon": "ability_ardenweald_druid"},
+    48707:    {"name": "Anti-Magic Shell",              "class": "Death Knight", "spec": None,            "category": "defensive", "icon": "spell_shadow_antimagicshell"},
+    48743:    {"name": "Death Pact",                    "class": "Death Knight", "spec": None,            "category": "defensive", "icon": "spell_shadow_deathpact"},
+    48792:    {"name": "Icebound Fortitude",            "class": "Death Knight", "spec": None,            "category": "defensive", "icon": "spell_deathknight_iceboundfortitude"},
+    49039:    {"name": "Lichborne",                     "class": "Death Knight", "spec": None,            "category": "defensive", "icon": "spell_shadow_raisedead"},
+    49028:    {"name": "Dancing Rune Weapon",           "class": "Death Knight", "spec": "Blood",         "category": "defensive", "icon": "inv_sword_07"},
+    55233:    {"name": "Vampiric Blood",                "class": "Death Knight", "spec": "Blood",         "category": "defensive", "icon": "spell_shadow_lifedrain"},
+    198589:   {"name": "Blur",                          "class": "Demon Hunter", "spec": None,            "category": "defensive", "icon": "ability_demonhunter_blur"},
+    204021:   {"name": "Fiery Brand",                   "class": "Demon Hunter", "spec": "Vengeance",     "category": "defensive", "icon": "ability_demonhunter_fierybrand"},
+    187827:   {"name": "Metamorphosis",                 "class": "Demon Hunter", "spec": "Vengeance",     "category": "defensive", "icon": "ability_demonhunter_metamorphasistank"},
+    22812:    {"name": "Barkskin",                      "class": "Druid",        "spec": None,            "category": "defensive", "icon": "spell_nature_stoneclawtotem"},
+    22842:    {"name": "Frenzied Regeneration",         "class": "Druid",        "spec": None,            "category": "defensive", "icon": "ability_bullrush"},
+    1261867:  {"name": "Heart of the Wild",             "class": "Druid",        "spec": None,            "category": "defensive", "icon": "inv12_ability_druid_flourish_empowered"},
+    61336:    {"name": "Survival Instincts",            "class": "Druid",        "spec": None,            "category": "defensive", "icon": "ability_druid_tigersroar"},
+    102558:   {"name": "Incarnation: Guardian of Ursoc", "class": "Druid",        "spec": "Guardian",      "category": "defensive", "icon": "spell_druid_incarnation"},
+    363916:   {"name": "Obsidian Scales",               "class": "Evoker",       "spec": None,            "category": "defensive", "icon": "inv_artifact_dragonscales"},
+    429483:   {"name": "Warp",                          "class": "Evoker",       "spec": None,            "category": "defensive", "icon": "ability_evoker_spatialparadox"},
+    109304:   {"name": "Exhilaration",                  "class": "Hunter",       "spec": None,            "category": "defensive", "icon": "ability_hunter_onewithnature"},
+    264735:   {"name": "Survival of the Fittest",       "class": "Hunter",       "spec": None,            "category": "defensive", "icon": "spell_nature_spiritarmor"},
+    342245:   {"name": "Alter Time",                    "class": "Mage",         "spec": None,            "category": "defensive", "icon": "spell_mage_altertime"},
+    414658:   {"name": "Ice Cold",                      "class": "Mage",         "spec": None,            "category": "defensive", "icon": "spell_fire_bluefire"},
+    55342:    {"name": "Mirror Image",                  "class": "Mage",         "spec": None,            "category": "defensive", "icon": "spell_magic_lesserinvisibilty"},
+    235450:   {"name": "Prismatic Barrier",             "class": "Mage",         "spec": "Arcane",        "category": "defensive", "icon": "spell_magearmor"},
+    235313:   {"name": "Blazing Barrier",               "class": "Mage",         "spec": "Fire",          "category": "defensive", "icon": "ability_mage_moltenarmor"},
+    11426:    {"name": "Ice Barrier",                   "class": "Mage",         "spec": "Frost",         "category": "defensive", "icon": "spell_ice_lament"},
+    115203:   {"name": "Fortifying Brew",               "class": "Monk",         "spec": None,            "category": "defensive", "icon": "ability_monk_fortifyingale_new"},
+    115176:   {"name": "Zen Meditation",                "class": "Monk",         "spec": "Brewmaster",    "category": "defensive", "icon": "ability_monk_zenmeditation"},
+    122470:   {"name": "Touch of Karma",                "class": "Monk",         "spec": "Windwalker",    "category": "defensive", "icon": "ability_monk_touchofkarma"},
+    498:      {"name": "Divine Protection",             "class": "Paladin",      "spec": None,            "category": "defensive", "icon": "spell_holy_divineprotection"},
+    403876:   {"name": "Divine Protection",             "class": "Paladin",      "spec": None,            "category": "defensive", "icon": "spell_holy_divineprotection"},
+    31850:    {"name": "Ardent Defender",               "class": "Paladin",      "spec": "Protection",    "category": "defensive", "icon": "spell_holy_ardentdefender"},
+    86659:    {"name": "Guardian of Ancient Kings",     "class": "Paladin",      "spec": "Protection",    "category": "defensive", "icon": "spell_holy_heroism"},
+    19236:    {"name": "Desperate Prayer",              "class": "Priest",       "spec": None,            "category": "defensive", "icon": "spell_holy_testoffaith"},
+    586:      {"name": "Fade",                          "class": "Priest",       "spec": None,            "category": "defensive", "icon": "spell_magic_lesserinvisibilty"},
+    47585:    {"name": "Dispersion",                    "class": "Priest",       "spec": "Shadow",        "category": "defensive", "icon": "spell_shadow_dispersion"},
+    185311:   {"name": "Crimson Vial",                  "class": "Rogue",        "spec": None,            "category": "defensive", "icon": "ability_rogue_crimsonvial"},
+    5277:     {"name": "Evasion",                       "class": "Rogue",        "spec": None,            "category": "defensive", "icon": "spell_shadow_shadowward"},
+    1966:     {"name": "Feint",                         "class": "Rogue",        "spec": None,            "category": "defensive", "icon": "ability_rogue_feint"},
+    108271:   {"name": "Astral Shift",                  "class": "Shaman",       "spec": None,            "category": "defensive", "icon": "ability_shaman_astralshift"},
+    1279819:  {"name": "Primordial Bond",               "class": "Shaman",       "spec": None,            "category": "defensive", "icon": "inv_elemental_primal_earth"},
+    108416:   {"name": "Dark Pact",                     "class": "Warlock",      "spec": None,            "category": "defensive", "icon": "spell_shadow_deathpact"},
+    6789:     {"name": "Mortal Coil",                   "class": "Warlock",      "spec": None,            "category": "defensive", "icon": "ability_warlock_mortalcoil"},
+    104773:   {"name": "Unending Resolve",              "class": "Warlock",      "spec": None,            "category": "defensive", "icon": "spell_shadow_demonictactics"},
+    386208:   {"name": "Defensive Stance",              "class": "Warrior",      "spec": None,            "category": "defensive", "icon": "ability_warrior_defensivestance"},
+    202168:   {"name": "Impending Victory",             "class": "Warrior",      "spec": None,            "category": "defensive", "icon": "spell_impending_victory"},
+    23920:    {"name": "Spell Reflection",              "class": "Warrior",      "spec": None,            "category": "defensive", "icon": "ability_warrior_shieldreflection"},
+    118038:   {"name": "Die by the Sword",              "class": "Warrior",      "spec": "Arms",          "category": "defensive", "icon": "ability_warrior_challange"},
+    184364:   {"name": "Enraged Regeneration",          "class": "Warrior",      "spec": "Fury",          "category": "defensive", "icon": "ability_warrior_focusedrage"},
+    12975:    {"name": "Last Stand",                    "class": "Warrior",      "spec": "Protection",    "category": "defensive", "icon": "spell_holy_ashestoashes"},
+    871:      {"name": "Shield Wall",                   "class": "Warrior",      "spec": "Protection",    "category": "defensive", "icon": "ability_warrior_shieldwall"},
+    6262:     {"name": "Healthstone",                   "class": None,           "spec": None,            "category": "defensive", "icon": "warlock_-healthstone"},
 
-    # Restoration Shaman
-    108280: {"name": "Healing Tide Totem",  "class": "Shaman",       "spec": "Restoration","category": "healer_cd", "icon": "ability_shaman_healingtide"},
-    98008:  {"name": "Spirit Link Totem",   "class": "Shaman",       "spec": "Restoration","category": "healer_cd", "icon": "spell_shaman_spiritlink"},
-    114052: {"name": "Ascendance",          "class": "Shaman",       "spec": "Restoration","category": "healer_cd", "icon": "spell_fire_elementaldevastation"},
-    207399: {"name": "Ancestral Protection Totem", "class": "Shaman","spec": "Restoration","category": "healer_cd", "icon": "spell_nature_reincarnation"},
+    # --- immunity ---
 
-    # Holy Paladin
-    31821:  {"name": "Aura Mastery",        "class": "Paladin",      "spec": "Holy",       "category": "healer_cd", "icon": "spell_holy_auramastery"},
-    105809: {"name": "Holy Avenger",        "class": "Paladin",      "spec": "Holy",       "category": "healer_cd", "icon": "ability_paladin_holyavenger"},
-    304971: {"name": "Divine Toll",         "class": "Paladin",      "spec": "Holy",       "category": "healer_cd", "icon": "ability_bastion_paladin"},           # ? (was Kyrian 304971, talent may differ)
+    186265:   {"name": "Aspect of the Turtle",          "class": "Hunter",       "spec": None,            "category": "immunity",  "icon": "ability_hunter_pet_turtle"},
+    437461:   {"name": "Aspect of the Turtle",          "class": "Hunter",       "spec": None,            "category": "immunity",  "icon": "ability_hunter_pet_turtle"},
+    45438:    {"name": "Ice Block",                     "class": "Mage",         "spec": None,            "category": "immunity",  "icon": "spell_frost_frost"},
+    642:      {"name": "Divine Shield",                 "class": "Paladin",      "spec": None,            "category": "immunity",  "icon": "spell_holy_divineshield"},
+    31224:    {"name": "Cloak of Shadows",              "class": "Rogue",        "spec": None,            "category": "immunity",  "icon": "spell_shadow_nethercloak"},
 
-    # Mistweaver Monk
-    115310: {"name": "Revival",             "class": "Monk",         "spec": "Mistweaver", "category": "healer_cd", "icon": "spell_monk_revival"},
-    322118: {"name": "Invoke Yu'lon",       "class": "Monk",         "spec": "Mistweaver", "category": "healer_cd", "icon": "ability_monk_dragonkick"},           # ? icon
-    325197: {"name": "Invoke Chi-Ji",       "class": "Monk",         "spec": "Mistweaver", "category": "healer_cd", "icon": "ability_monk_chiburst"},             # ? icon
+    # --- external ---
 
-    # Preservation Evoker
-    363534: {"name": "Rewind",              "class": "Evoker",       "spec": "Preservation","category": "healer_cd","icon": "ability_evoker_rewind"},
-    359816: {"name": "Dream Flight",        "class": "Evoker",       "spec": "Preservation","category": "healer_cd","icon": "ability_evoker_dreamflight"},
-    370537: {"name": "Stasis",              "class": "Evoker",       "spec": "Preservation","category": "healer_cd","icon": "ability_evoker_stasis"},
+    29166:    {"name": "Innervate",                     "class": "Druid",        "spec": None,            "category": "external",  "icon": "spell_nature_lightning"},
+    102342:   {"name": "Ironbark",                      "class": "Druid",        "spec": "Restoration",   "category": "external",  "icon": "spell_druid_ironbark"},
+    369459:   {"name": "Source of Magic",               "class": "Evoker",       "spec": None,            "category": "external",  "icon": "ability_evoker_blue_01"},
+    406732:   {"name": "Spatial Paradox",               "class": "Evoker",       "spec": None,            "category": "external",  "icon": "ability_evoker_stretchtime"},
+    360827:   {"name": "Blistering Scales",             "class": "Evoker",       "spec": "Augmentation",  "category": "external",  "icon": "ability_evoker_blisteringscales"},
+    395152:   {"name": "Ebon Might",                    "class": "Evoker",       "spec": "Augmentation",  "category": "external",  "icon": "spell_sarkareth"},
+    409311:   {"name": "Prescience",                    "class": "Evoker",       "spec": "Augmentation",  "category": "external",  "icon": "ability_evoker_prescience"},
+    357170:   {"name": "Time Dilation",                 "class": "Evoker",       "spec": "Preservation",  "category": "external",  "icon": "ability_evoker_timedilation"},
+    53480:    {"name": "Roar of Sacrifice",             "class": "Hunter",       "spec": None,            "category": "external",  "icon": "ability_hunter_fervor"},
+    116841:   {"name": "Tiger's Lust",                  "class": "Monk",         "spec": None,            "category": "external",  "icon": "ability_monk_tigerslust"},
+    116849:   {"name": "Life Cocoon",                   "class": "Monk",         "spec": "Mistweaver",    "category": "external",  "icon": "ability_monk_chicocoon"},
+    1044:     {"name": "Blessing of Freedom",           "class": "Paladin",      "spec": None,            "category": "external",  "icon": "spell_holy_sealofvalor"},
+    1022:     {"name": "Blessing of Protection",        "class": "Paladin",      "spec": None,            "category": "external",  "icon": "spell_holy_sealofprotection"},
+    6940:     {"name": "Blessing of Sacrifice",         "class": "Paladin",      "spec": None,            "category": "external",  "icon": "spell_holy_sealofsacrifice"},
+    633:      {"name": "Lay on Hands",                  "class": "Paladin",      "spec": None,            "category": "external",  "icon": "spell_holy_layonhands"},
+    204018:   {"name": "Blessing of Spellwarding",      "class": "Paladin",      "spec": "Protection",    "category": "external",  "icon": "spell_holy_blessingofprotection"},
+    10060:    {"name": "Power Infusion",                "class": "Priest",       "spec": None,            "category": "external",  "icon": "spell_holy_powerinfusion"},
+    33206:    {"name": "Pain Suppression",              "class": "Priest",       "spec": "Discipline",    "category": "external",  "icon": "spell_holy_painsupression"},
+    47788:    {"name": "Guardian Spirit",               "class": "Priest",       "spec": "Holy",          "category": "external",  "icon": "spell_holy_guardianspirit"},
+    3411:     {"name": "Intervene",                     "class": "Warrior",      "spec": None,            "category": "external",  "icon": "ability_warrior_victoryrush"},
 
-    # --- Externals ---
+    # --- raid_cd ---
 
-    33206:  {"name": "Pain Suppression",    "class": "Priest",       "spec": "Discipline", "category": "external",  "icon": "spell_holy_painsupression"},
-    47788:  {"name": "Guardian Spirit",     "class": "Priest",       "spec": "Holy",       "category": "external",  "icon": "spell_holy_guardianspirit"},
-    10060:  {"name": "Power Infusion",      "class": "Priest",       "spec": "Discipline", "category": "external",  "icon": "spell_holy_powerinfusion"},
-    102342: {"name": "Ironbark",            "class": "Druid",        "spec": "Restoration","category": "external",  "icon": "spell_druid_ironbark"},
-    6940:   {"name": "Blessing of Sacrifice","class": "Paladin",     "spec": "Holy",       "category": "external",  "icon": "spell_holy_sealofsacrifice"},
-    1022:   {"name": "Blessing of Protection","class": "Paladin",    "spec": None,         "category": "external",  "icon": "spell_holy_sealofprotection"},
-    204018: {"name": "Blessing of Spellwarding","class": "Paladin",  "spec": None,         "category": "external",  "icon": "spell_holy_blessingofprotection"},   # ?
+    51052:    {"name": "Anti-Magic Zone",               "class": "Death Knight", "spec": None,            "category": "raid_cd",   "icon": "spell_deathknight_antimagiczone"},
+    196718:   {"name": "Darkness",                      "class": "Demon Hunter", "spec": "Vengeance",     "category": "raid_cd",   "icon": "ability_demonhunter_darkness"},
+    106898:   {"name": "Stampeding Roar",               "class": "Druid",        "spec": None,            "category": "raid_cd",   "icon": "spell_druid_stampedingroar_cat"},
+    197721:   {"name": "Flourish",                      "class": "Druid",        "spec": "Restoration",   "category": "raid_cd",   "icon": "spell_druid_wildburst"},
+    33891:    {"name": "Incarnation: Tree of Life",     "class": "Druid",        "spec": "Restoration",   "category": "raid_cd",   "icon": "ability_druid_improvedtreeform"},
+    740:      {"name": "Tranquility",                   "class": "Druid",        "spec": "Restoration",   "category": "raid_cd",   "icon": "spell_nature_tranquility"},
+    374968:   {"name": "Time Spiral",                   "class": "Evoker",       "spec": None,            "category": "raid_cd",   "icon": "ability_evoker_timespiral"},
+    374227:   {"name": "Zephyr",                        "class": "Evoker",       "spec": None,            "category": "raid_cd",   "icon": "ability_evoker_hoverblack"},
+    359816:   {"name": "Dream Flight",                  "class": "Evoker",       "spec": "Preservation",  "category": "raid_cd",   "icon": "ability_evoker_dreamflight"},
+    363534:   {"name": "Rewind",                        "class": "Evoker",       "spec": "Preservation",  "category": "raid_cd",   "icon": "ability_evoker_rewind"},
+    370537:   {"name": "Stasis",                        "class": "Evoker",       "spec": "Preservation",  "category": "raid_cd",   "icon": "ability_evoker_stasis"},
+    325197:   {"name": "Invoke Chi-Ji, the Red Crane",  "class": "Monk",         "spec": "Mistweaver",    "category": "raid_cd",   "icon": "inv_pet_cranegod"},
+    322118:   {"name": "Invoke Yu'lon, the Jade Serpent", "class": "Monk",         "spec": "Mistweaver",    "category": "raid_cd",   "icon": "ability_monk_dragonkick"},
+    388615:   {"name": "Restoral",                      "class": "Monk",         "spec": "Mistweaver",    "category": "raid_cd",   "icon": "ability_monk_tigerstyle"},
+    115310:   {"name": "Revival",                       "class": "Monk",         "spec": "Mistweaver",    "category": "raid_cd",   "icon": "spell_monk_revival"},
+    31821:    {"name": "Aura Mastery",                  "class": "Paladin",      "spec": "Holy",          "category": "raid_cd",   "icon": "spell_holy_auramastery"},
+    216331:   {"name": "Avenging Crusader",             "class": "Paladin",      "spec": "Holy",          "category": "raid_cd",   "icon": "ability_paladin_veneration"},
+    120517:   {"name": "Halo",                          "class": "Priest",       "spec": None,            "category": "raid_cd",   "icon": "ability_priest_halo"},
+    120644:   {"name": "Halo",                          "class": "Priest",       "spec": None,            "category": "raid_cd",   "icon": "ability_priest_halo_shadow"},
+    472433:   {"name": "Evangelism",                    "class": "Priest",       "spec": "Discipline",    "category": "raid_cd",   "icon": "spell_holy_divineillumination"},
+    62618:    {"name": "Power Word: Barrier",           "class": "Priest",       "spec": "Discipline",    "category": "raid_cd",   "icon": "spell_holy_powerwordbarrier"},
+    421453:   {"name": "Ultimate Penitence",            "class": "Priest",       "spec": "Discipline",    "category": "raid_cd",   "icon": "ability_priest_ascendance"},
+    200183:   {"name": "Apotheosis",                    "class": "Priest",       "spec": "Holy",          "category": "raid_cd",   "icon": "ability_priest_ascension"},
+    64843:    {"name": "Divine Hymn",                   "class": "Priest",       "spec": "Holy",          "category": "raid_cd",   "icon": "spell_holy_divinehymn"},
+    265202:   {"name": "Holy Word: Salvation",          "class": "Priest",       "spec": "Holy",          "category": "raid_cd",   "icon": "ability_priest_archangel"},
+    15286:    {"name": "Vampiric Embrace",              "class": "Priest",       "spec": "Shadow",        "category": "raid_cd",   "icon": "spell_shadow_unsummonbuilding"},
+    192077:   {"name": "Wind Rush Totem",               "class": "Shaman",       "spec": None,            "category": "raid_cd",   "icon": "ability_shaman_windwalktotem"},
+    114052:   {"name": "Ascendance",                    "class": "Shaman",       "spec": "Restoration",   "category": "raid_cd",   "icon": "spell_fire_elementaldevastation"},
+    108280:   {"name": "Healing Tide Totem",            "class": "Shaman",       "spec": "Restoration",   "category": "raid_cd",   "icon": "ability_shaman_healingtide"},
+    98008:    {"name": "Spirit Link Totem",             "class": "Shaman",       "spec": "Restoration",   "category": "raid_cd",   "icon": "spell_shaman_spiritlink"},
+    1244088:  {"name": "Interpose",                     "class": "Warrior",      "spec": None,            "category": "raid_cd",   "icon": "ability_paladin_speedoflight"},
+    97462:    {"name": "Rallying Cry",                  "class": "Warrior",      "spec": None,            "category": "raid_cd",   "icon": "ability_warrior_rallyingcry"},
 
-    # --- Tank Cooldowns ---
+    # --- utility ---
 
-    # Protection Warrior
-    871:    {"name": "Shield Wall",         "class": "Warrior",      "spec": "Protection", "category": "tank_cd",   "icon": "ability_warrior_shieldwall"},
-    12975:  {"name": "Last Stand",          "class": "Warrior",      "spec": "Protection", "category": "tank_cd",   "icon": "ability_warrior_laststand"},
+    49576:    {"name": "Death Grip",                    "class": "Death Knight", "spec": None,            "category": "utility",   "icon": "spell_deathknight_strangulate"},
+    61999:    {"name": "Raise Ally",                    "class": "Death Knight", "spec": None,            "category": "utility",   "icon": "spell_shadow_deadofnight"},
+    20484:    {"name": "Rebirth",                       "class": "Druid",        "spec": None,            "category": "utility",   "icon": "spell_nature_reincarnation"},
+    390386:   {"name": "Fury of the Aspects",           "class": "Evoker",       "spec": None,            "category": "utility",   "icon": "ability_evoker_furyoftheaspects"},
+    370665:   {"name": "Rescue",                        "class": "Evoker",       "spec": None,            "category": "utility",   "icon": "ability_evoker_flywithme"},
+    5384:     {"name": "Feign Death",                   "class": "Hunter",       "spec": None,            "category": "utility",   "icon": "ability_rogue_feigndeath"},
+    53271:    {"name": "Master's Call",                 "class": "Hunter",       "spec": None,            "category": "utility",   "icon": "ability_hunter_masterscall"},
+    34477:    {"name": "Misdirection",                  "class": "Hunter",       "spec": None,            "category": "utility",   "icon": "ability_hunter_misdirection"},
+    264667:   {"name": "Primal Rage",                   "class": "Hunter",       "spec": None,            "category": "utility",   "icon": "spell_shadow_unholyfrenzy"},
+    414664:   {"name": "Mass Invisibility",             "class": "Mage",         "spec": None,            "category": "utility",   "icon": "ability_mage_massinvisibility"},
+    80353:    {"name": "Time Warp",                     "class": "Mage",         "spec": None,            "category": "utility",   "icon": "ability_mage_timewarp"},
+    391054:   {"name": "Intercession",                  "class": "Paladin",      "spec": None,            "category": "utility",   "icon": "ability_paladin_intercession"},
+    121536:   {"name": "Angelic Feather",               "class": "Priest",       "spec": None,            "category": "utility",   "icon": "ability_priest_angelicfeather"},
+    73325:    {"name": "Leap of Faith",                 "class": "Priest",       "spec": None,            "category": "utility",   "icon": "priest_spell_leapoffaith_a"},
+    114018:   {"name": "Shroud of Concealment",         "class": "Rogue",        "spec": None,            "category": "utility",   "icon": "ability_rogue_shroudofconcealment"},
+    57934:    {"name": "Tricks of the Trade",           "class": "Rogue",        "spec": None,            "category": "utility",   "icon": "ability_rogue_tricksofthetrade"},
+    207399:   {"name": "Ancestral Protection Totem",    "class": "Shaman",       "spec": None,            "category": "utility",   "icon": "spell_nature_reincarnation"},
+    2825:     {"name": "Bloodlust",                     "class": "Shaman",       "spec": None,            "category": "utility",   "icon": "spell_nature_bloodlust"},
+    32182:    {"name": "Heroism",                       "class": "Shaman",       "spec": None,            "category": "utility",   "icon": "ability_shaman_heroism"},
+    8143:     {"name": "Tremor Totem",                  "class": "Shaman",       "spec": None,            "category": "utility",   "icon": "spell_nature_tremortotem"},
+    29893:    {"name": "Create Soulwell",               "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "spell_shadow_shadesofdarkness"},
+    1714:     {"name": "Curse of Tongues",              "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "spell_shadow_curseoftounges"},
+    702:      {"name": "Curse of Weakness",             "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "spell_shadow_curseofmannoroth"},
+    111771:   {"name": "Demonic Gateway",               "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "spell_warlock_demonicportal_green"},
+    698:      {"name": "Ritual of Summoning",           "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "inv12_ability_warlock_ritualofsummoning"},
+    20707:    {"name": "Soulstone",                     "class": "Warlock",      "spec": None,            "category": "utility",   "icon": "spell_shadow_soulgem"},
+    384100:   {"name": "Berserker Shout",               "class": "Warrior",      "spec": None,            "category": "utility",   "icon": "spell_nature_ancestralguardian"},
+    64382:    {"name": "Shattering Throw",              "class": "Warrior",      "spec": None,            "category": "utility",   "icon": "ability_warrior_shatteringthrow"},
+    384110:   {"name": "Wrecking Throw",                "class": "Warrior",      "spec": None,            "category": "utility",   "icon": "warrior_talent_icon_mastercleaver"},
 
-    # Protection Paladin
-    31850:  {"name": "Ardent Defender",     "class": "Paladin",      "spec": "Protection", "category": "tank_cd",   "icon": "ability_paladin_ardentdefender"},
-    86659:  {"name": "Guardian of Ancient Kings","class": "Paladin", "spec": "Protection", "category": "tank_cd",   "icon": "spell_holy_heroism"},
-    642:    {"name": "Divine Shield",       "class": "Paladin",      "spec": None,         "category": "tank_cd",   "icon": "spell_holy_divineshield"},
+    # --- interrupt ---
 
-    # Blood Death Knight
-    55233:  {"name": "Vampiric Blood",      "class": "Death Knight", "spec": "Blood",      "category": "tank_cd",   "icon": "spell_shadow_lifedrain"},
-    49028:  {"name": "Dancing Rune Weapon", "class": "Death Knight", "spec": "Blood",      "category": "tank_cd",   "icon": "inv_sword_07"},
-    48792:  {"name": "Icebound Fortitude",  "class": "Death Knight", "spec": "Blood",      "category": "tank_cd",   "icon": "spell_deathknight_iceboundfortitude"},
+    47528:    {"name": "Mind Freeze",                   "class": "Death Knight", "spec": None,            "category": "interrupt", "icon": "spell_deathknight_mindfreeze"},
+    91802:    {"name": "Shambling Rush",                "class": "Death Knight", "spec": "Unholy",        "category": "interrupt", "icon": "spell_shadow_skull"},  # ?
+    183752:   {"name": "Disrupt",                       "class": "Demon Hunter", "spec": None,            "category": "interrupt", "icon": "ability_demonhunter_consumemagic"},
+    106839:   {"name": "Skull Bash",                    "class": "Druid",        "spec": None,            "category": "interrupt", "icon": "inv_bone_skull_04"},
+    78675:    {"name": "Solar Beam",                    "class": "Druid",        "spec": "Balance",       "category": "interrupt", "icon": "ability_vehicle_sonicshockwave"},
+    351338:   {"name": "Quell",                         "class": "Evoker",       "spec": None,            "category": "interrupt", "icon": "ability_evoker_quell"},
+    147362:   {"name": "Counter Shot",                  "class": "Hunter",       "spec": None,            "category": "interrupt", "icon": "inv_ammo_arrow_03"},
+    187707:   {"name": "Muzzle",                        "class": "Hunter",       "spec": "Survival",      "category": "interrupt", "icon": "ability_hunter_negate"},
+    2139:     {"name": "Counterspell",                  "class": "Mage",         "spec": None,            "category": "interrupt", "icon": "spell_frost_iceshock"},
+    116705:   {"name": "Spear Hand Strike",             "class": "Monk",         "spec": None,            "category": "interrupt", "icon": "ability_monk_spearhand"},
+    375576:   {"name": "Divine Toll",                   "class": "Paladin",      "spec": None,            "category": "interrupt", "icon": "inv_ability_paladin_divinetoll"},
+    96231:    {"name": "Rebuke",                        "class": "Paladin",      "spec": None,            "category": "interrupt", "icon": "spell_holy_rebuke"},
+    15487:    {"name": "Silence",                       "class": "Priest",       "spec": None,            "category": "interrupt", "icon": "ability_priest_silence"},
+    1766:     {"name": "Kick",                          "class": "Rogue",        "spec": None,            "category": "interrupt", "icon": "ability_kick"},
+    57994:    {"name": "Wind Shear",                    "class": "Shaman",       "spec": None,            "category": "interrupt", "icon": "spell_nature_cyclone"},
+    19647:    {"name": "Spell Lock",                    "class": "Warlock",      "spec": None,            "category": "interrupt", "icon": "spell_shadow_mindrot"},
+    89766:    {"name": "Axe Toss",                      "class": "Warlock",      "spec": "Demonology",    "category": "interrupt", "icon": "ability_warrior_titansgrip"},
+    6552:     {"name": "Pummel",                        "class": "Warrior",      "spec": None,            "category": "interrupt", "icon": "inv_gauntlets_04"},
+    386071:   {"name": "Disrupting Shout",              "class": "Warrior",      "spec": "Protection",    "category": "interrupt", "icon": "ability_bullrush"},
 
-    # Guardian Druid
-    61336:  {"name": "Survival Instincts",  "class": "Druid",        "spec": "Guardian",   "category": "tank_cd",   "icon": "ability_druid_tigersroar"},
-    102558: {"name": "Incarnation: Guardian of Ursoc","class": "Druid","spec": "Guardian", "category": "tank_cd",   "icon": "spell_druid_incarnation"},
+    # --- dispel ---
 
-    # Brewmaster Monk
-    115203: {"name": "Fortifying Brew",     "class": "Monk",         "spec": "Brewmaster", "category": "tank_cd",   "icon": "ability_monk_fortifyingale_new"},
-    115176: {"name": "Zen Meditation",      "class": "Monk",         "spec": "Brewmaster", "category": "tank_cd",   "icon": "ability_monk_zenmeditation"},
+    278326:   {"name": "Consume Magic",                 "class": "Demon Hunter", "spec": None,            "category": "dispel",    "icon": "spell_misc_zandalari_council_soulswap"},
+    2782:     {"name": "Remove Corruption",             "class": "Druid",        "spec": None,            "category": "dispel",    "icon": "spell_holy_removecurse"},
+    440015:   {"name": "Remove Corruption",             "class": "Druid",        "spec": None,            "category": "dispel",    "icon": "spell_holy_removecurse"},
+    2908:     {"name": "Soothe",                        "class": "Druid",        "spec": None,            "category": "dispel",    "icon": "ability_hunter_beastsoothe"},
+    88423:    {"name": "Nature's Cure",                 "class": "Druid",        "spec": "Restoration",   "category": "dispel",    "icon": "ability_shaman_cleansespirit"},
+    374251:   {"name": "Cauterizing Flame",             "class": "Evoker",       "spec": None,            "category": "dispel",    "icon": "ability_evoker_fontofmagic_red"},
+    365585:   {"name": "Expunge",                       "class": "Evoker",       "spec": None,            "category": "dispel",    "icon": "ability_evoker_fontofmagic_green"},
+    374346:   {"name": "Overawe",                       "class": "Evoker",       "spec": None,            "category": "dispel",    "icon": "ability_evoker_oppressingroar2"},
+    360823:   {"name": "Naturalize",                    "class": "Evoker",       "spec": "Preservation",  "category": "dispel",    "icon": "ability_evoker_fontofmagic_green"},
+    19801:    {"name": "Tranquilizing Shot",            "class": "Hunter",       "spec": None,            "category": "dispel",    "icon": "spell_nature_drowsy"},
+    475:      {"name": "Remove Curse",                  "class": "Mage",         "spec": None,            "category": "dispel",    "icon": "spell_nature_removecurse"},
+    30449:    {"name": "Spellsteal",                    "class": "Mage",         "spec": None,            "category": "dispel",    "icon": "spell_arcane_arcane02"},
+    115450:   {"name": "Detox",                         "class": "Monk",         "spec": None,            "category": "dispel",    "icon": "ability_rogue_imrovedrecuperate"},
+    218164:   {"name": "Detox",                         "class": "Monk",         "spec": None,            "category": "dispel",    "icon": "ability_rogue_imrovedrecuperate"},
+    213644:   {"name": "Cleanse Toxins",                "class": "Paladin",      "spec": None,            "category": "dispel",    "icon": "spell_holy_renew"},
+    440013:   {"name": "Cleanse Toxins",                "class": "Paladin",      "spec": None,            "category": "dispel",    "icon": "spell_holy_renew"},
+    4987:     {"name": "Cleanse",                       "class": "Paladin",      "spec": "Holy",          "category": "dispel",    "icon": "spell_holy_purify"},
+    528:      {"name": "Dispel Magic",                  "class": "Priest",       "spec": None,            "category": "dispel",    "icon": "spell_nature_nullifydisease"},
+    32375:    {"name": "Mass Dispel",                   "class": "Priest",       "spec": None,            "category": "dispel",    "icon": "spell_arcane_massdispel"},
+    527:      {"name": "Purify",                        "class": "Priest",       "spec": None,            "category": "dispel",    "icon": "spell_holy_dispelmagic"},
+    213634:   {"name": "Purify Disease",                "class": "Priest",       "spec": None,            "category": "dispel",    "icon": "spell_holy_nullifydisease"},
+    440006:   {"name": "Purify Disease",                "class": "Priest",       "spec": None,            "category": "dispel",    "icon": "spell_holy_nullifydisease"},
+    5938:     {"name": "Shiv",                          "class": "Rogue",        "spec": None,            "category": "dispel",    "icon": "inv_throwingknife_04"},
+    51886:    {"name": "Cleanse Spirit",                "class": "Shaman",       "spec": None,            "category": "dispel",    "icon": "ability_shaman_cleansespirit"},
+    440012:   {"name": "Cleanse Spirit",                "class": "Shaman",       "spec": None,            "category": "dispel",    "icon": "ability_shaman_cleansespirit"},
+    378773:   {"name": "Greater Purge",                 "class": "Shaman",       "spec": None,            "category": "dispel",    "icon": "spell_shaman_focusedstrikes"},
+    383013:   {"name": "Poison Cleansing Totem",        "class": "Shaman",       "spec": None,            "category": "dispel",    "icon": "spell_nature_poisoncleansingtotem"},
+    370:      {"name": "Purge",                         "class": "Shaman",       "spec": None,            "category": "dispel",    "icon": "spell_nature_purge"},
+    77130:    {"name": "Purify Spirit",                 "class": "Shaman",       "spec": "Restoration",   "category": "dispel",    "icon": "ability_shaman_cleansespirit"},
+    19505:    {"name": "Devour Magic",                  "class": "Warlock",      "spec": None,            "category": "dispel",    "icon": "spell_nature_purge"},
+    89808:    {"name": "Singe Magic",                   "class": "Warlock",      "spec": None,            "category": "dispel",    "icon": "spell_fire_elementaldevastation"},
 
-    # Vengeance Demon Hunter
-    187827: {"name": "Metamorphosis",       "class": "Demon Hunter", "spec": "Vengeance",  "category": "tank_cd",   "icon": "ability_demonhunter_metamorphasistank"},
-    204021: {"name": "Fiery Brand",         "class": "Demon Hunter", "spec": "Vengeance",  "category": "tank_cd",   "icon": "ability_demonhunter_fierybrand"},
+    # --- stun_st ---
 
-    # --- Raid-Wide Defensives ---
+    221562:   {"name": "Asphyxiate",                    "class": "Death Knight", "spec": None,            "category": "stun_st",   "icon": "ability_deathknight_asphixiate"},
+    211881:   {"name": "Fel Eruption",                  "class": "Demon Hunter", "spec": None,            "category": "stun_st",   "icon": "ability_bossfellord_felspike"},
+    5211:     {"name": "Mighty Bash",                   "class": "Druid",        "spec": None,            "category": "stun_st",   "icon": "ability_druid_bash"},
+    19577:    {"name": "Intimidation",                  "class": "Hunter",       "spec": None,            "category": "stun_st",   "icon": "ability_devour"},
+    474421:   {"name": "Intimidation",                  "class": "Hunter",       "spec": None,            "category": "stun_st",   "icon": "artifactability_survivalhunter_eaglesbite"},
+    853:      {"name": "Hammer of Justice",             "class": "Paladin",      "spec": None,            "category": "stun_st",   "icon": "spell_holy_sealofmight"},
+    1833:     {"name": "Cheap Shot",                    "class": "Rogue",        "spec": None,            "category": "stun_st",   "icon": "ability_cheapshot"},
+    408:      {"name": "Kidney Shot",                   "class": "Rogue",        "spec": None,            "category": "stun_st",   "icon": "ability_rogue_kidneyshot"},
+    107570:   {"name": "Storm Bolt",                    "class": "Warrior",      "spec": None,            "category": "stun_st",   "icon": "warrior_talent_icon_stormbolt"},
 
-    97462:  {"name": "Rallying Cry",        "class": "Warrior",      "spec": "Protection", "category": "raid_cd",   "icon": "ability_warrior_rallyingcry"},
-    51052:  {"name": "Anti-Magic Zone",     "class": "Death Knight", "spec": "Blood",      "category": "raid_cd",   "icon": "spell_deathknight_antimagiczone"},
-    196718: {"name": "Darkness",            "class": "Demon Hunter", "spec": "Havoc",      "category": "raid_cd",   "icon": "ability_demonhunter_darkness"},
-    106898: {"name": "Stampeding Roar",     "class": "Druid",        "spec": None,         "category": "raid_cd",   "icon": "spell_druid_stampedingroar_cat"},
-    192077: {"name": "Wind Rush Totem",     "class": "Shaman",       "spec": "Restoration","category": "raid_cd",   "icon": "ability_shaman_windwalktotem"},
-    132578: {"name": "Invoke Niuzao",       "class": "Monk",         "spec": "Brewmaster", "category": "raid_cd",   "icon": "spell_monk_brewmaster_spec"},
+    # --- stun_aoe ---
 
-    # --- Offensive DPS Cooldowns ---
+    179057:   {"name": "Chaos Nova",                    "class": "Demon Hunter", "spec": None,            "category": "stun_aoe",  "icon": "spell_fire_felfirenova"},
+    1234195:  {"name": "Void Nova",                     "class": "Demon Hunter", "spec": None,            "category": "stun_aoe",  "icon": "inv_12_voiddh_ability_voidnova"},
+    109248:   {"name": "Binding Shot",                  "class": "Hunter",       "spec": None,            "category": "stun_aoe",  "icon": "spell_shaman_bindelemental"},
+    1258509:  {"name": "Guttural Roar",                 "class": "Hunter",       "spec": None,            "category": "stun_aoe",  "icon": "ability_druid_challangingroar"},
+    119381:   {"name": "Leg Sweep",                     "class": "Monk",         "spec": None,            "category": "stun_aoe",  "icon": "ability_monk_legsweep"},
+    192058:   {"name": "Capacitor Totem",               "class": "Shaman",       "spec": None,            "category": "stun_aoe",  "icon": "spell_nature_brilliance"},
+    30283:    {"name": "Shadowfury",                    "class": "Warlock",      "spec": None,            "category": "stun_aoe",  "icon": "ability_warlock_shadowfurytga"},
+    46968:    {"name": "Shockwave",                     "class": "Warrior",      "spec": None,            "category": "stun_aoe",  "icon": "ability_warrior_shockwave"},
 
-    # Death Knight
-    42650:  {"name": "Army of the Dead",    "class": "Death Knight", "spec": "Unholy",     "category": "dps_cd",    "icon": "spell_deathknight_armyofthedead"},
+    # --- cc_hard ---
 
-    # Havoc Demon Hunter
-    162264: {"name": "Metamorphosis",       "class": "Demon Hunter", "spec": "Havoc",      "category": "dps_cd",    "icon": "ability_demonhunter_metamorphasis"},
+    217832:   {"name": "Imprison",                      "class": "Demon Hunter", "spec": None,            "category": "cc_hard",   "icon": "ability_demonhunter_imprison"},
+    33786:    {"name": "Cyclone",                       "class": "Druid",        "spec": None,            "category": "cc_hard",   "icon": "spell_nature_earthbind"},
+    360806:   {"name": "Sleep Walk",                    "class": "Evoker",       "spec": None,            "category": "cc_hard",   "icon": "ability_xavius_dreamsimulacrum"},
+    187650:   {"name": "Freezing Trap",                 "class": "Hunter",       "spec": None,            "category": "cc_hard",   "icon": "spell_frost_chainsofice"},
+    1513:     {"name": "Scare Beast",                   "class": "Hunter",       "spec": None,            "category": "cc_hard",   "icon": "ability_druid_cower"},
+    118:      {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "spell_nature_polymorph"},
+    28271:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "ability_hunter_pet_turtle"},
+    28272:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "spell_magic_polymorphpig"},
+    61025:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "spell_nature_guardianward"},
+    61305:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "achievement_halloween_cat_01"},
+    61721:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "spell_magic_polymorphrabbit"},
+    61780:    {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "achievement_worldevent_thanksgiving"},
+    126819:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_pet_porcupine"},
+    161353:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_pet_babyblizzardbear"},
+    161354:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "ability_hunter_aspectofthemonkey"},
+    161355:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_misc_penguinpet"},
+    161372:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_pet_peacock_gold"},
+    277787:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_pet_direhorn"},
+    277792:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_bee_default"},
+    321395:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_mawrat"},
+    391622:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_duckbaby_mallard"},
+    460392:   {"name": "Polymorph",                     "class": "Mage",         "spec": None,            "category": "cc_hard",   "icon": "inv_collections_armor_flowerbracelet_a_01"},
+    115078:   {"name": "Paralysis",                     "class": "Monk",         "spec": None,            "category": "cc_hard",   "icon": "ability_monk_paralysis"},
+    10326:    {"name": "Turn Evil",                     "class": "Paladin",      "spec": None,            "category": "cc_hard",   "icon": "ability_paladin_turnevil"},
+    205364:   {"name": "Dominate Mind",                 "class": "Priest",       "spec": None,            "category": "cc_hard",   "icon": "spell_priest_void-flay"},
+    58251:    {"name": "Shackle Undead",                "class": "Priest",       "spec": None,            "category": "cc_hard",   "icon": "inv_inscription_tradeskill01"},
+    2094:     {"name": "Blind",                         "class": "Rogue",        "spec": None,            "category": "cc_hard",   "icon": "spell_shadow_mindsteal"},
+    6770:     {"name": "Sap",                           "class": "Rogue",        "spec": None,            "category": "cc_hard",   "icon": "ability_sap"},
+    51514:    {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "spell_shaman_hex"},
+    210873:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "ability_hunter_pet_raptor"},
+    211004:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "ability_hunter_pet_spider"},
+    211010:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "inv_pet_pythonblack"},
+    211015:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "inv_pet_cockroach"},
+    269352:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "ability_mount_fossilizedraptor"},
+    277778:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "inv_zandalaribabyraptorred"},
+    277784:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "inv_wickerbeastpet"},
+    309328:   {"name": "Hex",                           "class": "Shaman",       "spec": None,            "category": "cc_hard",   "icon": "ability_creature_amber_02"},
+    710:      {"name": "Banish",                        "class": "Warlock",      "spec": None,            "category": "cc_hard",   "icon": "spell_shadow_cripple"},
+    5782:     {"name": "Fear",                          "class": "Warlock",      "spec": None,            "category": "cc_hard",   "icon": "spell_shadow_possession"},
+    342914:   {"name": "Fear",                          "class": "Warlock",      "spec": None,            "category": "cc_hard",   "icon": "spell_shadow_possession"},
+    6358:     {"name": "Seduction",                     "class": "Warlock",      "spec": None,            "category": "cc_hard",   "icon": "spell_shadow_seduction"},
 
-    # Devourer Demon Hunter
-    471306: {"name": "Void Metamorphosis",  "class": "Demon Hunter", "spec": "Devourer",   "category": "dps_cd",    "icon": "inv_112_ability_demonhunter_metamorphasisvoid"},
+    # --- cc_aoe ---
 
-    # Druid
-    194223: {"name": "Celestial Alignment", "class": "Druid",        "spec": "Balance",    "category": "dps_cd",    "icon": "ability_druid_celestialalignment"},
-    102560: {"name": "Incarnation: Chosen of Elune","class": "Druid","spec": "Balance",    "category": "dps_cd",    "icon": "spell_druid_incarnation"},
-    106951: {"name": "Berserk",             "class": "Druid",        "spec": "Feral",      "category": "dps_cd",    "icon": "ability_druid_berserk"},
+    207167:   {"name": "Blinding Sleet",                "class": "Death Knight", "spec": None,            "category": "cc_aoe",    "icon": "spell_frost_chillingblast"},
+    207684:   {"name": "Sigil of Misery",               "class": "Demon Hunter", "spec": None,            "category": "cc_aoe",    "icon": "ability_demonhunter_sigilofmisery"},
+    202138:   {"name": "Sigil of Chains",               "class": "Demon Hunter", "spec": "Vengeance",     "category": "cc_aoe",    "icon": "ability_demonhunter_sigilofchains"},
+    202137:   {"name": "Sigil of Silence",              "class": "Demon Hunter", "spec": "Vengeance",     "category": "cc_aoe",    "icon": "ability_demonhunter_sigilofsilence"},
+    99:       {"name": "Incapacitating Roar",           "class": "Druid",        "spec": None,            "category": "cc_aoe",    "icon": "ability_druid_demoralizingroar"},
+    102359:   {"name": "Mass Entanglement",             "class": "Druid",        "spec": None,            "category": "cc_aoe",    "icon": "spell_druid_massentanglement"},
+    358385:   {"name": "Landslide",                     "class": "Evoker",       "spec": None,            "category": "cc_aoe",    "icon": "ability_earthen_pillar"},
+    368970:   {"name": "Tail Swipe",                    "class": "Evoker",       "spec": None,            "category": "cc_aoe",    "icon": "ability_racial_tailswipe"},
+    355589:   {"name": "Wailing Arrow",                 "class": "Hunter",       "spec": None,            "category": "cc_aoe",    "icon": "ability_theblackarrow"},  # ?
+    31661:    {"name": "Dragon's Breath",               "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "inv_misc_head_dragon_01"},
+    386763:   {"name": "Freezing Cold",                 "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_frost_glacier"},
+    122:      {"name": "Frost Nova",                    "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_frost_frostnova"},
+    157997:   {"name": "Ice Nova",                      "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_mage_icenova"},
+    383121:   {"name": "Mass Polymorph",                "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_nature_doublepolymorph1"},
+    113724:   {"name": "Ring of Frost",                 "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_frost_ring-of-frost"},
+    157980:   {"name": "Supernova",                     "class": "Mage",         "spec": None,            "category": "cc_aoe",    "icon": "spell_mage_supernova"},
+    198898:   {"name": "Song of Chi-Ji",                "class": "Monk",         "spec": None,            "category": "cc_aoe",    "icon": "inv_chaos_orb"},
+    115750:   {"name": "Blinding Light",                "class": "Paladin",      "spec": None,            "category": "cc_aoe",    "icon": "ability_paladin_blindinglight"},
+    8122:     {"name": "Psychic Scream",                "class": "Priest",       "spec": None,            "category": "cc_aoe",    "icon": "spell_shadow_psychicscream"},
+    51485:    {"name": "Earthgrab Totem",               "class": "Shaman",       "spec": None,            "category": "cc_aoe",    "icon": "spell_nature_stranglevines"},
+    5484:     {"name": "Howl of Terror",                "class": "Warlock",      "spec": None,            "category": "cc_aoe",    "icon": "ability_warlock_howlofterror"},
+    5246:     {"name": "Intimidating Shout",            "class": "Warrior",      "spec": None,            "category": "cc_aoe",    "icon": "ability_golemthunderclap"},
 
-    # Hunter
-    359844: {"name": "Call of the Wild",    "class": "Hunter",       "spec": "Beast Mastery","category": "dps_cd",  "icon": "ability_hunter_callofthewild"},
-    288613: {"name": "Trueshot",            "class": "Hunter",       "spec": "Marksmanship","category": "dps_cd",   "icon": "ability_hunter_markedfordeathshot"},
-    360952: {"name": "Coordinated Assault", "class": "Hunter",       "spec": "Survival",   "category": "dps_cd",    "icon": "ability_hunter_coordinatedassault"},
+    # --- cc_slow ---
 
-    # Mage
-    190319: {"name": "Combustion",          "class": "Mage",         "spec": "Fire",       "category": "dps_cd",    "icon": "spell_fire_sealoffire"},
-    12472:  {"name": "Icy Veins",           "class": "Mage",         "spec": "Frost",      "category": "dps_cd",    "icon": "spell_frost_coldhearted"},
-    365350: {"name": "Arcane Surge",        "class": "Mage",         "spec": "Arcane",     "category": "dps_cd",    "icon": "spell_arcane_arcane03"},              # ?
+    273952:   {"name": "Grip of the Dead",              "class": "Death Knight", "spec": None,            "category": "cc_slow",   "icon": "ability_creature_disease_05"},
+    187698:   {"name": "Tar Trap",                      "class": "Hunter",       "spec": None,            "category": "cc_slow",   "icon": "spell_yorsahj_bloodboil_black"},
+    120:      {"name": "Cone of Cold",                  "class": "Mage",         "spec": None,            "category": "cc_slow",   "icon": "spell_frost_glacier"},
+    2484:     {"name": "Earthbind Totem",               "class": "Shaman",       "spec": None,            "category": "cc_slow",   "icon": "spell_nature_strengthofearthtotem02"},
+    12323:    {"name": "Piercing Howl",                 "class": "Warrior",      "spec": None,            "category": "cc_slow",   "icon": "spell_shadow_deathscream"},
 
-    # Windwalker Monk
-    137639: {"name": "Storm, Earth, and Fire","class": "Monk",       "spec": "Windwalker", "category": "dps_cd",    "icon": "ability_monk_stormearth_and_fire"},
-    152173: {"name": "Serenity",            "class": "Monk",         "spec": "Windwalker", "category": "dps_cd",    "icon": "ability_monk_serenity"},
+    # --- cc_other ---
 
-    # Retribution Paladin
-    31884:  {"name": "Avenging Wrath",      "class": "Paladin",      "spec": "Retribution","category": "dps_cd",    "icon": "spell_holy_avenginewrath"},
-    343721: {"name": "Final Reckoning",     "class": "Paladin",      "spec": "Retribution","category": "dps_cd",    "icon": "spell_paladin_finalreckoning"},
-
-    # Shadow Priest
-    228361: {"name": "Void Eruption",       "class": "Priest",       "spec": "Shadow",     "category": "dps_cd",    "icon": "spell_priest_void-blast"},
-    391109: {"name": "Dark Ascension",      "class": "Priest",       "spec": "Shadow",     "category": "dps_cd",    "icon": "spell_shadow_shadowwordpain"},        # ?
-
-    # Rogue
-    13750:  {"name": "Adrenaline Rush",     "class": "Rogue",        "spec": "Outlaw",     "category": "dps_cd",    "icon": "ability_rogue_adrenalinrush"},
-    121471: {"name": "Shadow Blades",       "class": "Rogue",        "spec": "Subtlety",   "category": "dps_cd",    "icon": "inv_knife_1h_grimbatolraid_d_03"},
-    360194: {"name": "Deathmark",           "class": "Rogue",        "spec": "Assassination","category": "dps_cd",  "icon": "ability_rogue_deathmark"},            # ?
-
-    # Shaman
-    114050: {"name": "Ascendance",          "class": "Shaman",       "spec": "Elemental",  "category": "dps_cd",    "icon": "spell_fire_elementaldevastation"},
-    114051: {"name": "Ascendance",          "class": "Shaman",       "spec": "Enhancement","category": "dps_cd",    "icon": "spell_fire_elementaldevastation"},
-
-    # Warlock
-    1122:   {"name": "Summon Infernal",     "class": "Warlock",      "spec": "Destruction","category": "dps_cd",    "icon": "spell_shadow_summoninfernal"},
-    267217: {"name": "Nether Portal",       "class": "Warlock",      "spec": "Demonology", "category": "dps_cd",    "icon": "warlock_spelldrain"},                 # ?
-    113860: {"name": "Dark Soul: Misery",   "class": "Warlock",      "spec": "Affliction", "category": "dps_cd",    "icon": "spell_shadow_twilight"},              # ?
-
-    # Warrior
-    1719:   {"name": "Recklessness",        "class": "Warrior",      "spec": None,         "category": "dps_cd",    "icon": "ability_warrior_innerrage"},
-    107574: {"name": "Avatar",              "class": "Warrior",      "spec": None,         "category": "dps_cd",    "icon": "warrior_talent_icon_avatar"},
-
-    # Devastation / Augmentation Evoker
-    375087: {"name": "Dragonrage",          "class": "Evoker",       "spec": "Devastation","category": "dps_cd",    "icon": "ability_evoker_dragonrage"},
-    403631: {"name": "Breath of Eons",      "class": "Evoker",       "spec": "Augmentation","category": "dps_cd",   "icon": "ability_evoker_breathofeons"},        # ?
-
-    # --- Utility ---
-
-    # Bloodlust / Heroism variants
-    2825:   {"name": "Bloodlust",           "class": "Shaman",       "spec": None,         "category": "utility",   "icon": "spell_nature_bloodlust"},
-    32182:  {"name": "Heroism",             "class": "Shaman",       "spec": None,         "category": "utility",   "icon": "ability_shaman_heroism"},
-    80353:  {"name": "Time Warp",           "class": "Mage",         "spec": None,         "category": "utility",   "icon": "ability_mage_timewarp"},
-    390386: {"name": "Fury of the Aspects", "class": "Evoker",       "spec": None,         "category": "utility",   "icon": "ability_evoker_furyoftheaspects"},
-    264667: {"name": "Primal Rage",         "class": "Hunter",       "spec": "Beast Mastery","category": "utility",  "icon": "ability_hunter_beasttaming"},        # ? (hunter pet lust)
-
-    # Battle resurrection
-    20484:  {"name": "Rebirth",             "class": "Druid",        "spec": None,         "category": "utility",   "icon": "spell_nature_reincarnation"},
-    20707:  {"name": "Soulstone",           "class": "Warlock",      "spec": None,         "category": "utility",   "icon": "spell_shadow_soulgem"},
-    61999:  {"name": "Raise Ally",          "class": "Death Knight", "spec": None,         "category": "utility",   "icon": "spell_shadow_deadofnight"},
+    45524:    {"name": "Chains of Ice",                 "class": "Death Knight", "spec": None,            "category": "cc_other",  "icon": "spell_frost_chainsofice"},
+    1263569:  {"name": "Abomination Limb",              "class": "Death Knight", "spec": "Blood",         "category": "cc_other",  "icon": "ability_maldraxxus_deathknight"},
+    108199:   {"name": "Gorefiend's Grasp",             "class": "Death Knight", "spec": "Blood",         "category": "cc_other",  "icon": "ability_deathknight_aoedeathgrip"},
+    132469:   {"name": "Typhoon",                       "class": "Druid",        "spec": None,            "category": "cc_other",  "icon": "ability_druid_typhoon"},
+    102793:   {"name": "Ursol's Vortex",                "class": "Druid",        "spec": None,            "category": "cc_other",  "icon": "spell_druid_ursolsvortex"},
+    372048:   {"name": "Oppressing Roar",               "class": "Evoker",       "spec": None,            "category": "cc_other",  "icon": "ability_evoker_oppressingroar"},
+    357214:   {"name": "Wing Buffet",                   "class": "Evoker",       "spec": None,            "category": "cc_other",  "icon": "ability_racial_wingbuffet"},
+    5116:     {"name": "Concussive Shot",               "class": "Hunter",       "spec": None,            "category": "cc_other",  "icon": "spell_frost_stun"},
+    195645:   {"name": "Wing Clip",                     "class": "Hunter",       "spec": None,            "category": "cc_other",  "icon": "ability_rogue_trip"},
+    235219:   {"name": "Cold Snap",                     "class": "Mage",         "spec": None,            "category": "cc_other",  "icon": "spell_frost_wizardmark"},
+    116095:   {"name": "Disable",                       "class": "Monk",         "spec": None,            "category": "cc_other",  "icon": "ability_shockwave"},
+    343731:   {"name": "Disable",                       "class": "Monk",         "spec": None,            "category": "cc_other",  "icon": "ability_shockwave"},
+    116844:   {"name": "Ring of Peace",                 "class": "Monk",         "spec": None,            "category": "cc_other",  "icon": "spell_monk_ringofpeace"},
+    115315:   {"name": "Summon Black Ox Statue",        "class": "Monk",         "spec": "Brewmaster",    "category": "cc_other",  "icon": "monk_ability_summonoxstatue"},
+    1776:     {"name": "Gouge",                         "class": "Rogue",        "spec": None,            "category": "cc_other",  "icon": "ability_gouge"},
+    462762:   {"name": "Encasing Cold",                 "class": "Shaman",       "spec": None,            "category": "cc_other",  "icon": "ability_mage_coldasice"},
+    51490:    {"name": "Thunderstorm",                  "class": "Shaman",       "spec": "Elemental",     "category": "cc_other",  "icon": "spell_shaman_thunderstorm"},
+    334275:   {"name": "Curse of Exhaustion",           "class": "Warlock",      "spec": None,            "category": "cc_other",  "icon": "spell_shadow_grimward"},
+    376079:   {"name": "Champion's Spear",              "class": "Warrior",      "spec": None,            "category": "cc_other",  "icon": "inv_ability_warrior_championsspear"},
+    1715:     {"name": "Hamstring",                     "class": "Warrior",      "spec": None,            "category": "cc_other",  "icon": "ability_shockwave"},
 }

@@ -844,13 +844,17 @@
                         <div class="flex items-center gap-3 px-3 py-2 border-b seam flex-wrap"
                             style="background:#0c0a07;">
                             <span class="label-cap" style="color:#a88a45;">Cooldowns</span>
-                            <div class="flex items-center gap-1 flex-wrap">
-                                <template x-for="cat in cooldownCategories" :key="cat.key">
-                                    <button class="filter-pill"
-                                        :class="{ active: cooldownFilter.includes(cat.key) }"
-                                        @click="toggleCooldownFilter(cat.key)"
-                                        x-text="cat.label">
-                                    </button>
+                            <div class="flex items-center gap-x-3 gap-y-1 flex-wrap">
+                                <template x-for="group in cooldownCategoryGroups" :key="group.label">
+                                    <div class="flex items-center gap-1 flex-wrap" :title="group.label">
+                                        <template x-for="cat in group.categories" :key="cat.key">
+                                            <button class="filter-pill"
+                                                :class="{ active: cooldownFilter.includes(cat.key) }"
+                                                @click="toggleCooldownFilter(cat.key)"
+                                                x-text="cat.label">
+                                            </button>
+                                        </template>
+                                    </div>
                                 </template>
                             </div>
                         </div>
@@ -1276,6 +1280,40 @@
             'Shaman':'#0070DD','Warlock':'#8788EE','Warrior':'#C69B3A',
         };
 
+        // Cooldown timeline filters, grouped like the columns of the class info
+        // sheet that tracked_spells.py is built from. Order sets row priority.
+        const COOLDOWN_CATEGORY_GROUPS = [
+            { label: 'Offensive', categories: [
+                { key: 'offensive', label: 'Offensive' },
+            ]},
+            { label: 'Defensives', categories: [
+                { key: 'defensive', label: 'Defensive' },
+                { key: 'immunity',  label: 'Immunity' },
+            ]},
+            { label: 'Externals & raid', categories: [
+                { key: 'external',  label: 'External' },
+                { key: 'raid_cd',   label: 'Raid CD' },
+                { key: 'utility',   label: 'Utility' },
+            ]},
+            { label: 'Interrupts & CC', categories: [
+                { key: 'interrupt', label: 'Interrupt' },
+                { key: 'dispel',    label: 'Dispel' },
+                { key: 'stun_st',   label: 'Stun' },
+                { key: 'stun_aoe',  label: 'AoE stun' },
+                { key: 'cc_hard',   label: 'Hard CC' },
+                { key: 'cc_aoe',    label: 'AoE CC' },
+                { key: 'cc_slow',   label: 'Slow' },
+                { key: 'cc_other',  label: 'Other CC' },
+            ]},
+        ];
+        const COOLDOWN_CATEGORY_RANK = Object.fromEntries(
+            COOLDOWN_CATEGORY_GROUPS.flatMap(g => g.categories).map((c, i) => [c.key, i]));
+        // Recordings scanned before the sheet-based categories store these.
+        const LEGACY_COOLDOWN_CATEGORIES = {
+            healer_cd: 'raid_cd', tank_cd: 'defensive', dps_cd: 'offensive',
+        };
+        const cooldownCategoryOf = cast => LEGACY_COOLDOWN_CATEGORIES[cast.category] || cast.category;
+
         const DIFFICULTY_NAMES = {
             1: 'Normal', 2: 'Heroic', 3: 'Mythic',
             7: 'LFR', 14: 'Normal', 15: 'Heroic',
@@ -1431,15 +1469,8 @@
                 cooldownScanBusy: false,
 
                 // Cooldown timeline state
-                cooldownFilter: ['healer_cd', 'external', 'tank_cd', 'raid_cd', 'dps_cd', 'utility'],
-                cooldownCategories: [
-                    { key: 'healer_cd', label: 'Healing' },
-                    { key: 'external',  label: 'Externals' },
-                    { key: 'tank_cd',   label: 'Tank' },
-                    { key: 'raid_cd',   label: 'Raid' },
-                    { key: 'dps_cd',    label: 'DPS' },
-                    { key: 'utility',   label: 'Utility' },
-                ],
+                cooldownFilter: COOLDOWN_CATEGORY_GROUPS.flatMap(g => g.categories.map(c => c.key)),
+                cooldownCategoryGroups: COOLDOWN_CATEGORY_GROUPS,
 
                 init() {
                     this.fetchRecordings();
@@ -1869,28 +1900,30 @@
                     return this.recordingMetadata?.cooldownCasts || [];
                 },
                 get filteredCooldownCasts() {
-                    return this.cooldownCasts.filter(c => this.cooldownFilter.includes(c.category));
+                    return this.cooldownCasts.filter(c => this.cooldownFilter.includes(cooldownCategoryOf(c)));
                 },
                 get cooldownRows() {
                     if (!this.filteredCooldownCasts.length) return [];
-                    const RANK = { healer_cd:0, external:1, tank_cd:2, raid_cd:3, dps_cd:4, utility:5 };
                     const map = new Map();
                     for (const cast of this.filteredCooldownCasts) {
                         if (!map.has(cast.casterGuid)) {
                             map.set(cast.casterGuid, {
                                 casterName: cast.casterName,
                                 casterGuid: cast.casterGuid,
-                                classColor: CLASS_COLORS[cast.class] || '#d4ccb6',
+                                classColor: null,
                                 casts: [],
                                 priority: 99,
                             });
                         }
                         const row = map.get(cast.casterGuid);
                         row.casts.push(cast);
-                        const r = RANK[cast.category] ?? 6;
+                        // Class-less spells (Healthstone) shouldn't decide the row colour.
+                        row.classColor ??= CLASS_COLORS[cast.class] ?? null;
+                        const r = COOLDOWN_CATEGORY_RANK[cooldownCategoryOf(cast)] ?? 98;
                         if (r < row.priority) row.priority = r;
                     }
                     const rows = Array.from(map.values());
+                    for (const row of rows) row.classColor ??= '#d4ccb6';
                     rows.sort((a, b) => a.priority - b.priority || a.casterName.localeCompare(b.casterName));
                     return rows;
                 },

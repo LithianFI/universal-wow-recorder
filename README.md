@@ -19,7 +19,7 @@ Built with AI assistance. While the code has been reviewed, mistakes happen — 
   - **Statistics page** — latest session progression chart, per-boss breakdown across all recordings: pull count, kill rate, best/average time, boss HP% progression on wipes, death leaderboard
   - **Debug page** (Electron client) — live-streamed backend log output, for troubleshooting
 - Video player with timeline scrubbing, death markers, volume control, playback speed (0.5×–2×), fullscreen, and keyboard shortcuts
-- **Cooldown timeline** — per-player row of tracked cooldowns (healer/tank/raid/DPS/utility) plotted against the fight, with class-colored spell icons and category filters
+- **Cooldown timeline** — per-player row of tracked abilities (offensive and defensive cooldowns, externals, raid CDs, utility, interrupts, dispels, stuns and CC) plotted against the fight, with class-colored spell icons and category filters
 - Clip export (requires ffmpeg — see below)
 - Optional cloud upload — Google Drive, or Warcraft Recorder Cloud (which also enables **POV sync**: automatically fetch guildmates' recordings of the same pull)
 
