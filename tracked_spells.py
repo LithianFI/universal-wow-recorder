@@ -4,7 +4,8 @@ Cooldowns, defensives, utility and crowd control tracked for the timeline displa
 The ability list follows the class info sheet by @Baratus (Midnight tab):
 https://docs.google.com/spreadsheets/d/1lXIRuETd3s3wxLHE8mOwhXtz0xm71ayhrlYxwi6herU
 plus tank and healer cooldowns the sheet doesn't list. Abilities that are never
-cast (passives, procs, buffs) and rotational presses are left out.
+cast (passives, procs, buffs) and rotational presses (e.g. Shadow Dance) are
+left out.
 
 Spell IDs come from the game data on wago.tools, checked against Wowhead tooltips.
 Verify flagged entries (# ?) on major patches. Icon names resolve via:
@@ -79,7 +80,6 @@ TRACKED_SPELLS = {
     13750:    {"name": "Adrenaline Rush",               "class": "Rogue",        "spec": "Outlaw",        "category": "offensive", "icon": "spell_shadow_shadowworddominate"},
     51690:    {"name": "Killing Spree",                 "class": "Rogue",        "spec": "Outlaw",        "category": "offensive", "icon": "inv_112_rogue_betweentheeyes"},
     121471:   {"name": "Shadow Blades",                 "class": "Rogue",        "spec": "Subtlety",      "category": "offensive", "icon": "inv_knife_1h_grimbatolraid_d_03"},
-    185313:   {"name": "Shadow Dance",                  "class": "Rogue",        "spec": "Subtlety",      "category": "offensive", "icon": "ability_rogue_shadowdance"},
     443454:   {"name": "Ancestral Swiftness",           "class": "Shaman",       "spec": None,            "category": "offensive", "icon": "inv_ability_farseershaman_ancestralswiftness"},
     114050:   {"name": "Ascendance",                    "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "spell_fire_elementaldevastation"},
     191634:   {"name": "Stormkeeper",                   "class": "Shaman",       "spec": "Elemental",     "category": "offensive", "icon": "ability_thunderking_lightningwhip"},
