@@ -139,16 +139,3 @@ LOG_PREFIXES = {
     'PROC': '[PROC]',  # RecordingProcessor
     'WATCHER': '[WATCHER]',  # LogWatcher
 }
-
-# ============================================================================
-# ERROR MESSAGES (for consistent error handling)
-# ============================================================================
-
-ERROR_MESSAGES = {
-    'OBS_CONNECTION_FAILED': 'Failed to connect to OBS WebSocket',
-    'LOG_DIR_NOT_FOUND': 'Log directory not found',
-    'RECORDING_DIR_NOT_FOUND': 'Recording directory not found',
-    'CONFIG_LOAD_FAILED': 'Failed to load configuration',
-    'FILE_NOT_FOUND': 'File not found',
-    'PERMISSION_DENIED': 'Permission denied',
-}

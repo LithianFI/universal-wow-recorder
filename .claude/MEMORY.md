@@ -44,7 +44,6 @@
 ## Technical Debt
 <!-- Known shortcuts and what a proper fix would look like. -->
 - Not done: tray icon.
-- main.py is an unused legacy CLI entry (run.py / Electron is the real app); constants.ERROR_MESSAGES is only used there.
 - Google Drive: an expired refresh token makes startup block in the OAuth browser flow, and refreshed tokens aren't written back. Fix: consent only from an explicit user action.
 - Unverified: whether Hunter Feign Death shows up as UNIT_DIED (WCR checks unconsciousOnDeath).
 - M+ upgradeLevel is always 0 (needs WCR's dungeonTimersByMapId table); no challengeModeTimeline.
