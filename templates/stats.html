@@ -95,7 +95,7 @@
     </style>
 </head>
 <body>
-<div x-data="statsPage()" x-init="init()" class="flex flex-col h-full">
+<div x-data="statsPage()" class="flex flex-col h-full">
 
     <!-- Top bar -->
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
@@ -118,8 +118,14 @@
         <div class="text-parchment-300 text-sm">Loading statistics…</div>
     </div>
 
+    <!-- Load error -->
+    <div x-show="!loading && loadError" x-cloak class="text-center py-20">
+        <div class="text-parchment-400 text-2xl font-display mb-2">Could not load statistics</div>
+        <div class="text-parchment-300 text-sm" x-text="loadError"></div>
+    </div>
+
     <!-- No data -->
-    <div x-show="!loading && allEncounters.length === 0" class="text-center py-20">
+    <div x-show="!loading && !loadError && allEncounters.length === 0" class="text-center py-20">
         <div class="text-parchment-400 text-2xl font-display mb-2">No data yet</div>
         <div class="text-parchment-300 text-sm">Statistics appear after your first recorded encounter.</div>
     </div>
@@ -231,7 +237,7 @@
                         <div class="border border-ink-500 rounded-md overflow-hidden fade-in">
                             <!-- Boss header row -->
                             <div class="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-ink-700/40 transition-colors"
-                                @click="boss.expanded = !boss.expanded">
+                                @click="toggleBoss(boss.key)">
 
                                 <!-- Kill/wipe indicator bar -->
                                 <div class="w-1 self-stretch rounded-full shrink-0"
@@ -279,7 +285,7 @@
                                 </div>
 
                                 <svg class="w-3.5 h-3.5 text-parchment-300 transition-transform shrink-0"
-                                    :class="boss.expanded ? 'rotate-180' : ''"
+                                    :class="expandedBosses.has(boss.key) ? 'rotate-180' : ''"
                                     fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                                 </svg>
@@ -294,7 +300,7 @@
                             </div>
 
                             <!-- Expanded: pull history chart -->
-                            <div x-show="boss.expanded" x-cloak
+                            <div x-show="expandedBosses.has(boss.key)" x-cloak
                                 class="border-t border-ink-500 bg-ink-800/60 px-3 pt-3 pb-2">
 
                                 <!-- Pull history bars -->
@@ -418,6 +424,9 @@ const MAX_SESSION_PULLS = 30;
 function statsPage() {
     return {
         loading: true,
+        loadError: '',
+        // Kept outside bossRows, which rebuilds its rows on every filter/sort.
+        expandedBosses: new Set(),
         allEncounters: [],
         diffFilter: 'All',
         catFilter: 'All',
@@ -426,10 +435,12 @@ function statsPage() {
         async init() {
             try {
                 const res = await fetch('/api/stats');
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.statusText);
                 this.allEncounters = (data.encounters || []).filter(e => e.encounterName || e.zoneName);
+                this.loadError = '';
             } catch (e) {
-                console.error('Failed to load stats:', e);
+                this.loadError = e.message;
             }
             this.loading = false;
         },
@@ -454,6 +465,12 @@ function statsPage() {
             };
         },
 
+        toggleBoss(key) {
+            const next = new Set(this.expandedBosses);
+            if (next.has(key)) next.delete(key); else next.add(key);
+            this.expandedBosses = next;
+        },
+
         get bossRows() {
             const groups = {};
             // Oldest first, so pull history reads #1 → latest (the API returns scan order).
@@ -470,7 +487,6 @@ function statsPage() {
                         durations: [], wipes_with_pct: [],
                         deathNames: {}, keystoneLevels: [],
                         pulls_list: [], lastTimestamp: 0,
-                        expanded: false,
                     };
                 }
                 const g = groups[key];

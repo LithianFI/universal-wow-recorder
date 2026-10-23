@@ -385,6 +385,7 @@
             <button class="filter-pill" :class="{ active: diffFilter === 'H' }" @click="diffFilter = 'H'">H</button>
             <button class="filter-pill" :class="{ active: diffFilter === 'N' }" @click="diffFilter = 'N'">N</button>
             <button class="filter-pill" :class="{ active: diffFilter === 'LFR' }" @click="diffFilter = 'LFR'">LFR</button>
+            <button class="filter-pill" :class="{ active: diffFilter === 'M+' }" @click="diffFilter = 'M+'">M+</button>
         </div>
 
         <div class="flex items-center gap-1 border-l pl-2" style="border-color:#1c1710;">
@@ -687,7 +688,7 @@
                                     :style="'left:' + pct + '%'">
                                     <div class="w-full h-full flex items-stretch">
                                         <div class="w-0.5 bg-red-500/70 cursor-pointer hover:bg-red-400 transition-colors"
-                                            @click.stop="seekToMarker(pct)"></div>
+                                            @click.stop="if ($refs.videoPlayer) $refs.videoPlayer.currentTime = deathTimesSeconds[i]"></div>
                                     </div>
                                     <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/90 text-[11px] rounded-sm px-2 py-1 whitespace-nowrap pointer-events-none opacity-0 group-hover/marker:opacity-100 transition-opacity border border-white/10 shadow-xl">
                                         <span class="text-white/70" x-text="formatVideoTime(deathTimesSeconds[i])"></span>
@@ -866,7 +867,7 @@
                             <div class="flex sticky top-0 z-10" style="height:18px; background:#080604;">
                                 <div class="shrink-0" style="width:100px; border-right:1px solid #1c1710;"></div>
                                 <div class="flex-1 relative overflow-hidden" style="cursor:crosshair;"
-                                    @click="if (duration) seekToTime(($event.offsetX / $event.currentTarget.clientWidth) * duration)">
+                                    @click="seekToTrackPosition($event)">
                                     <template x-for="tick in cooldownTimeTicks" :key="tick.pct">
                                         <div class="absolute top-0 bottom-0 flex items-center"
                                             :style="'left:' + tick.pct + '%'">
@@ -903,7 +904,7 @@
                                 <!-- Playhead -->
                                 <div class="absolute top-0 bottom-0 pointer-events-none z-20"
                                     style="width:1px; background:rgba(201,169,97,0.6); box-shadow:0 0 5px rgba(201,169,97,0.25);"
-                                    :style="'left: calc(100px + ' + (playedPercent / 100) + ' * (100% - 100px))'">
+                                    :style="{ left: 'calc(100px + ' + (playedPercent / 100) + ' * (100% - 100px))' }">
                                     <div class="absolute top-0 -translate-x-1/2 font-mono text-[10px] leading-none px-1 py-0.5 rounded-xs whitespace-nowrap"
                                         style="background:#c9a961; color:#0a0806;"
                                         x-text="formatVideoTime(currentTime)">
@@ -916,16 +917,16 @@
                                         <!-- Name column -->
                                         <div class="shrink-0 text-right pr-2 truncate text-[12px] leading-none"
                                             style="width:100px; border-right:1px solid #1c1710; background:rgba(10,8,6,0.5);"
-                                            :style="'color:' + row.classColor">
+                                            :style="{ color: row.classColor }">
                                             <span x-text="row.casterName"></span>
                                         </div>
                                         <!-- Cast track -->
                                         <div class="flex-1 relative" style="height:26px; overflow:visible; cursor:crosshair;"
-                                            @click="if (duration) seekToTime(($event.offsetX / $event.currentTarget.clientWidth) * duration)">
+                                            @click="seekToTrackPosition($event)">
                                             <template x-for="cast in row.casts" :key="cast.spellId + '-' + cast.offsetMs">
                                                 <div class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 group/cast"
                                                     style="cursor:pointer;"
-                                                    :style="'left:' + castPercent(cast) + '%; z-index:10'"
+                                                    :style="{ left: castPercent(cast) + '%', zIndex: 10 }"
                                                     @click.stop="seekToTime(videoTimeOf(cast.offsetMs / 1000))">
                                                     <img class="cd-icon"
                                                         :src="'https://wow.zamimg.com/images/wow/icons/small/' + cast.icon + '.jpg'"
@@ -1039,8 +1040,7 @@
                     <div class="space-y-0.5" x-show="recordingMetadata?.deaths?.length > 0">
                         <template x-for="(d, i) in (recordingMetadata?.deaths || [])" :key="i">
                             <div class="flex justify-between items-center text-[12px] cursor-pointer rounded-sm px-1.5 py-1.5 -mx-1.5 group/death transition-colors"
-                                style="border-bottom:1px solid transparent;"
-                                :style="'border-bottom-color:#111009;'"
+                                style="border-bottom:1px solid #111009;"
                                 @mouseenter="$el.style.background='rgba(30,25,18,0.7)'"
                                 @mouseleave="$el.style.background=''"
                                 @click="seekToTime(videoTimeOf(d.timestamp))">
@@ -1682,7 +1682,13 @@
                 async fetchRecordings() {
                     try {
                         const res = await fetch('/api/recordings');
-                        const data = await res.json();
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            // Keep the current list (and playback) rather than
+                            // treating every file as vanished.
+                            this.toast('Could not refresh recordings: ' + (data.error || res.statusText), 'error');
+                            return;
+                        }
                         const recs = data.recordings || [];
                         for (const r of recs) {
                             r._parsed = this.recordingInfo(r);
@@ -1819,9 +1825,17 @@
                     return 1 + active;
                 },
                 togglePov(name) {
-                    if (this.disabledPovNames.has(name)) this.disabledPovNames.delete(name);
-                    else this.disabledPovNames.add(name);
+                    const disabling = !this.disabledPovNames.has(name);
+                    if (disabling) this.disabledPovNames.add(name);
+                    else this.disabledPovNames.delete(name);
                     this.disabledPovNames = new Set(this.disabledPovNames);
+                    if (disabling) {
+                        // Hidden is not paused: it would keep decoding unseen.
+                        const i = this.localPovs.findIndex(pov => pov.name === name);
+                        this._povVideoEl(i)?.pause();
+                    } else {
+                        this.syncPovPlayers(this.$refs.videoPlayer);
+                    }
                 },
 
                 // ── Player sizing ────────────────────────────────────
@@ -1927,8 +1941,14 @@
                     rows.sort((a, b) => a.priority - b.priority || a.casterName.localeCompare(b.casterName));
                     return rows;
                 },
+                // Markers are placed on the same scale clicks seek with: the
+                // video's length, which differs from the log's fight length by
+                // the start delay and the stop overrun.
+                get timelineDuration() {
+                    return this.duration || this.recordingMetadata?.duration || 0;
+                },
                 get cooldownTimeTicks() {
-                    const dur = this.recordingMetadata?.duration || this.duration;
+                    const dur = this.timelineDuration;
                     if (!dur) return [];
                     const interval = dur > 180 ? 60 : 30;
                     const ticks = [];
@@ -1938,7 +1958,7 @@
                     return ticks;
                 },
                 castPercent(cast) {
-                    const dur = this.recordingMetadata?.duration || this.duration;
+                    const dur = this.timelineDuration;
                     if (!dur) return 0;
                     return Math.min(99, Math.max(0.5, (this.videoTimeOf(cast.offsetMs / 1000) / dur) * 100));
                 },
@@ -2156,7 +2176,7 @@
                     }
                     this.clearSelection();
                     await this.fetchRecordings();
-                    if (failed > 0) alert(`Failed to delete ${failed} recording(s)`);
+                    if (failed > 0) this.toast(`Failed to delete ${failed} recording(s)`, 'error');
                 },
 
                 // ── Single-recording actions ─────────────────────────
@@ -2284,12 +2304,11 @@
                         if (res.ok) {
                             await this.fetchRecordings();
                         } else {
-                            const data = await res.json();
-                            alert('Failed to delete: ' + (data.error || 'Unknown error'));
+                            const data = await res.json().catch(() => ({}));
+                            this.toast('Failed to delete: ' + (data.error || res.statusText), 'error');
                         }
                     } catch (e) {
-                        console.error('Failed to delete recording:', e);
-                        alert('Failed to delete recording');
+                        this.toast('Failed to delete recording: ' + e.message, 'error');
                     }
                     this.showDeleteModal = false;
                     this.deleteTarget = null;
@@ -2306,6 +2325,7 @@
                     if (s === 'H') return 'diff-heroic';
                     if (s === 'N') return 'diff-normal';
                     if (s === 'LFR') return 'diff-lfr';
+                    if (s === 'M+') return 'diff-mplus';
                     return '';
                 },
                 formatFileSize(bytes) {
@@ -2353,7 +2373,7 @@
                     this.deathNames = [];
                     const meta = this.recordingMetadata;
                     if (!meta || !meta.deaths || meta.deaths.length === 0) return;
-                    const durationSecs = meta.duration || this.duration;
+                    const durationSecs = this.timelineDuration;
                     if (!durationSecs) return;
                     meta.deaths.forEach(death => {
                         const offset = this.videoTimeOf(typeof death === 'object' ? death.timestamp : death);
@@ -2416,7 +2436,10 @@
                 // Step through recordings in the order the list shows them.
                 selectAdjacentRecording(step) {
                     const ordered = this.groupedRecordings.flatMap(g => g.items);
-                    const index = ordered.indexOf(this.selectedRecording);
+                    // By name: a list refresh replaces the objects, but the
+                    // selection keeps its own (async loads check its identity).
+                    const name = this.selectedRecording?.name;
+                    const index = ordered.findIndex(r => r.name === name);
                     const next = ordered[index + step];
                     if (next) this.selectRecording(next);
                 },
@@ -2449,10 +2472,13 @@
                     window.addEventListener('mousemove', update);
                     window.addEventListener('mouseup', finish);
                 },
-                seekToMarker(pct) {
-                    const v = this.$refs.videoPlayer;
-                    if (!v || !this.duration) return;
-                    v.currentTime = (pct / 100) * this.duration;
+                // Click on a cooldown track or the ruler. offsetX would be
+                // relative to whichever child (a tick label) got the click.
+                seekToTrackPosition(event) {
+                    if (!this.duration) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+                    this.seekToTime(pct * this.duration);
                 },
                 seekToTime(secs) {
                     const v = this.$refs.videoPlayer;
@@ -2519,13 +2545,13 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ start: this.clipInSecs, end: this.clipOutSecs }),
                         });
-                        const data = await res.json();
+                        const data = await res.json().catch(() => ({}));
                         if (!res.ok) {
-                            this.toast('Clip export failed: ' + (data.error || 'unknown error'), 'error');
+                            this.toast('Clip export failed: ' + (data.error || res.statusText), 'error');
                             this.clipBusy = false;
                         }
                     } catch (e) {
-                        console.error('Clip request error:', e);
+                        this.toast('Clip export failed: ' + e.message, 'error');
                         this.clipBusy = false;
                     }
                 },

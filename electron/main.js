@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const http = require('http')
@@ -75,6 +75,16 @@ function startBackend() {
   pythonProcess = spawnBackend()
   pythonProcess.stdout.on('data', d => { try { process.stdout.write(d) } catch (_) {} })
   pythonProcess.stderr.on('data', d => { try { process.stderr.write(d) } catch (_) {} })
+  // Spawn failures (missing binary, no python3 on PATH) emit 'error' and
+  // never 'exit'; unhandled it is an uncaught exception, and stopBackend
+  // would wait forever for an exit that never comes.
+  pythonProcess.on('error', err => {
+    pythonProcess = null
+    if (appIsQuitting) return
+    appIsQuitting = true
+    dialog.showErrorBox('Recorder Failed to Start', `Could not start the recorder backend: ${err.message}`)
+    app.quit()
+  })
   pythonProcess.on('exit', (code) => {
     if (!appIsQuitting) {
       dialog.showErrorBox(
@@ -231,6 +241,30 @@ const LOADING_HTML = `<!DOCTYPE html>
 // Window
 // ---------------------------------------------------------------------------
 
+function isAppUrl(url) {
+  try {
+    const { protocol, host } = new URL(url)
+    return protocol === 'data:' || host === `127.0.0.1:${PORT}`
+  } catch (_) {
+    return false
+  }
+}
+
+// Links to other sites (e.g. the Google Cloud console for Drive setup) open
+// in the system browser, not in an app window without an address bar.
+function keepExternalLinksOutOfApp(contents) {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isAppUrl(url)) return { action: 'allow' }
+    if (/^https?:/.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  contents.on('will-navigate', (event, url) => {
+    if (isAppUrl(url)) return
+    event.preventDefault()
+    if (/^https?:/.test(url)) shell.openExternal(url)
+  })
+}
+
 async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -246,6 +280,7 @@ async function createWindow() {
     show: false,
   })
 
+  keepExternalLinksOutOfApp(mainWindow.webContents)
   mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(LOADING_HTML)}`)
   mainWindow.once('ready-to-show', () => mainWindow.show())
   mainWindow.on('closed', () => { mainWindow = null })

@@ -781,7 +781,8 @@
                     this.loading = true;
                     try {
                         const response = await fetch('/api/config');
-                        const data = await response.json();
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(data.error || response.statusText);
                         this.config.general = {
                             log_dir: data.general?.log_dir ?? '',
                             log_pattern: data.general?.log_pattern ?? '',
@@ -944,7 +945,9 @@
                 showMessage(msg, type = 'success') {
                     this.message = msg;
                     this.messageType = type;
-                    setTimeout(() => { this.message = ''; }, 4000);
+                    // An older message's timer must not hide this one early.
+                    clearTimeout(this._messageTimer);
+                    this._messageTimer = setTimeout(() => { this.message = ''; }, 4000);
                 },
 
                 addBossOverride() {

@@ -91,7 +91,7 @@
     </style>
 </head>
 <body>
-<div x-data="clipsPage()" x-init="init()" class="flex flex-col h-full">
+<div x-data="clipsPage()" class="flex flex-col h-full">
 
     <!-- Top bar -->
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
@@ -129,7 +129,7 @@
     <div x-show="!loading && clips.length === 0" x-cloak class="text-center py-24">
         <div class="text-4xl font-display text-parchment-300 mb-3">No clips yet</div>
         <p class="text-parchment-400 text-sm">Export clips from the video player on the recordings page.</p>
-        <a href="/" class="inline-block mt-4 quick-btn">Go to Dashboard</a>
+        <a href="/" class="inline-block mt-4 quick-btn">Go to Recordings</a>
     </div>
 
     <div x-show="!loading && clips.length > 0" x-cloak>
@@ -498,10 +498,12 @@ function clipsPage() {
         async fetchClips() {
             try {
                 const res = await fetch('/api/clips');
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.statusText);
                 this.clips = data.clips || [];
             } catch (e) {
-                console.error('Failed to load clips:', e);
+                // Keep the current list; an empty one would look like data loss.
+                this.toast('Could not load clips: ' + e.message, 'error');
             }
             this.loading = false;
         },
