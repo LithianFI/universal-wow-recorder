@@ -2,8 +2,9 @@
 Clip export using ffmpeg stream copy.
 
 Cuts a segment out of an existing recording without re-encoding. Stream copy
-cuts at the nearest keyframe, so the start may shift by a few seconds —
-acceptable for raid highlights where frame-exact timing isn't needed.
+can only start at a keyframe, so the clip starts at the keyframe at or before
+the chosen start (up to a few seconds early) — acceptable for raid highlights
+where frame-exact timing isn't needed.
 
 Output filename convention:
     <stem>_clip_<start_sec>-<end_sec>.<ext>
@@ -20,6 +21,24 @@ from pathlib import Path
 from typing import Optional
 
 from constants import LOG_PREFIXES
+
+# Clips are named "<source stem>_clip_<start>-<end>" (whole seconds); the
+# Clips page, the recordings list and retention all tell clips apart by it.
+_CLIP_SUFFIX_RE = re.compile(r'_clip_\d+-\d+$')
+
+# Below this, stream copy can produce an empty file (no keyframe in range).
+MIN_CLIP_SECONDS = 0.5
+FFMPEG_TIMEOUT_SECONDS = 120
+
+
+def is_clip(path: Path) -> bool:
+    """Whether *path* (a video or its sidecar) is an exported clip."""
+    return bool(_CLIP_SUFFIX_RE.search(path.stem))
+
+
+def strip_clip_suffix(stem: str) -> str:
+    """*stem* without a trailing _clip_X-Y."""
+    return _CLIP_SUFFIX_RE.sub('', stem)
 
 
 class ClipError(Exception):
@@ -52,24 +71,26 @@ def _format_seconds_for_name(seconds: float) -> str:
     return str(max(0, int(round(seconds))))
 
 
-def _unique_output_path(candidate: Path) -> Path:
-    """Return *candidate* or, if it exists, "<base> (2)_clip_X-Y.ext" etc.
+def _reserve_output_path(candidate: Path) -> Path:
+    """Create and return *candidate* or, if taken, "<base> (2)_clip_X-Y.ext" etc.
 
-    The counter goes before the _clip_ suffix: clips are recognised by a name
-    ending in _clip_X-Y, and "..._clip_10-20_2" would vanish from the Clips page.
+    The file is created exclusively, so two exports of the same range can't
+    pick the same name. The counter goes before the _clip_ suffix: clips are
+    recognised by a name ending in _clip_X-Y, and "..._clip_10-20_2" would
+    vanish from the Clips page.
     """
-    if not candidate.exists():
-        return candidate
     base, separator, clip_range = candidate.stem.rpartition('_clip_')
     if not separator:
         base, clip_range = candidate.stem, ''
     clip_suffix = f"_clip_{clip_range}" if separator else ''
-    n = 2
+    path, n = candidate, 2
     while True:
-        alt = candidate.parent / f"{base} ({n}){clip_suffix}{candidate.suffix}"
-        if not alt.exists():
-            return alt
-        n += 1
+        try:
+            with open(path, 'x'):
+                return path
+        except FileExistsError:
+            path = candidate.parent / f"{base} ({n}){clip_suffix}{candidate.suffix}"
+            n += 1
 
 
 def export_clip(
@@ -108,35 +129,34 @@ def export_clip(
         raise ClipError("Clip end must be greater than start")
 
     duration = end_seconds - start_seconds
-    if duration < 0.5:
-        raise ClipError("Clip is too short (< 0.5 seconds)")
+    if duration < MIN_CLIP_SECONDS:
+        raise ClipError(f"Clip is too short (< {MIN_CLIP_SECONDS} seconds)")
 
     out_dir = output_dir or source_path.parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Sanitize the base stem: strip any prior _clip_X-Y suffix so clips-of-clips
     # don't pile up redundant markers in the filename.
-    base_stem = re.sub(r'_clip_\d+-\d+$', '', source_path.stem)
+    base_stem = strip_clip_suffix(source_path.stem)
 
     out_name = (
         f"{base_stem}"
         f"_clip_{_format_seconds_for_name(start_seconds)}-{_format_seconds_for_name(end_seconds)}"
         f"{source_path.suffix}"
     )
-    out_path = _unique_output_path(out_dir / out_name)
+    out_path = _reserve_output_path(out_dir / out_name)
 
-    # Stream copy: fast, no re-encode. -ss before -i is fast-seek at container
-    # level; for accuracy we put it after -i which does decode-seek — slower
-    # but matches what the user actually picked on the scrubber. For stream
-    # copy the cut still snaps to a keyframe regardless, but post-input seek
-    # at least gets us a correct end.
+    # Stream copy, no re-encode. -ss before -i seeks the input to the keyframe
+    # at or before the start, which is the only place a copied stream can
+    # begin cleanly; after -i, the cut would start between keyframes (frozen
+    # or garbled frames until the next one) and demux everything before it.
     cmd = [
         ffmpeg_bin,
         '-loglevel', 'error',
-        '-y',                       # overwrite temp targets
-        '-i', str(source_path),
+        '-y',                       # replace the placeholder reserved above
         '-ss', f'{start_seconds:.3f}',
-        '-to', f'{end_seconds:.3f}',
+        '-i', str(source_path),
+        '-t', f'{duration:.3f}',
         '-c', 'copy',
         '-avoid_negative_ts', 'make_zero',
         str(out_path),
@@ -145,26 +165,23 @@ def export_clip(
     print(f"{LOG_PREFIXES['FILE']} [Clip] Exporting {start_seconds:.1f}-{end_seconds:.1f}s → {out_path.name}")
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=FFMPEG_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         # A half-written clip would otherwise show up on the Clips page.
         out_path.unlink(missing_ok=True)
-        raise ClipError("ffmpeg timed out after 120 seconds")
+        raise ClipError(f"ffmpeg timed out after {FFMPEG_TIMEOUT_SECONDS} seconds")
     except OSError as e:
+        out_path.unlink(missing_ok=True)
         raise ClipError(f"Failed to invoke ffmpeg: {e}")
 
     if proc.returncode != 0:
-        # Clean up any partial output
-        if out_path.exists():
-            try:
-                out_path.unlink()
-            except OSError:
-                pass
+        out_path.unlink(missing_ok=True)  # partial output or the placeholder
         stderr_tail = (proc.stderr or '').strip().splitlines()[-3:]
         detail = '; '.join(stderr_tail) if stderr_tail else f'exit {proc.returncode}'
         raise ClipError(f"ffmpeg failed: {detail}")
 
     if not out_path.exists() or out_path.stat().st_size == 0:
+        out_path.unlink(missing_ok=True)
         raise ClipError("ffmpeg produced no output")
 
     return ClipResult(output_path=out_path, duration_seconds=duration)

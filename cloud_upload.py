@@ -159,6 +159,9 @@ class WarcraftRecorderCloud(CloudUploadProvider):
         self.can_delete = False
         self.usage_bytes = 0
         self.limit_bytes = 0
+        # video_key -> size of files already in storage whose metadata POST
+        # failed: a retry only re-posts the metadata, not gigabytes of video.
+        self._stored_files: Dict[str, int] = {}
 
         raw = f"{username}:{password}".encode('utf-8')
         self.auth_header = f"Basic {base64.b64encode(raw).decode('utf-8')}"
@@ -175,6 +178,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
         Authenticate by fetching /user/affiliations and checking guild membership.
         Mirrors CloudClient.configure() / fetchAffiliations().
         """
+        self.authenticated = False
         try:
             url = f"{self.API_BASE}/user/affiliations"
             resp = requests.get(url, headers=self._headers, timeout=10)
@@ -276,7 +280,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             print(f"[WCR Cloud] Uploading {metadata.video_key} "
                   f"({file_size / (1024**2):.1f} MB)")
 
-            if file_size >= self.MULTIPART_THRESHOLD:
+            if self._stored_files.get(metadata.video_key) == file_size:
+                print(f"[WCR Cloud] {metadata.video_key} already stored, retrying metadata only")
+                success = True
+            elif file_size >= self.MULTIPART_THRESHOLD:
                 success = await self._multipart_upload(
                     file_path, metadata, progress, progress_callback)
             else:
@@ -284,9 +291,12 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     file_path, metadata, progress, progress_callback)
 
             if success:
+                self._stored_files[metadata.video_key] = file_size
                 # Step 3 (both paths): register metadata in WCR database.
                 # Without it the file uses guild storage but nobody can see it.
                 success = await self._post_video_metadata(metadata)
+                if success:
+                    self._stored_files.pop(metadata.video_key, None)
 
             if success:
                 progress.status = 'completed'
@@ -414,8 +424,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 return False
 
             urls: List[str] = create_resp.json().get('urls', [])
-            if not urls:
-                print("[WCR Cloud] No part URLs in multipart response")
+            expected_parts = -(-file_size // part_size)  # ceil
+            if len(urls) != expected_parts:
+                # Completing with parts missing would store a truncated video.
+                print(f"[WCR Cloud] Expected {expected_parts} part URLs, got {len(urls)}")
                 return False
 
             print(f"[WCR Cloud] Multipart upload: {len(urls)} parts")
@@ -476,6 +488,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     if progress_callback:
                         progress_callback(progress)
 
+            if offset != file_size:
+                print(f"[WCR Cloud] File changed during upload ({offset} of {file_size} bytes sent)")
+                return False
+
             # Step 3 – complete multipart upload
             complete_resp = requests.post(
                 f"{self.API_BASE}/guild/{g}/complete-multipart-upload",
@@ -520,10 +536,8 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 continue
 
             if resp.status_code == 401:
-                # Token expired during a long upload: log in again and retry.
-                print("[WCR Cloud] 401 posting metadata — re-authenticating")
-                await self.authenticate()
-                continue
+                self._note_rejected_credentials()
+                return False
 
             if resp.status_code in (200, 201, 204):
                 print(f"[WCR Cloud] ✅ Metadata registered: {metadata.video_key}")
@@ -591,26 +605,34 @@ class WarcraftRecorderCloud(CloudUploadProvider):
     async def protect_videos(self, video_names: List[str], protect: bool) -> bool:
         """POST /guild/{g}/bulk/protect. Protected videos survive the housekeeper."""
         g = requests.utils.quote(self.guild_name)
-        for attempt in (1, 2):
-            try:
-                resp = requests.post(
-                    f"{self.API_BASE}/guild/{g}/bulk/protect",
-                    headers={**self._headers, 'Content-Type': 'application/json'},
-                    json={'videos': video_names, 'protect': protect},
-                    timeout=15,
-                )
-            except requests.RequestException as e:
-                print(f"[WCR Cloud] Error setting protection: {redact_urls(e)}")
-                return False
-            if resp.status_code == 401 and attempt == 1:
-                await self.authenticate()
-                continue
-            if resp.status_code in (200, 201, 204):
-                print(f"[WCR Cloud] {'Protected' if protect else 'Unprotected'}: {', '.join(video_names)}")
-                return True
-            print(f"[WCR Cloud] Setting protection failed: {resp.status_code} {resp.text[:200]}")
+        try:
+            resp = requests.post(
+                f"{self.API_BASE}/guild/{g}/bulk/protect",
+                headers={**self._headers, 'Content-Type': 'application/json'},
+                json={'videos': video_names, 'protect': protect},
+                timeout=15,
+            )
+        except requests.RequestException as e:
+            print(f"[WCR Cloud] Error setting protection: {redact_urls(e)}")
             return False
+        if resp.status_code == 401:
+            self._note_rejected_credentials()
+            return False
+        if resp.status_code in (200, 201, 204):
+            print(f"[WCR Cloud] {'Protected' if protect else 'Unprotected'}: {', '.join(video_names)}")
+            return True
+        print(f"[WCR Cloud] Setting protection failed: {resp.status_code} {resp.text[:200]}")
         return False
+
+    def _note_rejected_credentials(self):
+        """A 401 means the username/password no longer work.
+
+        Auth is static HTTP Basic, so logging in again can't help: stop
+        uploading until the user saves new credentials (which rebuilds the
+        manager).
+        """
+        print("[WCR Cloud] ❌ Credentials rejected (401); update them in Config")
+        self.authenticated = False
 
     def _run_housekeeping(self, encoded_guild: str):
         """POST /guild/{g}/housekeeper — fire-and-forget after each upload.

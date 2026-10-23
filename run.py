@@ -35,6 +35,7 @@ from typing import Optional
 
 
 from sidecar_cache import sidecars, write_sidecar
+from clip_export import is_clip, strip_clip_suffix
 from wcr_format import normalize_category
 from constants import (
     DEFAULT_WEB_HOST,
@@ -380,7 +381,6 @@ def _resolve_recording_path(record_dir: Path, filename: str) -> Path:
 
 @app.route('/api/recordings/<path:filename>', methods=['DELETE'])
 def delete_recording_endpoint(filename: str):
-    s = get_state()
     try:
         record_dir = get_recording_directory()
         if not record_dir:
@@ -391,14 +391,15 @@ def delete_recording_endpoint(filename: str):
             return jsonify({'error': 'Invalid path'}), 403
         if not file_path.exists():
             return jsonify({'error': 'File not found'}), 404
-        if s.combat_parser and s.combat_parser.file_manager and \
-                s.combat_parser.file_manager.delete_recording(file_path, reason="user request"):
-            return jsonify({'success': True, 'message': f'Deleted {filename}'})
-        else:
-            file_path.unlink()
-            return jsonify({'success': True, 'message': f'Deleted {filename}'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # missing_ok: a video gone by now (retention, delete after upload)
+        # still counts as deleted, and its sidecar must not be left behind.
+        file_path.unlink(missing_ok=True)
+        file_path.with_suffix('.json').unlink(missing_ok=True)
+    except OSError as e:
+        return jsonify({'error': f'Could not delete {filename}: {e}'}), 500
+    print(f"[RECORDINGS] Deleted (user request): {filename}")
+    socketio.emit('recordings_updated')
+    return jsonify({'success': True, 'message': f'Deleted {filename}'})
 
 
 @app.route('/video/<path:filename>')
@@ -621,20 +622,20 @@ def scan_recording_cooldowns(filename: str):
     if not json_path.exists():
         return jsonify({'error': 'No metadata JSON found for this recording'}), 404
 
-    data = request.get_json() or {}
-    log_file = data.get('log_file', '').strip()
-    if not log_file:
+    data = request.get_json(silent=True) or {}
+    log_file = data.get('log_file')
+    if not isinstance(log_file, str) or not log_file.strip():
         return jsonify({'error': 'log_file is required'}), 400
 
-    log_path = Path(log_file).resolve()
-    if not log_path.is_file():
-        return jsonify({'error': f'Log file not found: {log_file}'}), 400
-
     s = get_state()
-    if s.config_manager:
-        log_dir = s.config_manager.LOG_DIR.resolve()
-        if not log_path.is_relative_to(log_dir):
-            return jsonify({'error': 'Invalid log file path'}), 403
+    if not s.config_manager:
+        return jsonify({'error': 'Config not initialized'}), 500
+    # Only combat logs may be read through this route.
+    log_path = Path(log_file.strip()).resolve()
+    if not log_path.is_relative_to(s.config_manager.LOG_DIR.resolve()):
+        return jsonify({'error': 'Invalid log file path'}), 403
+    if not log_path.is_file():
+        return jsonify({'error': f'Log file not found: {log_path.name}'}), 400
 
     try:
         with open(json_path, 'r', encoding='utf-8') as f:
@@ -777,14 +778,14 @@ def get_clips():
     if not record_dir:
         return jsonify({'clips': [], 'directory': None})
     try:
-        import re as _re
-        _clip_re = _re.compile(r'_clip_\d+-\d+$')
         s = get_state()
         ext = s.config_manager.RECORDING_EXTENSION.lower() if s.config_manager else '.mp4'
         clips = []
         for file in record_dir.rglob(f'*{ext}'):
-            if file.is_file() and _clip_re.search(file.stem):
-                stat = file.stat()
+            if is_clip(file) and file.is_file():
+                stat = _stat_or_none(file)
+                if not stat:
+                    continue
                 clips.append({
                     'name': str(file.relative_to(record_dir)),
                     'size': stat.st_size,
@@ -806,8 +807,7 @@ def delete_clip(filename: str):
         clip_path = _resolve_recording_path(record_dir, filename)
     except _PathTraversalError:
         return jsonify({'error': 'Invalid path'}), 403
-    import re as _re
-    if not _re.search(r'_clip_\d+-\d+', clip_path.stem):
+    if not is_clip(clip_path):
         return jsonify({'error': 'Not a clip file'}), 400
     if not clip_path.exists():
         return jsonify({'error': 'File not found'}), 404
@@ -822,7 +822,6 @@ def delete_clip(filename: str):
 @app.route('/api/clips/<path:filename>/rename', methods=['POST'])
 def rename_clip(filename: str):
     """Rename a clip file. Expects JSON body: {"name": "new display name"}"""
-    import re as _re
     record_dir = get_recording_directory()
     if not record_dir:
         return jsonify({'error': 'Recording directory not available'}), 500
@@ -830,13 +829,13 @@ def rename_clip(filename: str):
         clip_path = _resolve_recording_path(record_dir, filename)
     except _PathTraversalError:
         return jsonify({'error': 'Invalid path'}), 403
-    if not _re.search(r'_clip_\d+-\d+', clip_path.stem):
+    if not is_clip(clip_path):
         return jsonify({'error': 'Not a clip file'}), 400
     if not clip_path.exists():
         return jsonify({'error': 'File not found'}), 404
 
     payload = request.get_json(silent=True) or {}
-    new_name = (payload.get('name') or '').strip()
+    new_name = str(payload.get('name') or '').strip()
     if not new_name:
         return jsonify({'error': 'Name is required'}), 400
 
@@ -849,8 +848,7 @@ def rename_clip(filename: str):
         return jsonify({'error': 'Name is invalid after sanitisation'}), 400
 
     # Preserve the _clip_START-END suffix and extension
-    clip_suffix_match = _re.search(r'(_clip_\d+-\d+)$', clip_path.stem)
-    clip_suffix = clip_suffix_match.group(1) if clip_suffix_match else ''
+    clip_suffix = clip_path.stem[len(strip_clip_suffix(clip_path.stem)):]
     new_stem = new_name + clip_suffix
     new_path = clip_path.parent / (new_stem + clip_path.suffix)
 
@@ -874,17 +872,14 @@ def get_stats():
     if not record_dir:
         return jsonify({'error': 'Recording directory not available'}), 500
 
-    import re as _re
-    _clip_re = _re.compile(r'_clip_\d+-\d+')
-
     encounters = []
     for json_path in record_dir.rglob('*.json'):
-        # Skip JSON sidecars that belong to clip files
-        if _clip_re.search(json_path.stem):
-            continue
         data = sidecars.read(json_path)
         # Skip files that don't look like recording metadata
         if not data or ('encounterName' not in data and 'category' not in data):
+            continue
+        # Downloaded POVs are other players' copies of pulls, not yours.
+        if data.get('pov'):
             continue
         # Cached sidecars are shared: copy before correcting old category spellings.
         encounters.append({**data, 'category': normalize_category(data.get('category'))})
@@ -931,7 +926,31 @@ def get_recording_directory() -> Optional[Path]:
     return None
 
 
-_CLIP_STEM_RE = re.compile(r'_clip_\d+-\d+$')
+def _stat_or_none(path: Path) -> Optional[os.stat_result]:
+    """stat(), or None if the file vanished (retention, a delete) mid-scan."""
+    try:
+        return path.stat()
+    except OSError:
+        return None
+
+
+def _recording_summary(meta: dict) -> dict:
+    """The sidecar fields the recordings list shows."""
+    return {
+        'result': meta.get('result'),
+        'duration': meta.get('duration'),
+        'deaths': meta.get('deaths', []),
+        'uniqueHash': meta.get('uniqueHash'),
+        'start': meta.get('start'),
+        # Lets the UI show recordings regardless of filename scheme.
+        'encounterName': meta.get('encounterName'),
+        'difficulty': meta.get('difficulty'),
+        'difficultyID': meta.get('difficultyID'),
+        'bossPercent': meta.get('bossPercent'),
+        'category': meta.get('category'),
+        'player': (meta.get('player') or {}).get('_name'),
+        'protected': bool(meta.get('protected')),
+    }
 
 
 def list_recording_files() -> list:
@@ -945,35 +964,17 @@ def list_recording_files() -> list:
 
     for file in record_dir.rglob(f'*{ext}'):
         # Clips have their own page (/api/clips) and no sidecar.
-        if not file.is_file() or _CLIP_STEM_RE.search(file.stem):
+        if is_clip(file) or not file.is_file():
             continue
-        json_path = file.with_suffix('.json')
-        summary = None
-        if json_path.exists():
-            try:
-                meta = sidecars.read(json_path)
-                if meta is None:
-                    continue
-                if meta.get('pov'):
-                    continue
-                summary = {
-                    'result': meta.get('result'),
-                    'duration': meta.get('duration'),
-                    'deaths': meta.get('deaths', []),
-                    'uniqueHash': meta.get('uniqueHash'),
-                    'start': meta.get('start'),
-                    # Lets the UI show recordings regardless of filename scheme.
-                    'encounterName': meta.get('encounterName'),
-                    'difficulty': meta.get('difficulty'),
-                    'difficultyID': meta.get('difficultyID'),
-                    'bossPercent': meta.get('bossPercent'),
-                    'category': meta.get('category'),
-                    'player': (meta.get('player') or {}).get('_name'),
-                    'protected': bool(meta.get('protected')),
-                }
-            except Exception:
-                continue
-        stat = file.stat()
+        stat = _stat_or_none(file)
+        if not stat:
+            continue
+        # A missing or unreadable sidecar still lists the file (meta None),
+        # so the user can see and delete it.
+        meta = sidecars.read(file.with_suffix('.json'))
+        if meta and meta.get('pov'):
+            continue
+        summary = _recording_summary(meta) if meta else None
         recordings.append({
             'name': str(file.relative_to(record_dir)),
             'size': stat.st_size,

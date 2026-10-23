@@ -119,7 +119,7 @@ class RecordingProcessor:
             print(f"{LOG_PREFIXES['PROC']} Recording too short ({recording_duration:.1f}s)")
             return self._handle_short_recording(recording_path, recording_duration)
 
-        if not self.file_manager.validate_file_stable(recording_path):
+        if not self.file_manager.wait_until_stable(recording_path):
             print(f"{LOG_PREFIXES['PROC']} Recording file not stable, skipping")
             return None
 

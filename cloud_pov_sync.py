@@ -487,7 +487,8 @@ class PovSyncManager:
 
         # A partial .tmp from an interrupted attempt or session is resumed.
         tmp_path = dest.with_suffix(dest.suffix + '.tmp')
-        if not self._stream_to_file(signed_url, tmp_path, progress):
+        refresh_url = lambda: self._cloud.get_signed_download_url(key)
+        if not self._stream_to_file(signed_url, tmp_path, progress, refresh_url):
             return  # stopping; the .tmp is kept for next time
 
         downloaded = tmp_path.stat().st_size
@@ -504,19 +505,28 @@ class PovSyncManager:
         self._notify_progress(progress)
         print(f"[PovSync] Saved: {dest}")
 
-    def _stream_to_file(self, url: str, tmp_path: Path, progress: DownloadProgress) -> bool:
+    def _stream_to_file(self, url: str, tmp_path: Path, progress: DownloadProgress,
+                        refresh_url: Callable[[], Optional[str]]) -> bool:
         """Download *url* into *tmp_path*, continuing from its current size.
 
         Returns True when the download finished, False if stopping. While a
         recording runs the connection is closed rather than left idle (it
-        would time out during a long fight) and resumed afterwards.
+        would time out during a long fight) and resumed afterwards. The signed
+        URL can expire during that pause (an M+ run takes up to an hour), or
+        already have expired in the cached video list, so a 403 fetches a
+        fresh one from *refresh_url* once per attempt.
         """
+        url_is_fresh = False
         while True:
             offset = tmp_path.stat().st_size if tmp_path.exists() else 0
             headers = {'Range': f'bytes={offset}-'} if offset else {}
             with requests.get(url, stream=True, timeout=600, headers=headers) as resp:
                 if offset and resp.status_code == 416:
                     return True  # nothing left to fetch: the .tmp is already complete
+                if resp.status_code == 403 and not url_is_fresh:
+                    url = refresh_url() or url
+                    url_is_fresh = True
+                    continue
                 resp.raise_for_status()
                 resumed = offset > 0 and resp.status_code == 206
                 if offset and not resumed:
@@ -536,6 +546,7 @@ class PovSyncManager:
                         return True
             if not self._wait_for_recording_idle():
                 return False
+            url_is_fresh = False
 
     def _get_download_dir(self, recording_dir: Path) -> Path:
         return resolve_pov_download_dir(self._config, recording_dir)

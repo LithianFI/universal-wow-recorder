@@ -2,6 +2,7 @@
 Main combat log parser coordinating all components.
 """
 
+import re
 import time
 import threading
 import traceback
@@ -33,6 +34,13 @@ _DISPATCHED_EVENTS = frozenset((
     "CHALLENGE_MODE_START", "CHALLENGE_MODE_END",
     "ZONE_CHANGE",
 ))
+
+
+# A unit GUID ("Creature-0-...", "Player-1084-...") or the empty GUID.
+_GUID_RE = re.compile(r'(?:0{16}|[A-Za-z]+-[0-9A-Fa-f-]+)$')
+
+# Lines that close a fight's log window.
+_END_EVENTS = frozenset({'ENCOUNTER_END', 'CHALLENGE_MODE_END'})
 
 
 def _event_name(line: str) -> str:
@@ -415,10 +423,13 @@ class CombatParser:
           arg(4)  = srcRaidFlags arg(5)  = destGUID   arg(6)  = destName
           arg(7)  = destFlags    arg(8)  = destRaidFlags
           arg(9)  = spellId      arg(10) = spellName  arg(11) = spellSchool
-          arg(12) = amount       arg(13) = baseAmount arg(14) = currentHP (dest)
-          arg(15) = maxHP (dest) ...
+          arg(12) = infoGUID     arg(13) = ownerGUID  (advanced logging)
+          arg(14) = currentHP    arg(15) = maxHP      (of infoGUID, the target) ...
 
         WCR: arg(14) = currentHP, arg(15) = maxHP  (LogHandler.ts lines 508/524)
+
+        The split is not quote-aware: a comma inside a quoted name shifts every
+        later field, so the two GUID fields are checked before the HPs are read.
         """
         try:
             ts_split = line.split('  ', 1)
@@ -429,6 +440,8 @@ class CombatParser:
             if len(parts) < 16:
                 return
 
+            if not (_GUID_RE.match(parts[12]) and _GUID_RE.match(parts[13])):
+                return  # shifted by a comma in a name
             max_hp = int(parts[15].strip())
 
             # WCR: skip units with maxHP < 100M on Retail (avoids tracking adds)
@@ -788,7 +801,10 @@ class CombatParser:
                             continue
                         in_window = True
                     window_lines.append(line)
-                    if context.end_ts and context.end_ts in line:
+                    # The END line itself, not the first line of its second:
+                    # deaths and casts logged on that tick come before it.
+                    if (context.end_ts and line.startswith(context.end_ts)
+                            and _event_name(line) in _END_EVENTS):
                         break
         except OSError as e:
             print(f"{LOG_PREFIXES['PARSER']} Error reading log for encounter data: {e}")

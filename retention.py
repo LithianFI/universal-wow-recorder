@@ -14,26 +14,16 @@ Clips are skipped entirely: a user exporting a 20-second highlight shouldn't
 have it evicted by retention.
 """
 
-import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from clip_export import is_clip
 from constants import VIDEO_EXTENSIONS, LOG_PREFIXES
 from sidecar_cache import sidecars
 from wcr_format import normalize_category
-
-
-# Clip files produced by the export endpoint are suffixed with "_clip_MMSS-MMSS"
-# right before the extension. We exempt these from retention sweeps.
-_CLIP_SUFFIX_RE = re.compile(r'_clip_\d+-\d+$')
-
-
-def _is_clip(path: Path) -> bool:
-    """Return True if *path* looks like an exported clip file."""
-    return bool(_CLIP_SUFFIX_RE.search(path.stem))
 
 
 def _load_sidecar(video_path: Path) -> Optional[dict]:
@@ -107,7 +97,7 @@ def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int =
 
     candidates: Dict[Path, dict] = {}
     for f in _list_video_files(record_dir):
-        meta = None if _is_clip(f) else _load_sidecar(f)
+        meta = None if is_clip(f) else _load_sidecar(f)
         if meta is not None and not meta.get('protected') and not is_pending_upload(f):
             candidates[f] = meta
     plan.scanned = len(candidates)

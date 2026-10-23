@@ -73,6 +73,9 @@ DIFFICULTY_NAMES = {
 
 # Default timeouts and delays (in seconds)
 DEFAULT_FILE_STABILITY_CHECK_INTERVAL = 1.0 # Used by RecordingFileManager
+# How long OBS may keep finalizing a stopped recording (a long M+ run on a
+# slow disk) before the file is given up on.
+FILE_STABILITY_TIMEOUT_SECONDS = 60.0
 
 # OBS WebSocket defaults
 DEFAULT_OBS_HOST = 'localhost'              # Used by OBSClient

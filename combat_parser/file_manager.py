@@ -11,6 +11,7 @@ from typing import Optional
 from constants import (
     VIDEO_EXTENSIONS,
     DEFAULT_FILE_STABILITY_CHECK_INTERVAL,
+    FILE_STABILITY_TIMEOUT_SECONDS,
     LOG_PREFIXES,
 )
 
@@ -71,24 +72,26 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} Error finding recordings: {e}")
             return None
     
-    def validate_file_stable(self, file_path: Path, 
-                           check_interval: float = DEFAULT_FILE_STABILITY_CHECK_INTERVAL) -> bool:
-        """Check if a file has stopped changing (OBS finished writing)."""
+    def wait_until_stable(self, file_path: Path,
+                          check_interval: float = DEFAULT_FILE_STABILITY_CHECK_INTERVAL,
+                          timeout: float = FILE_STABILITY_TIMEOUT_SECONDS) -> bool:
+        """Wait until OBS has finished writing *file_path* (its size stops
+        changing between two checks). False if it is still growing at
+        *timeout* or can't be read."""
+        deadline = time.monotonic() + timeout
         try:
-            if not file_path.exists():
-                return False
-            
-            initial_size = file_path.stat().st_size
-            time.sleep(check_interval)
-            final_size = file_path.stat().st_size
-            
-            if initial_size != final_size:
-                print(f"{LOG_PREFIXES['FILE']} File still changing: {initial_size} → {final_size} bytes")
-                return False
-            
-            return True
-            
-        except Exception as e:
+            previous_size = file_path.stat().st_size
+            while True:
+                time.sleep(check_interval)
+                size = file_path.stat().st_size
+                if size == previous_size:
+                    return True
+                if time.monotonic() >= deadline:
+                    print(f"{LOG_PREFIXES['FILE']} File still changing after {timeout:.0f}s: {file_path.name}")
+                    return False
+                print(f"{LOG_PREFIXES['FILE']} File still being written: {previous_size} → {size} bytes")
+                previous_size = size
+        except OSError as e:
             print(f"{LOG_PREFIXES['FILE']} Error validating file stability: {e}")
             return False
     
