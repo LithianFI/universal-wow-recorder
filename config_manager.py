@@ -5,11 +5,27 @@ Handles loading, saving, and accessing configuration settings.
 
 import os
 import re
+import tempfile
+import threading
 import configparser
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
 
 from metadata_generator import RecordingCategory
+
+
+def _int_setting(minimum: int, maximum: Optional[int] = None):
+    """Coercer for a numeric setting in _UPDATE_MAP; raises ValueError for bad input."""
+    def coerce(value) -> str:
+        try:
+            number = int(str(value).strip())
+        except ValueError:
+            raise ValueError(f"expected a whole number, got {value!r}") from None
+        if number < minimum or (maximum is not None and number > maximum):
+            upper = f" and {maximum}" if maximum is not None else " or more"
+            raise ValueError(f"{number} is out of range (must be {minimum}{upper})")
+        return str(number)
+    return coerce
 
 
 class ConfigManager:
@@ -76,8 +92,10 @@ class ConfigManager:
             'gdrive_folder_id': '',
             'proton_enabled': 'false',
             'proton_folder': '',
-            # POV sync — check cloud for other players' recordings of the same encounter
-            'pov_sync_enabled': 'false',
+            # POV sync — check cloud for other players' recordings of the same encounter.
+            # pov_sync_enabled has no default here on purpose: save() writes every
+            # option, and a written default would read back as an explicit choice
+            # (see POV_SYNC_ENABLED).
             'pov_sync_interval': '15',
             'pov_auto_download': 'false',
             'pov_download_dir': '',
@@ -96,18 +114,18 @@ class ConfigManager:
         }),
         'obs': ('OBS', {
             'host':     str,
-            'port':     str,
+            'port':     _int_setting(1, 65535),
             'password': lambda v: None if v == '[set]' else str(v),
         }),
         'recording': ('Recording', {
-            'rename_delay':            str,
-            'min_recording_duration':  str,
+            'rename_delay':            _int_setting(0, 600),
+            'min_recording_duration':  _int_setting(0),
             'delete_short_recordings': lambda v: str(v).lower(),
             'track_player_deaths':     lambda v: str(v).lower(),
             'organize_by_date':        lambda v: str(v).lower(),
             'recording_path_fallback': str,
-            'retention_max_age_days':  str,
-            'retention_max_per_group': str,
+            'retention_max_age_days':  _int_setting(0),
+            'retention_max_per_group': _int_setting(0),
         }),
         'difficulties': ('Difficulties', {
             'record_lfr':    lambda v: str(v).lower(),
@@ -133,7 +151,7 @@ class ConfigManager:
             'gdrive_credentials_file': str,
             'gdrive_folder_id':        str,
             'pov_sync_enabled':    lambda v: str(v).lower(),
-            'pov_sync_interval':   str,
+            'pov_sync_interval':   _int_setting(1, 1440),
             'pov_auto_download':   lambda v: str(v).lower(),
             'pov_download_dir':    str,
         }),
@@ -151,6 +169,8 @@ class ConfigManager:
         """
         self.config_path = config_path or self._get_default_config_path()
         self.config = configparser.ConfigParser(interpolation=None)
+        # Flask request threads and the OBS status loop both save.
+        self._save_lock = threading.Lock()
         self._load_configuration()
 
     # ---------------------------------------------------------------------
@@ -169,22 +189,35 @@ class ConfigManager:
         self.config.read_dict(self.DEFAULT_CONFIG)
         self._explicit_options: Set[tuple] = set()
 
-        if self.config_path.exists():
-            try:
-                self.config.read(self.config_path)
-                self._record_explicit_options()
-                print(f"[CONFIG] Loaded configuration from: {self.config_path}")
-            except configparser.Error as e:
-                print(f"[CONFIG] Error parsing config file: {e}")
-                print("[CONFIG] Creating fresh configuration...")
-                self._create_default_config()
-                self.config.read(self.config_path)
-                self._record_explicit_options()
-        else:
+        if not self.config_path.exists():
             print(f"[CONFIG] Configuration file not found.")
             self._create_default_config()
+
+        try:
             self.config.read(self.config_path)
-            self._record_explicit_options()
+        except configparser.Error as e:
+            self._set_aside_unreadable_config(e)
+            return
+        self._record_explicit_options()
+        print(f"[CONFIG] Loaded configuration from: {self.config_path}")
+
+    def _set_aside_unreadable_config(self, error: configparser.Error):
+        """Keep a config that fails to parse as <name>.bad and run on defaults.
+
+        Overwriting it would silently lose credentials and paths; the file
+        stays out of the way until the user fixes it or saves new settings.
+        """
+        print(f"[CONFIG] ❌ Error parsing config file: {error}")
+        bad_path = self.config_path.with_name(self.config_path.name + '.bad')
+        try:
+            os.replace(self.config_path, bad_path)
+            print(f"[CONFIG] Moved the unreadable file to {bad_path}; fix it and rename it back, "
+                  f"or save settings to start fresh. Running on defaults.")
+        except OSError as e:
+            print(f"[CONFIG] Could not move the unreadable file aside ({e}). Running on defaults.")
+        # read() may have applied part of the file before failing.
+        self.config = configparser.ConfigParser(interpolation=None)
+        self.config.read_dict(self.DEFAULT_CONFIG)
 
     def _record_explicit_options(self):
         """Record which (section, option) pairs are actually present on disk,
@@ -314,13 +347,34 @@ proton_folder =
 """
 
     def save(self):
-        """Save current configuration to file."""
+        """Save current configuration to file.
+
+        Written to a temp file and swapped in, so a crash can't leave a
+        truncated config; owner-only because it holds passwords.
+        Raises OSError if the file can't be written.
+        """
+        with self._save_lock:
+            try:
+                self._write_atomically()
+            except OSError as e:
+                print(f"[CONFIG] ❌ Failed to save config: {e}")
+                raise
+        print(f"[CONFIG] Configuration saved to: {self.config_path}")
+
+    def _write_atomically(self):
+        directory = self.config_path.parent
+        directory.mkdir(parents=True, exist_ok=True)
+        # mkstemp creates the file with mode 0600.
+        fd, tmp_name = tempfile.mkstemp(dir=directory, prefix=self.config_path.name, suffix='.tmp')
         try:
-            with open(self.config_path, 'w') as f:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 self.config.write(f)
-            print(f"[CONFIG] Configuration saved to: {self.config_path}")
-        except Exception as e:
-            print(f"[CONFIG] Failed to save config: {e}")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_name, self.config_path)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
 
     # ---------------------------------------------------------------------
     # Path Handling
@@ -338,14 +392,22 @@ proton_folder =
         """Sanitize and normalize a path string."""
         if not path_str:
             return Path()
-        path_str = path_str.strip().strip('"').strip("'")
-        if path_str.startswith('~'):
-            path_str = str(Path.home()) + path_str[1:]
+        path_str = os.path.expanduser(path_str.strip().strip('"').strip("'"))
         return Path(os.path.normpath(path_str))
 
     # ---------------------------------------------------------------------
     # Configuration Access (Properties)
     # ---------------------------------------------------------------------
+
+    def _get_int(self, section: str, key: str, fallback: int, minimum: int = 0) -> int:
+        """Read an int, falling back on a hand-edited non-number and clamping
+        to *minimum*, so one bad value can't crash the thread that reads it."""
+        try:
+            value = self.config.getint(section, key, fallback=fallback)
+        except ValueError:
+            print(f"[CONFIG] ⚠️ [{section}] {key} is not a number; using {fallback}")
+            value = fallback
+        return max(minimum, value)
 
     @property
     def LOG_DIR(self) -> Path:
@@ -378,7 +440,7 @@ proton_folder =
     @property
     def OBS_PORT(self) -> int:
         """Get OBS WebSocket port."""
-        return self.config.getint('OBS', 'port', fallback=4455)
+        return self._get_int('OBS', 'port', 4455, minimum=1)
 
     @property
     def OBS_PASSWORD(self) -> str:
@@ -388,12 +450,12 @@ proton_folder =
     @property
     def RENAME_DELAY(self) -> int:
         """Get rename delay in seconds."""
-        return self.config.getint('Recording', 'rename_delay', fallback=3)
+        return self._get_int('Recording', 'rename_delay', 3)
 
     @property
     def MIN_RECORDING_DURATION(self) -> int:
         """Get minimum recording duration in seconds."""
-        return self.config.getint('Recording', 'min_recording_duration', fallback=5)
+        return self._get_int('Recording', 'min_recording_duration', 5)
 
     @property
     def DELETE_SHORT_RECORDINGS(self) -> bool:
@@ -416,12 +478,12 @@ proton_folder =
     @property
     def RETENTION_MAX_AGE_DAYS(self) -> int:
         """Delete recordings older than this many days (0 = disabled)."""
-        return self.config.getint('Recording', 'retention_max_age_days', fallback=0)
+        return self._get_int('Recording', 'retention_max_age_days', 0)
 
     @property
     def RETENTION_MAX_PER_GROUP(self) -> int:
         """Keep at most N recordings per (difficulty, boss) group (0 = disabled)."""
-        return self.config.getint('Recording', 'retention_max_per_group', fallback=0)
+        return self._get_int('Recording', 'retention_max_per_group', 0)
 
     @property
     def RECORD_LFR(self) -> bool:
@@ -527,7 +589,7 @@ proton_folder =
     @property
     def POV_SYNC_INTERVAL(self) -> int:
         """Sync interval in minutes."""
-        return self.config.getint('CloudUpload', 'pov_sync_interval', fallback=15)
+        return self._get_int('CloudUpload', 'pov_sync_interval', 15, minimum=1)
 
     @property
     def POV_AUTO_DOWNLOAD(self) -> bool:
@@ -623,23 +685,39 @@ proton_folder =
         Only keys present in the payload are written; unknown keys are silently
         ignored. Adding a new config field in future only requires one entry in
         _UPDATE_MAP — nothing else needs to change.
+
+        Raises ValueError (naming the field) if a value is invalid; nothing is
+        applied in that case.
         """
-        for section_key, section_data in data.items():
-            if section_key == 'boss_names':
-                self._replace_boss_names(section_data)
-                continue
-            if section_key not in self._UPDATE_MAP:
-                continue
-            ini_section, key_map = self._UPDATE_MAP[section_key]
+        if not isinstance(data, dict):
+            raise ValueError("expected a JSON object")
+        changes = self._convert_update(data)
+        if 'boss_names' in data:
+            self._replace_boss_names(data['boss_names'])
+        for ini_section, key, value in changes:
             if not self.config.has_section(ini_section):
                 self.config.add_section(ini_section)
-            for key, value in section_data.items():
-                if key in key_map:
-                    converted = key_map[key](value)
-                    if converted is not None:
-                        self.config.set(ini_section, key, converted)
-                        self._explicit_options.add((ini_section, key))
+            self.config.set(ini_section, key, value)
+            self._explicit_options.add((ini_section, key))
         self.save()
+
+    def _convert_update(self, data: dict) -> list:
+        """Validate and convert a payload into [(section, key, value)]."""
+        changes = []
+        for section_key, section_data in data.items():
+            if section_key not in self._UPDATE_MAP or not isinstance(section_data, dict):
+                continue
+            ini_section, key_map = self._UPDATE_MAP[section_key]
+            for key, value in section_data.items():
+                if key not in key_map:
+                    continue
+                try:
+                    converted = key_map[key](value)
+                except ValueError as e:
+                    raise ValueError(f"{ini_section} {key}: {e}") from None
+                if converted is not None:
+                    changes.append((ini_section, key, converted))
+        return changes
 
     def print_summary(self):
         """Print configuration summary."""

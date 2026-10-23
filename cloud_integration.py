@@ -4,8 +4,9 @@ Integrates cloud upload functionality with the existing recording system.
 """
 
 import asyncio
+import json
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Set
 from threading import Thread
 
 from cloud_upload import (
@@ -21,6 +22,23 @@ import wcr_format
 
 # Pending/failed uploads, kept next to config.ini so they survive restarts.
 UPLOAD_QUEUE_STATE_FILE = 'upload_queue.json'
+
+
+def saved_pending_uploads(config) -> Set[Path]:
+    """Resolved paths the saved upload queue still has to upload.
+
+    For when no manager is running (still logging in, or login failed):
+    those files must not be deleted before the queue gets to them.
+    """
+    state_file = Path(config.config_path).parent / UPLOAD_QUEUE_STATE_FILE
+    try:
+        data = json.loads(state_file.read_text(encoding='utf-8'))
+        return {Path(item['file_path']).resolve() for item in data.get('pending', [])}
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
+        print(f"[Cloud Manager] ⚠️ Could not read the saved upload queue: {e}")
+        return set()
 
 # How long shutdown waits for an in-flight upload. Together with the parser's
 # thread join this must stay under Electron's kill timeout (30 s).
@@ -99,8 +117,13 @@ class CloudUploadManager:
         """Delete the local recording and its sidecar if the user asked for it."""
         if not self.config.CLOUD_DELETE_AFTER_UPLOAD:
             return
-        if wcr_format.read_sidecar(file_path).get('protected'):
+        sidecar = wcr_format.read_sidecar(file_path)
+        if sidecar.get('protected'):
             print(f"[Cloud Manager] Kept local copy of protected recording: {file_path.name}")
+            return
+        if not sidecar and file_path.with_suffix('.json').exists():
+            # Unreadable right now (e.g. mid-write): it may be marked Keep.
+            print(f"[Cloud Manager] Kept local copy, its metadata could not be read: {file_path.name}")
             return
         for path in (file_path, file_path.with_suffix('.json')):
             path.unlink(missing_ok=True)
@@ -117,6 +140,9 @@ class CloudUploadManager:
             return await self._init_google_drive()
         print(f"[Cloud Manager] Unknown/unsupported provider: {provider_name}")
         return False
+
+    def is_upload_pending(self, file_path: Path) -> bool:
+        return bool(self.upload_queue) and self.upload_queue.is_pending(file_path)
 
     def retry_failed_uploads(self) -> int:
         return self.upload_queue.retry_failed() if self.upload_queue else 0

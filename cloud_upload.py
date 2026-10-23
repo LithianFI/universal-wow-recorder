@@ -4,6 +4,7 @@ Provides automated upload to cloud storage services after recording completion.
 """
 
 import os
+import re
 import json
 import time
 import base64
@@ -29,6 +30,20 @@ MAX_BACKOFF_SECONDS = 30
 
 def _backoff(attempt: int):
     time.sleep(min(2 ** (attempt - 1), MAX_BACKOFF_SECONDS))
+
+
+# Full URLs, and the bare paths urllib3 reports as "url: /path?query".
+_URL_QUERY_RE = re.compile(r'((?:https?://|url: )[^\s?\'"]+)\?[^\s\'"]*')
+
+
+def redact_urls(error) -> str:
+    """Error text with URL query strings removed.
+
+    requests puts the full URL in its messages; for R2 signed URLs and Drive
+    upload sessions the query string is a bearer credential, and these
+    messages are logged and shown in the UI.
+    """
+    return _URL_QUERY_RE.sub(r'\1?<redacted>', str(error))
 
 
 # =============================================================================
@@ -195,12 +210,12 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             try:
                 self._fetch_storage_info()
             except Exception as e:
-                print(f"[WCR Cloud] Warning: could not fetch storage info: {e}")
+                print(f"[WCR Cloud] Warning: could not fetch storage info: {redact_urls(e)}")
 
             return True
 
         except Exception as e:
-            print(f"[WCR Cloud] ❌ Authentication error: {e}")
+            print(f"[WCR Cloud] ❌ Authentication error: {redact_urls(e)}")
             return False
 
     def _fetch_storage_info(self):
@@ -287,9 +302,9 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             return success
 
         except Exception as e:
-            print(f"[WCR Cloud] ❌ Upload error: {e}")
+            print(f"[WCR Cloud] ❌ Upload error: {redact_urls(e)}")
             progress.status = 'failed'
-            progress.error = str(e)
+            progress.error = redact_urls(e)
             if progress_callback:
                 progress_callback(progress)
             return False
@@ -352,7 +367,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                         print(f"[WCR Cloud] PUT attempt {attempts}/5 failed: "
                               f"{put_resp.status_code}")
                 except Exception as e:
-                    print(f"[WCR Cloud] PUT attempt {attempts}/5 error: {e}")
+                    print(f"[WCR Cloud] PUT attempt {attempts}/5 error: {redact_urls(e)}")
 
             if not success:
                 print(f"[WCR Cloud] Single part upload failed after 5 attempts: {key}")
@@ -365,7 +380,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             return True
 
         except Exception as e:
-            print(f"[WCR Cloud] Single upload error: {e}")
+            print(f"[WCR Cloud] Single upload error: {redact_urls(e)}")
             return False
 
     # ------------------------------------------------------------------
@@ -446,7 +461,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                                       f"failed: {put_resp.status_code}")
                         except Exception as e:
                             print(f"[WCR Cloud] Part {part_num} attempt {attempts}/5 "
-                                  f"error: {e}")
+                                  f"error: {redact_urls(e)}")
 
                     if not part_success or put_resp is None:
                         print(f"[WCR Cloud] Part {part_num} failed after 5 attempts: {key}")
@@ -478,7 +493,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             return True
 
         except Exception as e:
-            print(f"[WCR Cloud] Multipart upload error: {e}")
+            print(f"[WCR Cloud] Multipart upload error: {redact_urls(e)}")
             return False
 
     # ------------------------------------------------------------------
@@ -501,7 +516,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     timeout=15,
                 )
             except requests.RequestException as e:
-                print(f"[WCR Cloud] Error posting metadata (attempt {attempt}): {e}")
+                print(f"[WCR Cloud] Error posting metadata (attempt {attempt}): {redact_urls(e)}")
                 continue
 
             if resp.status_code == 401:
@@ -548,7 +563,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 print(f"[WCR Cloud] GET /video/{{key}} → HTTP {resp.status_code}: "
                       f"{resp.text[:120]}")
         except Exception as exc:
-            print(f"[WCR Cloud] GET /video/{{key}} error: {exc}")
+            print(f"[WCR Cloud] GET /video/{{key}} error: {redact_urls(exc)}")
 
         # Pattern 2: POST /guild/{g}/download {key: video_key}  (mirror of /upload)
         try:
@@ -569,7 +584,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 print(f"[WCR Cloud] POST /download → HTTP {resp.status_code}: "
                       f"{resp.text[:120]}")
         except Exception as exc:
-            print(f"[WCR Cloud] POST /download error: {exc}")
+            print(f"[WCR Cloud] POST /download error: {redact_urls(exc)}")
 
         return None
 
@@ -585,7 +600,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     timeout=15,
                 )
             except requests.RequestException as e:
-                print(f"[WCR Cloud] Error setting protection: {e}")
+                print(f"[WCR Cloud] Error setting protection: {redact_urls(e)}")
                 return False
             if resp.status_code == 401 and attempt == 1:
                 await self.authenticate()
@@ -614,7 +629,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             else:
                 print(f"[WCR Cloud] Housekeeping returned {resp.status_code}")
         except Exception as e:
-            print(f"[WCR Cloud] Housekeeping error (non-fatal): {e}")
+            print(f"[WCR Cloud] Housekeeping error (non-fatal): {redact_urls(e)}")
 
 
 # =============================================================================
@@ -704,7 +719,7 @@ class CloudUploadQueue:
             tmp.write_text(json.dumps(data, indent=1), encoding='utf-8')
             tmp.replace(self._state_file)
         except OSError as e:
-            print(f"[Upload Queue] ⚠️ Could not save queue: {e}")
+            print(f"[Upload Queue] ⚠️ Could not save queue: {redact_urls(e)}")
 
     # ── lifecycle ────────────────────────────────────────────────────
     def start(self):
@@ -727,6 +742,13 @@ class CloudUploadQueue:
     def _is_queued(self, file_path: Path) -> bool:
         active = [self._active] if self._active else []
         return any(i['file_path'] == file_path for i in active + self._queue)
+
+    def is_pending(self, file_path: Path) -> bool:
+        """Whether *file_path* is uploading or waiting to upload."""
+        target = file_path.resolve()
+        with self._lock:
+            active = [self._active] if self._active else []
+            return any(Path(i['file_path']).resolve() == target for i in active + self._queue)
 
     def add_to_queue(self, file_path: Path, metadata: VideoMetadata) -> bool:
         if not file_path.exists():
@@ -776,7 +798,7 @@ class CloudUploadQueue:
             try:
                 cb(progress)
             except Exception as e:
-                print(f"[Upload Queue] Progress callback error: {e}")
+                print(f"[Upload Queue] Progress callback error: {redact_urls(e)}")
 
     # ── worker ───────────────────────────────────────────────────────
     def _worker(self):
@@ -813,7 +835,7 @@ class CloudUploadQueue:
                 )
             )
         except Exception as e:
-            print(f"[Upload Queue] Exception during upload: {e}")
+            print(f"[Upload Queue] Exception during upload: {redact_urls(e)}")
             success = False
 
         should_retry = not success and item['attempts'] < self.MAX_ATTEMPTS
@@ -833,7 +855,7 @@ class CloudUploadQueue:
                 try:
                     self._on_uploaded(item['file_path'])
                 except Exception as e:
-                    print(f"[Upload Queue] Post-upload hook failed: {e}")
+                    print(f"[Upload Queue] Post-upload hook failed: {redact_urls(e)}")
         elif should_retry:
             print(f"[Upload Queue] ⚠️ Retry {item['attempts']}/{self.MAX_ATTEMPTS}: {meta.video_key}")
             time.sleep(self.RETRY_DELAY_SECONDS)
@@ -903,7 +925,7 @@ class GoogleDriveUpload(CloudUploadProvider):
         try:
             self._check_dependencies()
         except ImportError as e:
-            print(f"[GDrive] ❌ Missing dependency: {e}")
+            print(f"[GDrive] ❌ Missing dependency: {redact_urls(e)}")
             print("[GDrive]  → Install with: pip install google-auth google-auth-oauthlib "
                   "google-auth-httplib2 google-api-python-client")
             return False
@@ -941,7 +963,7 @@ class GoogleDriveUpload(CloudUploadProvider):
             try:
                 self._fetch_quota()
             except Exception as e:
-                print(f"[GDrive] Warning: could not fetch quota: {e}")
+                print(f"[GDrive] Warning: could not fetch quota: {redact_urls(e)}")
 
             print("[GDrive] ✅ Authenticated successfully")
             if self._quota_limit:
@@ -951,7 +973,7 @@ class GoogleDriveUpload(CloudUploadProvider):
             return True
 
         except Exception as e:
-            print(f"[GDrive] ❌ Authentication error: {e}")
+            print(f"[GDrive] ❌ Authentication error: {redact_urls(e)}")
             return False
 
     def is_authenticated(self) -> bool:
@@ -1012,9 +1034,9 @@ class GoogleDriveUpload(CloudUploadProvider):
             return success
 
         except Exception as e:
-            print(f"[GDrive] ❌ Upload error: {e}")
+            print(f"[GDrive] ❌ Upload error: {redact_urls(e)}")
             progress.status = 'failed'
-            progress.error = str(e)
+            progress.error = redact_urls(e)
             if progress_callback:
                 progress_callback(progress)
             return False
@@ -1036,7 +1058,7 @@ class GoogleDriveUpload(CloudUploadProvider):
             creds.refresh(request_cls())
             return creds
         except RefreshError as e:
-            print(f"[GDrive] Token refresh failed ({e}); re-authorising")
+            print(f"[GDrive] Token refresh failed ({redact_urls(e)}); re-authorising")
             return None
 
     def _write_token(self, token_json: str):
@@ -1128,7 +1150,7 @@ class GoogleDriveUpload(CloudUploadProvider):
                 timeout=30,
             )
         except requests.RequestException as e:
-            print(f"[GDrive] Upload status query failed: {e}")
+            print(f"[GDrive] Upload status query failed: {redact_urls(e)}")
             return None
         if resp.status_code in (200, 201):
             return file_size
@@ -1152,7 +1174,7 @@ class GoogleDriveUpload(CloudUploadProvider):
                 timeout=300,
             )
         except requests.RequestException as e:
-            print(f"[GDrive] Chunk upload error at byte {offset}: {e}")
+            print(f"[GDrive] Chunk upload error at byte {offset}: {redact_urls(e)}")
             return None
 
     def _execute_resumable_upload(self, file_path: Path, file_size: int,

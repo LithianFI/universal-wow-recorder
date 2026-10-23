@@ -3,11 +3,12 @@ Metadata Generator for WoW Raid Recorder.
 Generates WCR-compatible JSON metadata files for recordings.
 """
 
-import json
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+
+from sidecar_cache import write_sidecar
 
 class RecordingCategory:
     """Valid category strings matching WCR VideoCategory enum."""
@@ -286,11 +287,8 @@ class RecordingMetadata:
             True if successful, False otherwise
         """
         try:
-            data = self.to_dict()
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            
+            write_sidecar(filepath, self.to_dict())
+
             print(f"[Metadata] ✅ Saved metadata to {filepath.name}")
             return True
             

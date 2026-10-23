@@ -19,7 +19,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from constants import VIDEO_EXTENSIONS, LOG_PREFIXES
 from sidecar_cache import sidecars
@@ -86,29 +86,35 @@ def _mtime(path: Path) -> Optional[float]:
         return None  # can't stat: never delete it
 
 
-def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int = 0) -> RetentionPlan:
+def _never_pending(_path: Path) -> bool:
+    return False
+
+
+def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int = 0,
+                   is_pending_upload: Callable[[Path], bool] = _never_pending) -> RetentionPlan:
     """Decide what a sweep would delete, without touching any file.
 
     Rule 1 deletes files older than *max_age_days*. Rule 2 then keeps the
     newest *max_per_group* of each (category, difficulty, boss, result) group
     among the remaining own recordings; downloaded POVs don't count towards it,
     so other players' videos can't push out your own pulls. Protected
-    recordings (WCR's `protected` flag) are neither deleted nor counted.
+    recordings (WCR's `protected` flag) and recordings still waiting to
+    upload are neither deleted nor counted.
     """
     plan = RetentionPlan()
     if (max_age_days <= 0 and max_per_group <= 0) or not record_dir or not record_dir.exists():
         return plan
 
-    sidecars: Dict[Path, dict] = {}
+    candidates: Dict[Path, dict] = {}
     for f in _list_video_files(record_dir):
         meta = None if _is_clip(f) else _load_sidecar(f)
-        if meta is not None and not meta.get('protected'):
-            sidecars[f] = meta
-    plan.scanned = len(sidecars)
+        if meta is not None and not meta.get('protected') and not is_pending_upload(f):
+            candidates[f] = meta
+    plan.scanned = len(candidates)
 
     survivors = []
     cutoff = time.time() - max_age_days * 86400
-    for f in sidecars:
+    for f in candidates:
         mtime = _mtime(f)
         if mtime is None:
             continue
@@ -120,8 +126,8 @@ def plan_retention(record_dir: Path, max_age_days: int = 0, max_per_group: int =
     if max_per_group > 0:
         groups: Dict[tuple, List[tuple]] = defaultdict(list)
         for f, mtime in survivors:
-            if not sidecars[f].get('pov'):
-                groups[_group_key(f, sidecars[f])].append((f, mtime))
+            if not candidates[f].get('pov'):
+                groups[_group_key(f, candidates[f])].append((f, mtime))
         for members in groups.values():
             members.sort(key=lambda m: m[1], reverse=True)
             plan.by_count.extend(f for f, _ in members[max_per_group:])
@@ -133,6 +139,7 @@ def apply_retention(
     file_manager,
     max_age_days: int = 0,
     max_per_group: int = 0,
+    is_pending_upload: Callable[[Path], bool] = _never_pending,
 ) -> Dict[str, int]:
     """Apply retention rules to *record_dir* (see plan_retention).
 
@@ -142,12 +149,13 @@ def apply_retention(
             handles companion JSON cleanup).
         max_age_days: Delete files older than this; 0 disables the rule.
         max_per_group: Keep at most N per group; 0 disables the rule.
+        is_pending_upload: Files it returns True for are left alone.
 
     Returns:
         Dict with counts: {'deleted_by_age': int, 'deleted_by_count': int,
                            'scanned': int}.
     """
-    plan = plan_retention(record_dir, max_age_days, max_per_group)
+    plan = plan_retention(record_dir, max_age_days, max_per_group, is_pending_upload)
     result = {'deleted_by_age': 0, 'deleted_by_count': 0, 'scanned': plan.scanned}
     if not plan.by_age and not plan.by_count:
         if plan.scanned:

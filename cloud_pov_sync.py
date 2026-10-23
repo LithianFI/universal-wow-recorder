@@ -12,7 +12,6 @@ Flow:
      pre-signed R2 URL to the recordings directory.
 """
 
-import json
 import threading
 import time
 import requests
@@ -21,7 +20,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable, Any
 
 from constants import VIDEO_EXTENSIONS
-from sidecar_cache import sidecars
+from sidecar_cache import sidecars, write_sidecar
+from cloud_upload import redact_urls
 import wcr_format
 
 
@@ -295,15 +295,13 @@ class PovSyncManager:
 
     def _sync_loop(self):
         while not self._stop_event.is_set():
-            interval_secs = self._config.POV_SYNC_INTERVAL * 60
-            now = time.time()
-            if now - self._last_sync_time >= interval_secs:
+            if time.time() - self._last_sync_time >= self._config.POV_SYNC_INTERVAL * 60:
                 try:
                     self._do_sync()
                 except Exception as exc:
-                    print(f"[PovSync] Sync error: {exc}")
+                    print(f"[PovSync] Sync error: {redact_urls(exc)}")
                     with self._lock:
-                        self._sync_error = str(exc)
+                        self._sync_error = redact_urls(exc)
                 self._last_sync_time = time.time()
             self._stop_event.wait(30)
 
@@ -370,7 +368,7 @@ class PovSyncManager:
             cutoff_ms = (time.time() - 86400) * 1000  # 24 h ago in epoch ms
             for videos in self.get_available_povs().values():
                 for video in videos:
-                    if video.get('start', 0) >= cutoff_ms:
+                    if (video.get('start') or 0) >= cutoff_ms:
                         self.queue_download(video.get('videoKey', ''))
 
     # ------------------------------------------------------------------
@@ -412,10 +410,10 @@ class PovSyncManager:
                 try:
                     self._download_video(item)
                 except Exception as exc:
-                    print(f"[PovSync] Download failed for {key}: {exc}")
+                    print(f"[PovSync] Download failed for {key}: {redact_urls(exc)}")
                     self._notify_progress(DownloadProgress(
                         video_key=key, total_bytes=0, downloaded_bytes=0,
-                        status='failed', error=str(exc)))
+                        status='failed', error=redact_urls(exc)))
                 finally:
                     self._active_download = None
 
@@ -457,7 +455,7 @@ class PovSyncManager:
             if size_resp.status_code == 200:
                 total_bytes = size_resp.json().get('bytes', 0)
         except Exception as exc:
-            print(f"[PovSync] Could not get size for {key}: {exc}")
+            print(f"[PovSync] Could not get size for {key}: {redact_urls(exc)}")
 
         progress = DownloadProgress(
             video_key=key, total_bytes=total_bytes,
@@ -546,11 +544,9 @@ class PovSyncManager:
             'pov': True,
         }
         try:
-            sidecar_path = dest.with_suffix('.json')
-            with open(sidecar_path, 'w', encoding='utf-8') as f:
-                json.dump(sidecar, f, indent=2)
+            write_sidecar(dest.with_suffix('.json'), sidecar)
         except Exception as exc:
-            print(f"[PovSync] Could not write sidecar for {dest.name}: {exc}")
+            print(f"[PovSync] Could not write sidecar for {dest.name}: {redact_urls(exc)}")
 
     def _notify_progress(self, progress: DownloadProgress):
         # Downloads report every 1 MB chunk; only forward a few updates per
@@ -564,4 +560,4 @@ class PovSyncManager:
             try:
                 cb(progress)
             except Exception as exc:
-                print(f"[PovSync] Progress callback error: {exc}")
+                print(f"[PovSync] Progress callback error: {redact_urls(exc)}")

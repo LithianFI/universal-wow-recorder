@@ -8,6 +8,7 @@ Entries are keyed by path and invalidated by (mtime, size), so edits on disk
 """
 
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Dict, Optional, Tuple
@@ -60,3 +61,18 @@ class SidecarCache:
 
 
 sidecars = SidecarCache()
+
+
+def write_sidecar(json_path: Path, data: dict):
+    """Replace a sidecar atomically so a crash can't leave half a file.
+
+    A truncated sidecar hides its recording from the list and reads as
+    unprotected, so every sidecar write goes through here.
+    """
+    tmp = json_path.with_name(json_path.name + '.tmp')
+    try:
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+        os.replace(tmp, json_path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise

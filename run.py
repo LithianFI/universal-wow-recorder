@@ -34,7 +34,7 @@ from log_watcher import LogMonitor
 from typing import Optional
 
 
-from sidecar_cache import sidecars
+from sidecar_cache import sidecars, write_sidecar
 from wcr_format import normalize_category
 from constants import (
     DEFAULT_WEB_HOST,
@@ -50,6 +50,7 @@ from constants import (
 from cloud_integration import (
     CloudUploadManager,
     initialize_cloud_upload,
+    saved_pending_uploads,
     should_auto_upload,
 )
 from cloud_upload import UploadProgress
@@ -323,9 +324,11 @@ def save_config():
     if s.config_manager is None:
         return jsonify({'error': 'Config not initialized'}), 500
 
-    try:
-        data = request.get_json()
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Expected a JSON object'}), 400
 
+    try:
         # Snapshot cloud-relevant settings before applying changes so we can
         # tell whether a reinitialisation is needed.
         _CLOUD_KEYS = {
@@ -353,8 +356,8 @@ def save_config():
                 if s.cloud_manager:
                     try:
                         asyncio.run(s.cloud_manager.shutdown())
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[Cloud] ⚠️ Error shutting down the old cloud manager: {e}")
                     s.cloud_manager = None
 
                 if s.config_manager.CLOUD_UPLOAD_ENABLED:
@@ -371,8 +374,11 @@ def save_config():
             threading.Thread(target=_reinit_cloud, daemon=True).start()
 
         return jsonify({'success': True, 'message': 'Configuration saved'})
-    except Exception as e:
+    except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': f'Could not save configuration: {e}'}), 500
 
 
 # -----------------------------------------------------------------------------
@@ -514,7 +520,7 @@ def preview_retention():
     payload = request.get_json(silent=True) or {}
     max_age = _non_negative_int(payload.get('max_age_days'), s.config_manager.RETENTION_MAX_AGE_DAYS)
     max_per = _non_negative_int(payload.get('max_per_group'), s.config_manager.RETENTION_MAX_PER_GROUP)
-    plan = plan_retention(record_dir, max_age, max_per)
+    plan = plan_retention(record_dir, max_age, max_per, _pending_upload_check())
 
     def names(paths):
         return [p.relative_to(record_dir).as_posix() for p in paths]
@@ -571,13 +577,6 @@ def get_recording_metadata(filename: str):
         return jsonify({'error': str(e)}), 500
 
 
-def _write_sidecar(json_path: Path, data: dict):
-    """Replace a sidecar atomically so a crash can't leave half a file."""
-    tmp = json_path.with_name(json_path.name + '.tmp')
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
-    os.replace(tmp, json_path)
-
-
 @app.route('/api/recordings/<path:filename>/protect', methods=['POST'])
 def protect_recording(filename: str):
     """Keep (or stop keeping) a recording. Body: {"protected": true|false}.
@@ -610,7 +609,7 @@ def protect_recording(filename: str):
 
     data['protected'] = protect
     try:
-        _write_sidecar(json_path, data)
+        write_sidecar(json_path, data)
     except OSError as e:
         return jsonify({'error': f'Could not write metadata: {e}'}), 500
 
@@ -677,9 +676,8 @@ def scan_recording_cooldowns(filename: str):
 
     metadata['cooldownCasts'] = casts
     try:
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-    except Exception as e:
+        write_sidecar(json_path, metadata)
+    except OSError as e:
         return jsonify({'error': f'Could not write metadata: {e}'}), 500
 
     print(f"[RECORDINGS] Retroactive cooldown scan: {len(casts)} casts written to {json_path.name}")
@@ -1464,6 +1462,19 @@ def handle_combat_event(event: dict):
     socketio.emit('combat_event', event)
 
 
+def _pending_upload_check():
+    """Predicate for files retention must leave alone because they still
+    have to upload. Without a running manager the saved queue is read."""
+    s = get_state()
+    cloud_manager = s.cloud_manager
+    if cloud_manager:
+        return cloud_manager.is_upload_pending
+    if not (s.config_manager and s.config_manager.CLOUD_UPLOAD_ENABLED):
+        return lambda _path: False
+    pending = saved_pending_uploads(s.config_manager)
+    return lambda path: path.resolve() in pending
+
+
 def _run_retention_sweep():
     """Run the retention policy if either rule is configured. Safe to call
     at any time — no-ops when both rules are 0."""
@@ -1485,6 +1496,7 @@ def _run_retention_sweep():
             file_manager=s.combat_parser.file_manager,
             max_age_days=max_age,
             max_per_group=max_per,
+            is_pending_upload=_pending_upload_check(),
         )
     except Exception as e:
         print(f"[Retention] Error during sweep: {e}")
