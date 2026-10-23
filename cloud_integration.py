@@ -61,8 +61,6 @@ class CloudUploadManager:
         self.config = config
         self.provider: Optional[CloudUploadProvider] = None
         self.upload_queue: Optional[CloudUploadQueue] = None
-        self.event_loop: Optional[asyncio.AbstractEventLoop] = None
-        self.upload_thread: Optional[Thread] = None
         self.progress_callback: Optional[Callable] = None
         self.pov_sync: Optional[PovSyncManager] = None
         self._get_recording_dir: Optional[Callable] = None

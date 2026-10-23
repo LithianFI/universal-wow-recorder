@@ -20,12 +20,12 @@ from combat_parser.file_manager import RecordingFileManager
 from combat_parser.recording_processor import RecordingProcessor
 from combat_parser.dungeon_monitor import DungeonMonitor
 from combat_parser.events import (
-    CombatEvent, BossInfo, DungeonInfo, local_player_in, parse_combatant_spec_id,
+    CombatEvent, BossInfo, DungeonInfo, local_player_in, log_timestamp_ms, parse_combatant_spec_id,
 )
 from combat_parser.fight_scan import scan_fight
 from metadata_generator import RecordingMetadata, RecordingCategory
 
-from constants import LOG_PREFIXES
+from constants import LOG_PREFIXES, MYTHIC_KEYSTONE_DIFFICULTY_ID
 
 # Events that need a full CSV parse (CombatEvent) and a handler. Everything
 # else, including the very frequent SPELL_DAMAGE, is handled on the raw line.
@@ -100,7 +100,6 @@ class CombatParser:
 
         # Thread management
         self._active_threads: List[threading.Thread] = []
-        self._cleanup_completed_threads()
 
         # Event callbacks for frontend
         self.on_event: Optional[Callable] = None
@@ -147,9 +146,6 @@ class CombatParser:
         self._boss_current_hp: int = 1
         self._boss_max_hp: int = 1
 
-        # Throttle update_activity() calls — no need to call time.time() on every line
-        self._last_activity_update: float = 0.0
-
         # Start dungeon monitor
         self.dungeon_monitor.start()
 
@@ -164,13 +160,6 @@ class CombatParser:
         # This runs on every line but short-circuits immediately once resolved.
         if not (self.player_guid and self.player_name):
             self._try_identify_player(line)
-
-        # Throttled activity update — dungeon monitor only checks every 5 s.
-        if self.state.dungeon_active:
-            now = time.time()
-            if now - self._last_activity_update >= 1.0:
-                self.state.update_activity()
-                self._last_activity_update = now
 
         event_name = _event_name(line)
 
@@ -205,11 +194,10 @@ class CombatParser:
             self._handle_encounter_start(event)
         elif event.is_encounter_end:
             self._handle_encounter_end(event)
+        # Deaths, combatants and casts are read back from the log after the
+        # fight (fight_scan): WoW flushes them late, and checking every line
+        # here would only slow the hot path.
 
-        # Deaths are collected by _scan_log_for_encounter_data() after the
-        # encounter ends — see section 8 of the reference doc. Doing it live
-        # on every UNIT_DIED line is pure overhead on the hot path.
-        
     def start_manual_recording(self) -> bool:
         """Start a manual recording triggered by the user.
 
@@ -242,13 +230,7 @@ class CombatParser:
         self.current_metadata.reset()
         self.current_metadata.category = RecordingCategory.MANUAL
         self.current_metadata.set_start_time(int(time.time() * 1000))
-        if self.player_guid and self.player_name:
-            self.current_metadata.set_player_info(
-                guid=self.player_guid,
-                name=self.player_name,
-                realm=self.player_realm or "Unknown",
-                spec_id=self.player_spec_id or 0,
-            )
+        self._apply_live_player(self.current_metadata)
         return True
 
     def _finish_manual_start(self, started: bool, fight_seq: int) -> bool:
@@ -490,7 +472,7 @@ class CombatParser:
         is_success = (
             reason == 'dungeon_complete'
             and event is not None
-            and event.get_dungeon_end_info()[0]
+            and event.dungeon_succeeded()
         )
         timestamp = event.timestamp if event else datetime.now().strftime("%m/%d/%Y %H:%M:%S.0000")
  
@@ -576,11 +558,6 @@ class CombatParser:
             print(f"{LOG_PREFIXES['PARSER']} Could not parse boss info from: {event}")
             return
 
-        # Apply boss name overrides
-        overrides = self.config.BOSS_NAME_OVERRIDES
-        if boss_info.boss_id in overrides:
-            boss_info.name = overrides[boss_info.boss_id]
-    
         # Start the encounter in state
         self.state.start_encounter(
             boss_info.boss_id, boss_info.name,
@@ -619,7 +596,7 @@ class CombatParser:
         difficulty_id = self.state.difficulty_id
         encounter_duration = self.state.get_encounter_duration()
         # event is None when forced (timeout / log switch): record it as a wipe.
-        is_kill = event.get_encounter_end_info()[0] if event else False
+        is_kill = event.encounter_succeeded() if event else False
         end_ts = event.timestamp if event else None
 
         boss_info = BossInfo(
@@ -655,7 +632,7 @@ class CombatParser:
 
         # Explicit category for boss encounters
         self.current_metadata.category = RecordingCategory.RAIDS
-        self.current_metadata.overrun = 3  # WCR RaidEncounter: this.overrun = 3
+        self.current_metadata.overrun = _RECORDING_OVERRUN_SECONDS  # WCR RaidEncounter: this.overrun = 3
 
         self.current_metadata.set_encounter_info(
             encounter_id=boss_info.boss_id,
@@ -663,13 +640,7 @@ class CombatParser:
             difficulty_id=boss_info.difficulty_id,
         )
 
-        if self.player_guid and self.player_name:
-            self.current_metadata.set_player_info(
-                guid=self.player_guid,
-                name=self.player_name,
-                realm=self.player_realm or "Unknown",
-                spec_id=self.player_spec_id or 0,
-            )
+        self._apply_live_player(self.current_metadata)
 
         start_ms = self._parse_timestamp_to_ms(boss_info.timestamp)
         self.current_metadata.set_start_time(start_ms)
@@ -685,7 +656,7 @@ class CombatParser:
         self.current_metadata.set_encounter_info(
             encounter_id=dungeon_info.dungeon_id,
             encounter_name=f"{dungeon_info.name} +{dungeon_info.dungeon_level}",
-            difficulty_id=8,  # Mythic+ difficulty ID
+            difficulty_id=MYTHIC_KEYSTONE_DIFFICULTY_ID,
         )
         self.current_metadata.set_keystone_info(
             zone_id=dungeon_info.dungeon_id,
@@ -695,17 +666,22 @@ class CombatParser:
             affixes=dungeon_info.affixes,
         )
 
+        self._apply_live_player(self.current_metadata)
+
+        start_ms = self._parse_timestamp_to_ms(dungeon_info.timestamp)
+        self.current_metadata.set_start_time(start_ms)
+        self.encounter_start_time = datetime.now()
+
+    def _apply_live_player(self, metadata: RecordingMetadata):
+        """Record the player identified so far; the end scan may correct it
+        from the fight's own lines (_apply_fight_player)."""
         if self.player_guid and self.player_name:
-            self.current_metadata.set_player_info(
+            metadata.set_player_info(
                 guid=self.player_guid,
                 name=self.player_name,
                 realm=self.player_realm or "Unknown",
                 spec_id=self.player_spec_id or 0,
             )
-
-        start_ms = self._parse_timestamp_to_ms(dungeon_info.timestamp)
-        self.current_metadata.set_start_time(start_ms)
-        self.encounter_start_time = datetime.now()
 
     def _finalize_metadata(self, is_kill: bool, duration: float, fight_percentage: float = 0.0):
         """Finalize metadata with encounter result."""
@@ -719,8 +695,8 @@ class CombatParser:
             boss_percent=boss_percent,
         )
 
-        # Deaths already added to current_metadata by _scan_log_for_deaths()
-        # which is called before _finalize_metadata on encounter/dungeon end.
+        # Deaths, combatants and casts are added later, by the end thread's
+        # log scan (_scan_log_for_encounter_data).
 
     def _mark_window_start(self, timestamp: Optional[str]):
         """Remember where this fight starts in the log for the post-fight scan."""
@@ -837,25 +813,15 @@ class CombatParser:
             metadata.set_player_info(guid=guid, name=name, realm=realm, spec_id=0)
         self._set_player(guid, name, realm)
 
-    def _parse_timestamp_to_ms(self, timestamp: str) -> int:
-        """Parse combat log timestamp to milliseconds."""
-        try:
-            # Format: "2/11/2026 21:02:44.3002" or "21:02:44.3002"
-            if '/' in timestamp:
-                dt_str, ms_str = timestamp.rsplit(".", 1)
-                dt = datetime.strptime(dt_str, "%m/%d/%Y %H:%M:%S")
-            else:
-                # Time only, use today's date
-                time_str, ms_str = timestamp.rsplit(".", 1)
-                today = datetime.now().date()
-                dt = datetime.strptime(f"{today} {time_str}", "%Y-%m-%d %H:%M:%S")
-            
-            timestamp_ms = int(dt.timestamp() * 1000)
-            timestamp_ms += int(ms_str[:3])  # First 3 digits of fractional seconds
-            return timestamp_ms
-        except Exception as e:
-            print(f"{LOG_PREFIXES['PARSER']} Error parsing timestamp: {e}")
-            return int(datetime.now().timestamp() * 1000)
+    @staticmethod
+    def _parse_timestamp_to_ms(timestamp: str) -> int:
+        """Epoch ms of a START line's timestamp; now if it can't be parsed,
+        so the fight still gets a usable start."""
+        timestamp_ms = log_timestamp_ms(timestamp)
+        if timestamp_ms is None:
+            print(f"{LOG_PREFIXES['PARSER']} Could not parse timestamp {timestamp!r}; using now")
+            return int(time.time() * 1000)
+        return timestamp_ms
 
     def _submit_obs_job(self, job: Callable, *args) -> Future:
         """Queue an OBS step. Exceptions are logged (a Future would hide them)."""
@@ -943,10 +909,6 @@ class CombatParser:
                 'path': str(result),
                 'metadata': context.metadata,
                 'duration': duration,
-                'boss_name': f"{dungeon_info.name} +{dungeon_info.dungeon_level}",
-                'difficulty_id': 4,
-                'is_kill': reason == 'dungeon_complete',
-                'category': 'dungeon',
             })
 
     def _process_encounter_end_thread(self, stop_result: StopResult, boss_info: BossInfo,
@@ -967,10 +929,6 @@ class CombatParser:
                 'path': str(result),
                 'metadata': context.metadata,
                 'duration': duration,
-                'boss_name': boss_info.name,
-                'difficulty_id': boss_info.difficulty_id,
-                'is_kill': context.metadata.result,
-                'category': 'raid',
             })
 
     def _start_thread(self, target: Callable, *args):

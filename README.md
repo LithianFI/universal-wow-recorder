@@ -17,7 +17,7 @@ Built with AI assistance. While the code has been reviewed, mistakes happen — 
   - **Recordings page** (home) — live recording status with in-progress pull timer, OBS / log / cloud upload status, manual recording, and the full library with search, filters, sort, video player, death markers and cooldown timeline; a newly saved pull opens automatically
   - **Clips page** — manage exported highlight clips (rename, delete, download)
   - **Statistics page** — latest session progression chart, per-boss breakdown across all recordings: pull count, kill rate, best/average time, boss HP% progression on wipes, death leaderboard
-  - **Debug page** (Electron client) — live-streamed backend log output, for troubleshooting
+  - **Debug page** — live-streamed backend log output, for troubleshooting
 - Video player with timeline scrubbing, death markers, volume control, playback speed (0.5×–2×), fullscreen, and keyboard shortcuts
 - **Cooldown timeline** — per-player row of tracked abilities (offensive and defensive cooldowns, externals, raid CDs, utility, interrupts, dispels, stuns and CC) plotted against the fight, with class-colored spell icons and category filters
 - Clip export (requires ffmpeg — see below)
@@ -101,7 +101,7 @@ On Windows, double-click `launch.bat`.
 
 ```
 --config PATH    Path to config file (default: config.ini)
---host HOST      Web server host (default: 0.0.0.0)
+--host HOST      Web server host (default: 127.0.0.1, this machine only)
 --port PORT      Web server port (default: 5001)
 --no-recorder    Start web GUI only, without recorder
 --debug          Enable debug mode
@@ -195,11 +195,14 @@ npm run build:electron  # Electron packaging only (requires build:python first)
 
 ## Configuration
 
-On first run the app starts without a recorder and opens the configuration page. The main things to set:
+On first run the app creates `config.ini` from `config.ini.example` (all settings are documented there) and opens the recordings page; until the log directory and OBS are set up it shows that the recorder isn't running. Set these on the **Config** page:
 
 - **WoW log directory** — the folder containing `WoWCombatLog.txt`, typically inside your WoW installation under `_retail_/Logs/`
 - **OBS connection** — host (usually `localhost`), port (default `4455`), and password if you set one
-- **Recording output path** — where OBS saves recordings; must match the path set in OBS
+
+The recordings folder is read from OBS; the **Fallback recording path** is only used while OBS can't be reached (it is filled in automatically once OBS connects).
+
+If `config.ini` can't be parsed (for example after a hand edit), it is moved aside as `config.ini.bad` and the app runs on defaults, so nothing in it is lost.
 
 ### Cloud upload & POV sync
 
@@ -243,7 +246,7 @@ To confirm the GPU is actually doing the encoding: `radeontop` / `nvtop` / `inte
 
 ## Contributing
 
-PRs and issues welcome. The core is a Python backend talking to OBS over WebSocket and serving a vanilla HTML/Alpine.js frontend (no build step required for the web UI), wrapped in an optional Electron desktop client.
+PRs and issues welcome. The core is a Python backend talking to OBS over WebSocket and serving an HTML/Alpine.js frontend, wrapped in an optional Electron desktop client. The frontend libraries are vendored in `static/vendor`; the only build step is Tailwind CSS — after adding classes to a template, run `npm run build:css` and commit `static/css/tailwind.css`.
 
 ---
 

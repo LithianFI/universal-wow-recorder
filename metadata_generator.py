@@ -8,7 +8,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+from constants import difficulty_short
 from sidecar_cache import write_sidecar
+
+# Sent to WCR as appVersion: the Warcraft Recorder release whose metadata
+# format these sidecars follow.
+WCR_APP_VERSION = "7.5.1"
+
 
 class RecordingCategory:
     """Valid category strings matching WCR VideoCategory enum."""
@@ -44,7 +50,7 @@ class RecordingMetadata:
         self.video_start_delay_ms = 0
         self.unique_hash = None
         self.boss_percent = 0
-        self.app_version = "7.5.1"
+        self.app_version = WCR_APP_VERSION
         # M+ specific fields
         self.keystone_level: Optional[int] = None
         self.map_id: Optional[int] = None
@@ -59,7 +65,7 @@ class RecordingMetadata:
         self.difficulty_id = difficulty_id
         self.zone_id = zone_id
         self.zone_name = zone_name
-        self.difficulty = self._get_difficulty_shorthand(difficulty_id)
+        self.difficulty = difficulty_short(difficulty_id)
     
     def set_keystone_info(self, zone_id: int, zone_name: str, map_id: int,
                           keystone_level: int, affixes: List[int]):
@@ -180,8 +186,6 @@ class RecordingMetadata:
           realms) contribute the name twice, so names are not deduplicated.
         - JS sort() orders by UTF-16 code units, not code points.
         """
-        import hashlib
-
         result_str = 'true' if self.result else 'false'
         deterministic = f"{self.category} {self.flavour} {result_str}"
 
@@ -295,106 +299,3 @@ class RecordingMetadata:
         except Exception as e:
             print(f"[Metadata] ❌ Failed to save metadata: {e}")
             return False
-    
-    def _get_difficulty_shorthand(self, difficulty_id: int) -> str:
-        """Get difficulty shorthand letter."""
-        difficulty_map = {
-            1: "N",   # Normal (5-player)
-            2: "H",   # Heroic (5-player)
-            3: "M",   # Mythic
-            4: "M+",  # Mythic+
-            8: "M+",  # Mythic Keystone (set for dungeon runs by the parser)
-            7: "LFR", # LFR
-            14: "N",  # Normal (raid)
-            15: "H",  # Heroic (raid)
-            16: "M",  # Mythic (raid)
-            17: "LFR",# LFR (raid)
-            22: "M",  # Mythic Flex
-            23: "M",  # Mythic
-        }
-        return difficulty_map.get(difficulty_id, "N")
-
-
-class DeathParser:
-    """Parses UNIT_DIED events from combat logs."""
-    
-    @staticmethod
-    def parse_death_line(line: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse a UNIT_DIED line from combat log.
-        
-        Format: TIMESTAMP  UNIT_DIED,sourceGUID,sourceName,sourceFlags,...,destGUID,destName,destFlags,...
-        Example: 2/11/2026 21:03:23.2292  UNIT_DIED,0000000000000000,nil,0x80000000,0x80000000,Player-1403-0A330CE3,"Amitrees-Draenor-EU",0x514,0x80000000,0
-        
-        Args:
-            line: Combat log line
-            
-        Returns:
-            Dictionary with death information or None if not a death event
-        """
-        if "UNIT_DIED" not in line:
-            return None
-        
-        try:
-            # Split timestamp and event
-            parts = line.split("  ", 1)
-            if len(parts) < 2:
-                return None
-            
-            timestamp_str = parts[0].strip()
-            event_data = parts[1].strip()
-            
-            # Parse timestamp (format: M/D/YYYY HH:MM:SS.ssss)
-            timestamp = DeathParser._parse_timestamp(timestamp_str)
-            
-            # Split event data by comma
-            fields = event_data.split(",")
-            
-            if len(fields) < 9:
-                return None
-            
-            # Extract player GUID (field 5) and name (field 6)
-            # Base parameters: [0]=eventType, [1]=srcGUID, [2]=srcName, [3]=srcFlags,
-            # [4]=srcRaidFlags, [5]=destGUID, [6]=destName, [7]=destFlags, [8]=destRaidFlags
-            player_guid = fields[5].strip()
-            player_name = fields[6].strip().strip('"')
-            
-            # Only track player deaths
-            if not player_guid.startswith("Player-"):
-                return None
-            
-            return {
-                "timestamp": timestamp,
-                "guid": player_guid,
-                "name": player_name,
-            }
-            
-        except Exception as e:
-            print(f"[DeathParser] Error parsing death line: {e}")
-            return None
-    
-    @staticmethod
-    def _parse_timestamp(timestamp_str: str) -> int:
-        """
-        Parse combat log timestamp to milliseconds.
-        
-        Args:
-            timestamp_str: Timestamp string (M/D/YYYY HH:MM:SS.ssss)
-            
-        Returns:
-            Timestamp in milliseconds since epoch
-        """
-        try:
-            # Example: 2/11/2026 21:03:23.2292
-            dt_str, ms_str = timestamp_str.rsplit(".", 1)
-            dt = datetime.strptime(dt_str, "%m/%d/%Y %H:%M:%S")
-            
-            # Convert to timestamp and add milliseconds
-            timestamp_ms = int(dt.timestamp() * 1000)
-            timestamp_ms += int(ms_str[:3])  # First 3 digits of fractional seconds
-            
-            return timestamp_ms
-            
-        except Exception as e:
-            print(f"[DeathParser] Error parsing timestamp: {e}")
-            return 0

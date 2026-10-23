@@ -8,10 +8,12 @@ from pathlib import Path
 from datetime import datetime
 
 from constants import (
+    difficulty_name,
     LOG_PREFIXES,
 )
 
 from combat_parser.events import BossInfo, DungeonInfo
+from combat_parser.file_manager import unused_path
 from obs_client import StopResult
 from metadata_generator import RecordingMetadata
 
@@ -28,7 +30,7 @@ class RecordingProcessor:
         """Whether this encounter's difficulty is enabled for recording."""
         if self.config.is_difficulty_enabled(boss_info.difficulty_id):
             return True
-        diff_name = self.file_manager._get_difficulty_name(boss_info.difficulty_id)
+        diff_name = difficulty_name(boss_info.difficulty_id)
         print(f"{LOG_PREFIXES['PROC']} Skipping {diff_name} encounter - not enabled in config")
         return False
 
@@ -147,7 +149,7 @@ class RecordingProcessor:
         try:
             extension = recording_path.suffix
             new_filename = metadata.generate_filename(start_time, extension)
-            new_path = self._unused_path(recording_path.parent / new_filename)
+            new_path = unused_path(recording_path.parent / new_filename)
 
             recording_path.rename(new_path)
             print(f"{LOG_PREFIXES['PROC']} ✅ Renamed (WCR): {recording_path.name} -> {new_path.name}")
@@ -157,15 +159,6 @@ class RecordingProcessor:
             print(f"{LOG_PREFIXES['PROC']} ❌ Failed to rename with WCR style: {e}")
             return None
     
-    @staticmethod
-    def _unused_path(path: Path) -> Path:
-        """*path*, or "name (2).ext" etc. if taken: rename() overwrites on POSIX."""
-        candidate, counter = path, 2
-        while candidate.exists():
-            candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-            counter += 1
-        return candidate
-
     def _save_metadata_json(self, video_path: Path, metadata: RecordingMetadata) -> bool:
         """Save metadata JSON file alongside the video."""
         try:

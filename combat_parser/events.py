@@ -4,12 +4,11 @@ Event classes for combat log parsing.
 
 import csv
 import io
-import re
 from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime
 
-from constants import DIFFICULTY_NAMES, VALID_SPEC_IDS
+from constants import VALID_SPEC_IDS
 
 # COMBATANT_INFO: [0] event, [1] GUID, [2] faction, [3..22] stats,
 # [23] armor, [24] currentSpecID. Neighbours are tried in case a patch
@@ -25,24 +24,9 @@ class BossInfo:
     difficulty_id: int
     instance_id: int
     timestamp: str = ""
-    
-    @property
-    def formatted_name(self) -> str:
-        """Get boss name formatted for filename."""
-        # Remove special characters and replace spaces
-        cleaned = re.sub(r'[<>:"/\\|?*]', '', self.name)
-        cleaned = cleaned.replace(" ", "_")
-        cleaned = cleaned.replace("'", "")
-        cleaned = cleaned.replace(",", "")
-        return cleaned.strip()
-    
-    @property
-    def difficulty_name(self) -> str:
-        """Get difficulty name."""
-        return DIFFICULTY_NAMES.get(self.difficulty_id, f"Difficulty_{self.difficulty_id}")
 
 
-@dataclass 
+@dataclass
 class DungeonInfo:
     """Information about a Mythic+ dungeon run."""
     dungeon_id: int
@@ -51,18 +35,7 @@ class DungeonInfo:
     timestamp: str = ""
     challenge_mode_id: int = 0  # WCR's mapID
     affixes: List[int] = field(default_factory=list)
-    
-    @property
-    def formatted_name(self) -> str:
-        """Get dungeon name formatted for filename."""
-        # Remove special characters and replace spaces
-        cleaned = re.sub(r'[<>:"/\\|?*]', '', self.name)
-        cleaned = cleaned.replace(" ", "_")
-        cleaned = cleaned.replace("'", "")
-        cleaned = cleaned.replace(",", "")
-        cleaned = cleaned.replace(":", "")
-        cleaned = cleaned.replace("-", "_")
-        return cleaned.strip()
+
 
 def parse_combatant_spec_id(parts: List[str]) -> int:
     """Spec ID from comma-split COMBATANT_INFO fields, or 0 if not found."""
@@ -183,12 +156,12 @@ class CombatEvent:
             try:
                 row = next(csv_reader)
                 self.fields = []
-                for field in row:
-                    field = field.strip()
+                for value in row:
+                    value = value.strip()
                     # Remove surrounding quotes if present
-                    if field.startswith('"') and field.endswith('"'):
-                        field = field[1:-1]
-                    self.fields.append(field)
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    self.fields.append(value)
                 
                 if self.fields:
                     self.event_type = self.fields[0].upper()
@@ -282,8 +255,8 @@ class CombatEvent:
                 affixes.append(int(value))
         return affixes
 
-    def get_encounter_end_info(self) -> tuple[bool, Optional[str], float]:
-        """Get kill/wipe status from ENCOUNTER_END event.
+    def encounter_succeeded(self) -> bool:
+        """Kill (True) or wipe (False) from an ENCOUNTER_END event.
 
         ENCOUNTER_END fields:
           [0] ENCOUNTER_END
@@ -294,36 +267,14 @@ class CombatEvent:
           [5] success   (1 = kill, 0 = wipe)
           [6] fightTime (fight duration in milliseconds — NOT boss HP%)
 
-        Note: there is no fightPercentage field in the combat log, so
-        fight_percentage is always 0.0 here. CombatParser derives the boss HP%
-        at a wipe from the boss's currentHP/maxHP in damage events instead.
+        There is no boss HP% field: CombatParser derives it at a wipe from
+        the boss's currentHP/maxHP in damage events.
         """
-        is_kill = False
-        boss_name = None
-        fight_percentage = 0.0
+        return self.is_encounter_end and len(self.fields) > 5 and self.fields[5] == "1"
 
-        if self.is_encounter_end and len(self.fields) >= 6:
-            try:
-                is_kill = self.fields[5] == "1"
-                boss_name = self.fields[2] if len(self.fields) > 2 else None
-            except (ValueError, IndexError):
-                pass
-
-        return is_kill, boss_name, fight_percentage
-    
-    def get_dungeon_end_info(self) -> tuple[bool, Optional[str]]:
-        """Get success status from CHALLENGE_MODE_END event."""
-        is_success = False
-        dungeon_name = None
-        
-        if self.is_dungeon_end and len(self.fields) >= 3:
-            try:
-                is_success = self.fields[2] == "1"
-                dungeon_name = None  # CHALLENGE_MODE_END has no dungeon name field
-            except (ValueError, IndexError):
-                pass
-        
-        return is_success, dungeon_name
+    def dungeon_succeeded(self) -> bool:
+        """Whether a CHALLENGE_MODE_END reports the key as completed."""
+        return self.is_dungeon_end and len(self.fields) > 2 and self.fields[2] == "1"
     
     def is_valid(self) -> bool:
         """Check if this is a valid parsable event."""

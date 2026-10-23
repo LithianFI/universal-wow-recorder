@@ -229,8 +229,6 @@
                     @click="activeTab = 'recording'">Recording</button>
                 <button type="button" class="tab-btn" :class="{ active: activeTab === 'difficulties' }"
                     @click="activeTab = 'difficulties'">Difficulties</button>
-                <button type="button" class="tab-btn" :class="{ active: activeTab === 'overrides' }"
-                    @click="activeTab = 'overrides'">Boss names</button>
                 <button type="button" class="tab-btn" :class="{ active: activeTab === 'cloud' }"
                     @click="activeTab = 'cloud'">Cloud upload</button>
             </div>
@@ -253,7 +251,7 @@
                         <div>
                             <label class="field-label">Log file pattern</label>
                             <input type="text" x-model="config.general.log_pattern" class="input input-mono">
-                            <p class="field-help">Glob pattern matching WoW's combat log files.</p>
+                            <p class="field-help">Regular expression matching WoW's combat log file names.</p>
                         </div>
                         <div>
                             <label class="field-label">Recording extension</label>
@@ -453,51 +451,6 @@
                             class="diff-tile" :class="config.difficulties.record_mplus ? 'on-mplus' : ''"
                             @click="config.difficulties.record_mplus = !config.difficulties.record_mplus">Mythic+</button>
                     </div>
-                </div>
-            </section>
-
-            <!-- ─── BOSS OVERRIDES ─── -->
-            <section x-show="activeTab === 'overrides'" class="card">
-                <h2 class="section-title mb-2">Boss name overrides</h2>
-                <p class="text-parchment-400 text-xs mb-4">
-                    Override how specific boss IDs appear in filenames. Useful for council fights where the
-                    encounter ID's default name is unhelpful.
-                </p>
-
-                <div class="space-y-2 mb-4">
-                    <template x-for="(name, id) in config.boss_names" :key="id">
-                        <div class="flex items-center gap-2">
-                            <input type="number" :value="id"
-                                @change="renameBossOverride(id, $event.target.value, config.boss_names[id])"
-                                class="input input-mono w-28" placeholder="Boss ID">
-                            <span class="text-parchment-300">→</span>
-                            <input type="text" :value="name"
-                                @change="config.boss_names[id] = $event.target.value"
-                                class="input flex-1" placeholder="Display name">
-                            <button type="button" @click="removeBossOverride(id)"
-                                class="p-2 text-parchment-400 hover:text-red-400 transition-colors rounded-sm">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                            </button>
-                        </div>
-                    </template>
-
-                    <p x-show="Object.keys(config.boss_names).length === 0" x-cloak
-                        class="text-parchment-400 text-xs italic py-2">
-                        No overrides configured.
-                    </p>
-                </div>
-
-                <div class="flex items-center gap-2 pt-3 border-t border-ink-500">
-                    <input type="number" x-model.number="newBossId"
-                        class="input input-mono w-28" placeholder="Boss ID">
-                    <span class="text-parchment-300">→</span>
-                    <input type="text" x-model="newBossName"
-                        class="input flex-1" placeholder="Display name">
-                    <button type="button" @click="addBossOverride()"
-                        :disabled="!newBossId || !newBossName"
-                        class="btn btn-primary">Add</button>
                 </div>
             </section>
 
@@ -715,8 +668,6 @@
                 message: '',
                 messageType: 'success',
                 activeTab: 'general',
-                newBossId: null,
-                newBossName: '',
 
                 testingObs: false,
                 obsTestResult: '',
@@ -754,7 +705,6 @@
                         record_mythic: true,
                         record_mplus: true,
                     },
-                    boss_names: {},
                     cloud_upload: {
                         enabled: false,
                         provider: 'warcraft_recorder',
@@ -811,9 +761,6 @@
                             record_mythic: data.difficulties?.record_mythic !== false,
                             record_mplus: data.difficulties?.record_mplus !== false,
                         };
-                        this.config.boss_names = data.boss_names
-                            ? Object.fromEntries(Object.entries(data.boss_names).map(([k, v]) => [String(k), v]))
-                            : {};
                         if (data.cloud_upload) {
                             this.config.cloud_upload = {
                                 enabled: data.cloud_upload.enabled === true,
@@ -874,9 +821,6 @@
                     this.saving = true;
                     try {
                         const payload = JSON.parse(JSON.stringify(this.config));
-                        payload.boss_names = Object.fromEntries(
-                            Object.entries(this.config.boss_names).map(([k, v]) => [parseInt(k), v])
-                        );
                         const response = await fetch('/api/config', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -950,27 +894,6 @@
                     this._messageTimer = setTimeout(() => { this.message = ''; }, 4000);
                 },
 
-                addBossOverride() {
-                    if (!this.newBossId || !this.newBossName.trim()) return;
-                    this.config.boss_names = {
-                        ...this.config.boss_names,
-                        [String(this.newBossId)]: this.newBossName.trim(),
-                    };
-                    this.newBossId = null;
-                    this.newBossName = '';
-                },
-                removeBossOverride(id) {
-                    const updated = { ...this.config.boss_names };
-                    delete updated[id];
-                    this.config.boss_names = updated;
-                },
-                renameBossOverride(oldId, newId, name) {
-                    if (String(oldId) === String(newId)) return;
-                    const updated = { ...this.config.boss_names };
-                    delete updated[String(oldId)];
-                    updated[String(newId)] = name;
-                    this.config.boss_names = updated;
-                },
             };
         }
     </script>

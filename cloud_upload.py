@@ -15,7 +15,6 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Callable
 from dataclasses import dataclass
-from datetime import datetime
 
 import requests
 
@@ -26,19 +25,21 @@ import wcr_format
 # Backoff doubles per attempt: 1, 2, 4, 8 s ... capped.
 HTTP_STEP_ATTEMPTS = 5
 MAX_BACKOFF_SECONDS = 30
+# One PUT carries up to a whole multipart part (100 MB) on a home uplink.
+PUT_TIMEOUT_SECONDS = 600
 
 
 class _FilePart:
     """Read-only view of *length* bytes of an open file from *offset*.
 
     Lets requests stream a multipart chunk from disk instead of holding it in
-    memory (100 MB per part, kept alive across its retries). Each attempt
-    re-reads from the start because requests calls read() until empty.
+    memory (100 MB per part, kept alive across its retries). requests reads
+    it until empty, so each retry needs a fresh one (_put_with_retries).
     """
 
     def __init__(self, f, offset: int, length: int):
-        self._f = f
-        self._offset = offset
+        self.file = f
+        self.offset = offset
         self._length = length
         self._read = 0
         f.seek(offset)
@@ -52,13 +53,54 @@ class _FilePart:
             return b''
         if size is None or size < 0 or size > remaining:
             size = remaining
-        data = self._f.read(size)
+        data = self.file.read(size)
         self._read += len(data)
         return data
 
 
+# Fields WCR has used for a video's pre-signed download URL.
+_SIGNED_URL_FIELDS = ('signedVideoKey', 'videoUrl', 'signedUrl', 'url', 'downloadUrl', 'signed')
+
+
+def find_signed_url(data: dict) -> Optional[str]:
+    """The pre-signed download URL in a WCR video/download response, if any."""
+    for field in _SIGNED_URL_FIELDS:
+        value = data.get(field, '')
+        if value and str(value).startswith('http'):
+            return value
+    return None
+
+
+def video_mime_type(path_or_key) -> str:
+    return 'video/mp4' if str(path_or_key).lower().endswith('.mp4') else 'application/octet-stream'
+
+
 def _backoff(attempt: int):
     time.sleep(min(2 ** (attempt - 1), MAX_BACKOFF_SECONDS))
+
+
+def _put_with_retries(url: str, body: '_FilePart', content_type: str, label: str):
+    """PUT *body* to a signed storage URL, retrying with backoff.
+
+    Returns the successful response, or None after HTTP_STEP_ATTEMPTS.
+    """
+    for attempt in range(1, HTTP_STEP_ATTEMPTS + 1):
+        if attempt > 1:
+            _backoff(attempt - 1)
+            body = _FilePart(body.file, body.offset, len(body))  # rewind
+        try:
+            resp = requests.put(
+                url, data=body, timeout=PUT_TIMEOUT_SECONDS,
+                headers={'Content-Type': content_type, 'Content-Length': str(len(body))},
+            )
+        except requests.RequestException as e:
+            print(f"[WCR Cloud] PUT {label} attempt {attempt}/{HTTP_STEP_ATTEMPTS} error: {redact_urls(e)}")
+            continue
+        if resp.status_code in (200, 204):
+            return resp
+        print(f"[WCR Cloud] PUT {label} attempt {attempt}/{HTTP_STEP_ATTEMPTS} failed: {resp.status_code}")
+    print(f"[WCR Cloud] PUT {label} failed after {HTTP_STEP_ATTEMPTS} attempts")
+    return None
 
 
 # Full URLs, and the bare paths urllib3 reports as "url: /path?query".
@@ -380,37 +422,11 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 print("[WCR Cloud] No signed URL in response")
                 return False
 
-            # Step 2 – PUT file to signed URL, retry up to 5 times on failure
-            content_type = 'video/mp4' if key.endswith('.mp4') else 'application/octet-stream'
-            attempts = 0
-            success = False
-
-            while not success and attempts < HTTP_STEP_ATTEMPTS:
-                attempts += 1
-                if attempts > 1:
-                    _backoff(attempts - 1)
-                try:
-                    with open(file_path, 'rb') as f:
-                        put_resp = requests.put(
-                            signed_url,
-                            data=f,
-                            headers={
-                                'Content-Type': content_type,
-                                'Content-Length': str(file_size),
-                            },
-                            timeout=600,
-                        )
-                    if put_resp.status_code in (200, 204):
-                        success = True
-                    else:
-                        print(f"[WCR Cloud] PUT attempt {attempts}/5 failed: "
-                              f"{put_resp.status_code}")
-                except Exception as e:
-                    print(f"[WCR Cloud] PUT attempt {attempts}/5 error: {redact_urls(e)}")
-
-            if not success:
-                print(f"[WCR Cloud] Single part upload failed after 5 attempts: {key}")
-                return False
+            # Step 2 – PUT file to signed URL
+            with open(file_path, 'rb') as f:
+                if not _put_with_retries(signed_url, _FilePart(f, 0, file_size),
+                                         video_mime_type(key), label=key):
+                    return False
 
             progress.uploaded_bytes = file_size
             if progress_callback:
@@ -463,7 +479,7 @@ class WarcraftRecorderCloud(CloudUploadProvider):
 
             # Step 2 – upload each part
             etags: List[str] = []
-            content_type = 'video/mp4' if key.endswith('.mp4') else 'application/octet-stream'
+            content_type = video_mime_type(key)
             offset = 0
 
             with open(file_path, 'rb') as f:
@@ -472,37 +488,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                     if chunk_size <= 0:
                         break
 
-                    # Retry each part up to 5 times — on failure we only need to
-                    # re-send this part, not restart the whole upload.
-                    attempts = 0
-                    part_success = False
-                    put_resp = None
-
-                    while not part_success and attempts < HTTP_STEP_ATTEMPTS:
-                        attempts += 1
-                        if attempts > 1:
-                            _backoff(attempts - 1)
-                        try:
-                            put_resp = requests.put(
-                                url,
-                                data=_FilePart(f, offset, chunk_size),
-                                headers={
-                                    'Content-Type': content_type,
-                                    'Content-Length': str(chunk_size),
-                                },
-                                timeout=600,
-                            )
-                            if put_resp.status_code in (200, 204):
-                                part_success = True
-                            else:
-                                print(f"[WCR Cloud] Part {part_num} attempt {attempts}/5 "
-                                      f"failed: {put_resp.status_code}")
-                        except Exception as e:
-                            print(f"[WCR Cloud] Part {part_num} attempt {attempts}/5 "
-                                  f"error: {redact_urls(e)}")
-
-                    if not part_success or put_resp is None:
-                        print(f"[WCR Cloud] Part {part_num} failed after 5 attempts: {key}")
+                    # Retried per part: a failure re-sends only this part.
+                    put_resp = _put_with_retries(url, _FilePart(f, offset, chunk_size), content_type,
+                                                 label=f"{key} part {part_num}")
+                    if put_resp is None:
                         return False
 
                     # Strip quotes from etag (axios does this too per WCR source)
@@ -583,7 +572,6 @@ class WarcraftRecorderCloud(CloudUploadProvider):
         Tries two endpoint patterns: GET /video/{key} then POST /download {key}.
         """
         g = requests.utils.quote(self.guild_name)
-        url_fields = ('signedVideoKey', 'videoUrl', 'signedUrl', 'url', 'downloadUrl', 'signed')
 
         # Pattern 1: GET /guild/{g}/video/{key}
         try:
@@ -593,10 +581,9 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 headers=self._headers, timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                for field in url_fields:
-                    v = data.get(field, '')
-                    if v and str(v).startswith('http'):
-                        return v
+                signed_url = find_signed_url(data)
+                if signed_url:
+                    return signed_url
                 print(f"[WCR Cloud] GET /video/{{key}} 200 but no URL field — "
                       f"keys present: {list(data.keys())}")
             else:
@@ -614,10 +601,9 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                 timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                for field in url_fields:
-                    v = data.get(field, '')
-                    if v and str(v).startswith('http'):
-                        return v
+                signed_url = find_signed_url(data)
+                if signed_url:
+                    return signed_url
                 print(f"[WCR Cloud] POST /download 200 but no URL field — "
                       f"keys present: {list(data.keys())}")
             else:
@@ -627,6 +613,32 @@ class WarcraftRecorderCloud(CloudUploadProvider):
             print(f"[WCR Cloud] POST /download error: {redact_urls(exc)}")
 
         return None
+
+    def list_videos(self) -> List[dict]:
+        """GET /guild/{g}/video: every video in the guild's cloud storage.
+
+        Raises PermissionError on a 401 and requests errors otherwise.
+        """
+        g = requests.utils.quote(self.guild_name)
+        resp = requests.get(f"{self.API_BASE}/guild/{g}/video", headers=self._headers, timeout=15)
+        if resp.status_code == 401:
+            self._note_rejected_credentials()
+            raise PermissionError("Warcraft Recorder credentials rejected")
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_video_size(self, video_key: str) -> int:
+        """Size in bytes of a cloud video, or 0 if unknown."""
+        g = requests.utils.quote(self.guild_name)
+        enc_key = requests.utils.quote(video_key)
+        try:
+            resp = requests.get(f"{self.API_BASE}/guild/{g}/video/{enc_key}/size",
+                                headers=self._headers, timeout=10)
+            if resp.status_code == 200:
+                return int(resp.json().get('bytes', 0))
+        except (requests.RequestException, ValueError) as exc:
+            print(f"[WCR Cloud] Could not get size for {video_key}: {redact_urls(exc)}")
+        return 0
 
     async def protect_videos(self, video_names: List[str], protect: bool) -> bool:
         """POST /guild/{g}/bulk/protect. Protected videos survive the housekeeper."""
@@ -1154,8 +1166,7 @@ class GoogleDriveUpload(CloudUploadProvider):
     def _initiate_resumable_upload(self, file_path: Path,
                                    metadata: VideoMetadata) -> Optional[str]:
         """POST to Drive resumable endpoint; returns session URI or None."""
-        ext = file_path.suffix.lower()
-        mime = 'video/mp4' if ext == '.mp4' else 'application/octet-stream'
+        mime = video_mime_type(file_path)
         file_size = file_path.stat().st_size
 
         file_meta: Dict[str, Any] = {'name': file_path.name}
@@ -1239,8 +1250,7 @@ class GoogleDriveUpload(CloudUploadProvider):
                                   session_uri: str, progress: UploadProgress,
                                   progress_callback) -> bool:
         """Stream file to Drive in chunks, resuming from Drive's offset after errors."""
-        ext = file_path.suffix.lower()
-        mime = 'video/mp4' if ext == '.mp4' else 'application/octet-stream'
+        mime = video_mime_type(file_path)
         uploaded = 0
         consecutive_failures = 0
 

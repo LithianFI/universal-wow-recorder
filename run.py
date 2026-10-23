@@ -42,9 +42,13 @@ from constants import (
     FLASK_SECRET_KEY,
     MAX_EVENT_LOG_SIZE,
     STATUS_BROADCAST_INTERVAL,
+    CLOUD_STATUS_INTERVAL_SECONDS,
+    OBS_RECONNECT_INTERVAL_SECONDS,
+    POV_START_TOLERANCE_MS,
     LOW_DISK_SPACE_BYTES,
     DISK_CHECK_INTERVAL_SECONDS,
     LOG_PREFIXES,
+    DIFFICULTIES,
 )
 
 from cloud_integration import (
@@ -176,9 +180,16 @@ def reject_cross_site_requests():
 # Routes
 # -----------------------------------------------------------------------------
 
+def _render_recordings_page():
+    # The page labels the live boss's difficulty with the same letters the
+    # sidecars use.
+    short_labels = {i: short for i, (_, short, _) in DIFFICULTIES.items()}
+    return render_template('recordings.html', difficulty_short=short_labels)
+
+
 @app.route('/')
 def index():
-    return render_template('recordings.html')
+    return _render_recordings_page()
 
 
 @app.route('/config')
@@ -298,7 +309,6 @@ def get_config():
             'record_other': cm.RECORD_OTHER,
             'record_mplus': cm.RECORD_MPLUS,
         },
-        'boss_names': cm.BOSS_NAME_OVERRIDES,
         'cloud_upload': {
             'enabled': cm.CLOUD_UPLOAD_ENABLED,
             'provider': cm.CLOUD_UPLOAD_PROVIDER,
@@ -757,7 +767,7 @@ def queue_cloud_upload(filename: str):
     
 @app.route('/recordings')
 def recordings_page():
-    return render_template('recordings.html')
+    return _render_recordings_page()
 
 
 @app.route('/stats')
@@ -1004,26 +1014,8 @@ def get_recordings():
 
 @app.route('/api/cloud/status')
 def get_cloud_status():
-    """Get current cloud upload status."""
-    s = get_state()
-    cloud_manager = s.cloud_manager
-    if not cloud_manager:
-        return jsonify({
-            'enabled': False,
-            'authenticated': False,
-            'error': 'Cloud manager not initialized'
-        })
-
-    queue_status = cloud_manager.get_queue_status()
-    storage_info = cloud_manager.get_storage_info()
-
-    return jsonify({
-        'enabled': True,
-        'authenticated': cloud_manager.is_ready(),
-        'provider': queue_status.get('provider', ''),
-        'queue': queue_status,
-        'storage': storage_info,
-    })
+    """Get current cloud upload status (same shape as the cloud_status event)."""
+    return jsonify(_cloud_status())
 
 
 @app.route('/api/recordings/<path:filename>/local-povs')
@@ -1067,7 +1059,7 @@ def get_local_povs_for_recording(filename: str):
             if not pov_meta.get('pov'):
                 continue
             c_start = int(pov_meta.get('start') or 0)
-            if c_start and main_start and abs(c_start - main_start) > 60 * 1000:
+            if c_start and main_start and abs(c_start - main_start) > POV_START_TOLERANCE_MS:
                 continue
             video_file = candidate_json.with_suffix(ext)
             if not video_file.exists():
@@ -1248,7 +1240,8 @@ _disk_status_cache = {'checked_at': 0.0, 'value': None}
 
 
 def _disk_status() -> Optional[dict]:
-    """Free space on the recordings drive, refreshed at most every 30 s."""
+    """Free space on the recordings drive, refreshed at most every
+    DISK_CHECK_INTERVAL_SECONDS."""
     now = time.time()
     if now - _disk_status_cache['checked_at'] < DISK_CHECK_INTERVAL_SECONDS:
         return _disk_status_cache['value']
@@ -1312,27 +1305,29 @@ def build_status() -> dict:
     }
 
 
+def _cloud_status() -> dict:
+    """Cloud upload state for the UI (queue counters flattened, full queue
+    status under 'queue')."""
+    cloud_manager = get_state().cloud_manager
+    if not cloud_manager:
+        return {'enabled': False, 'authenticated': False, 'error': 'Cloud manager not initialized'}
+    queue_status = cloud_manager.get_queue_status()
+    return {
+        'enabled': True,
+        'authenticated': cloud_manager.is_ready(),
+        'provider': queue_status.get('provider', ''),
+        'queue_size': queue_status.get('queue_size', 0),
+        'active_upload': queue_status.get('active_upload'),
+        'completed_count': queue_status.get('completed_count', 0),
+        'failed_count': queue_status.get('failed_count', 0),
+        'storage': cloud_manager.get_storage_info() or None,
+        'queue': queue_status,
+    }
+
+
 def broadcast_cloud_status():
     """Broadcast current cloud upload status to all clients."""
-    s = get_state()
-    cloud_manager = s.cloud_manager
-    if not cloud_manager:
-        status = {'enabled': False, 'authenticated': False}
-    else:
-        queue_status = cloud_manager.get_queue_status()
-        storage_info = cloud_manager.get_storage_info()
-        status = {
-            'enabled': True,
-            'authenticated': cloud_manager.is_ready(),
-            'provider': queue_status.get('provider', ''),
-            'queue_size': queue_status.get('queue_size', 0),
-            'active_upload': queue_status.get('active_upload'),
-            'completed_count': queue_status.get('completed_count', 0),
-            'failed_count': queue_status.get('failed_count', 0),
-            'storage': storage_info if storage_info else None,
-        }
-
-    socketio.emit('cloud_status', status)
+    socketio.emit('cloud_status', _cloud_status())
 
 
 def broadcast_upload_progress(progress: UploadProgress):
@@ -1384,53 +1379,65 @@ def _reconnect_obs(s: AppState):
         _persist_obs_recording_path(s.obs_client, s.config_manager)
 
 
+class _ObsReconnector:
+    """Passively reconnects to OBS while it is down (e.g. started after the
+    recorder). connect() blocks up to the OBS timeout, so it runs on its own
+    thread and never stalls status pushes."""
+
+    def __init__(self):
+        self._last_attempt = 0.0
+        self._thread: Optional[threading.Thread] = None
+
+    def maybe_reconnect(self, s: AppState):
+        if not s.obs_client or s.obs_client.is_connected:
+            return
+        if self._thread and self._thread.is_alive():
+            return
+        now = time.time()
+        if now - self._last_attempt < OBS_RECONNECT_INTERVAL_SECONDS:
+            return
+        self._last_attempt = now
+        self._thread = threading.Thread(
+            target=_reconnect_obs, args=(s,), name='obs-reconnect', daemon=True)
+        self._thread.start()
+
+
+def _status_change_key(status: dict) -> tuple:
+    """The status fields whose change is worth a push to clients."""
+    recorder = status.get('recorder') or {}
+    log_mon = status.get('log_monitor') or {}
+    return (
+        recorder.get('recording'),
+        recorder.get('encounter_active'),
+        recorder.get('boss_name'),
+        recorder.get('dungeon_active'),
+        recorder.get('dungeon_name'),
+        log_mon.get('current_log'),
+        status.get('obs_connected'),
+        (status.get('disk') or {}).get('is_low'),
+    )
+
+
 def status_broadcast_loop():
     """Background thread that broadcasts status updates."""
     last_status = None
-    last_cloud_broadcast = 0
-    last_obs_reconnect_attempt = 0
-    OBS_RECONNECT_INTERVAL = 15  # seconds between passive reconnect attempts
-    reconnect_thread: Optional[threading.Thread] = None
+    last_cloud_broadcast = 0.0
+    reconnector = _ObsReconnector()
 
     while not shutdown_event.is_set():
         try:
-            s = get_state()
-
-            # Passively attempt to reconnect to OBS when disconnected.
-            # This handles the case where OBS is started after the recorder.
-            # connect() blocks up to the OBS timeout; don't stall status pushes.
-            reconnect_idle = reconnect_thread is None or not reconnect_thread.is_alive()
-            if s.obs_client and not s.obs_client.is_connected and reconnect_idle:
-                now = time.time()
-                if now - last_obs_reconnect_attempt >= OBS_RECONNECT_INTERVAL:
-                    last_obs_reconnect_attempt = now
-                    reconnect_thread = threading.Thread(
-                        target=_reconnect_obs, args=(s,), name='obs-reconnect', daemon=True)
-                    reconnect_thread.start()
+            reconnector.maybe_reconnect(get_state())
 
             status = build_status()
-
-            recorder = status.get('recorder') or {}
-            log_mon = status.get('log_monitor') or {}
-            status_key = (
-                recorder.get('recording'),
-                recorder.get('encounter_active'),
-                recorder.get('boss_name'),
-                recorder.get('dungeon_active'),
-                recorder.get('dungeon_name'),
-                log_mon.get('current_log'),
-                status.get('obs_connected'),
-                (status.get('disk') or {}).get('is_low'),
-            )
-
+            status_key = _status_change_key(status)
             if status_key != last_status:
                 socketio.emit('status', status)
                 last_status = status_key
 
-            current_time = time.time()
-            if current_time - last_cloud_broadcast >= 5:
+            now = time.time()
+            if now - last_cloud_broadcast >= CLOUD_STATUS_INTERVAL_SECONDS:
                 broadcast_cloud_status()
-                last_cloud_broadcast = current_time
+                last_cloud_broadcast = now
 
         except Exception as e:
             print(f"{LOG_PREFIXES['WEBSOCKET']} Error: {e}")
@@ -1503,9 +1510,12 @@ def handle_recording_saved(recording_info: dict = None):
 
     info = recording_info or {}
     duration = info.get('duration', 0)
-
-    # The parser's current_metadata may already belong to the next pull.
-    parsed_meta = info.get('metadata') or s.combat_parser.current_metadata
+    # The fight's own metadata: the parser's current_metadata may already
+    # belong to the next pull.
+    parsed_meta = info.get('metadata')
+    if parsed_meta is None:
+        print("[Cloud] Saved recording has no metadata; skipping upload")
+        return
 
     if not should_auto_upload(s.config_manager, duration,
                               parsed_meta.category, parsed_meta.difficulty_id):
@@ -1619,11 +1629,11 @@ def init_recorder(config_path: Path) -> bool:
             s.log_monitor.start()
             print(f"{LOG_PREFIXES['RECORDER']} Monitoring: {s.config_manager.LOG_DIR}")
         else:
-            print(f"")
+            print()
             print(f"⚠️  {LOG_PREFIXES['RECORDER']} LOG DIRECTORY NOT FOUND")
             print(f"   Path: {s.config_manager.LOG_DIR}")
-            print(f"   Please update 'log_dir' in your config.ini")
-            print(f"")
+            print("   Please update 'log_dir' in your config.ini")
+            print()
 
         # Cloud login (Google OAuth, WCR) can take minutes; don't hold up the
         # web server, which Electron waits on.

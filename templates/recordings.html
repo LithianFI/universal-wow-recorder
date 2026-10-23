@@ -261,11 +261,11 @@
                     </div>
                     <button x-show="cloudStatus.failed_count > 0" @click="retryFailedUploads()"
                         class="quick-btn w-full mt-2 text-[11px]">Retry failed</button>
-                    <div x-show="cloudStatus.storage?.used_gb !== undefined"
+                    <div x-show="cloudStatus.storage?.usage_gb !== undefined"
                         class="mt-2 pt-2 border-t border-ink-500 flex justify-between text-parchment-400">
                         <span>Storage</span>
                         <span class="font-mono"
-                            x-text="(cloudStatus.storage?.used_gb ?? 0).toFixed(1) + ' / ' + (cloudStatus.storage?.total_gb ? cloudStatus.storage.total_gb.toFixed(0) + ' GB' : '—')"></span>
+                            x-text="(cloudStatus.storage?.usage_gb ?? 0).toFixed(1) + ' / ' + (cloudStatus.storage?.limit_gb ? cloudStatus.storage.limit_gb.toFixed(0) + ' GB' : '—')"></span>
                     </div>
                 </div>
             </div>
@@ -1319,10 +1319,8 @@
             7: 'LFR', 14: 'Normal', 15: 'Heroic',
             16: 'Mythic', 17: 'LFR', 23: 'Mythic'
         };
-        const DIFFICULTY_SHORT = {
-            1: 'N', 2: 'H', 3: 'M', 7: 'LFR',
-            14: 'N', 15: 'H', 16: 'M', 17: 'LFR', 23: 'M'
-        };
+        // DifficultyID -> letter, from constants.DIFFICULTIES.
+        const DIFFICULTY_SHORT = {{ difficulty_short | tojson }};
         // SpecID → class identifier (covers active specs through The War Within).
         const SPEC_TO_CLASS = {
             250:'deathknight',251:'deathknight',252:'deathknight',
@@ -1364,7 +1362,6 @@
         // session when counting attempts on the live boss.
         const SESSION_GAP_SECONDS = 2 * 3600;
         const LIVE_TIMER_INTERVAL_MS = 1000;
-        const CLIP_NAME_PATTERN = /_clip_\d+-\d+/;
         const CLOUD_PROVIDER_LABELS = { warcraft_recorder: 'Warcraft Recorder', google_drive: 'Google Drive' };
 
         // Per-viewer preferences; the page works the same without storage.
@@ -1530,7 +1527,6 @@
                     let previous = 0;
                     let lastModified = Date.now() / 1000;
                     for (const rec of this.recordings) {
-                        if (CLIP_NAME_PATTERN.test(rec.name)) continue;
                         if (lastModified - rec.modified > SESSION_GAP_SECONDS) break;
                         if (rec._parsed?.encounter !== boss) break;
                         previous++;
@@ -1603,8 +1599,9 @@
 
                 // After a pull is saved, open it — unless the viewer is busy
                 // with something other than the previous newest recording.
+                // (/api/recordings never lists clips.)
                 newestFullRecording() {
-                    return this.recordings.find(r => !CLIP_NAME_PATTERN.test(r.name)) || null;
+                    return this.recordings[0] || null;
                 },
 
                 async refreshAndFollowLatest() {

@@ -13,9 +13,16 @@
 - No dashboard page (2026-10-21): the recordings page (/) carries live status, manual record and the cloud queue; the session progression chart is on Stats.
 - "Keep" = WCR's `protected` sidecar field (POST /api/recordings/<f>/protect). Retention neither deletes nor counts kept files, delete-after-upload skips them, and WCR cloud gets /bulk/protect so its housekeeper won't evict them.
 - Sidecars are a superset of WCR `Metadata`; our own fields go top-level. `wcr_format` allowlists WCR's keys and builds the CloudMetadata from the sidecar at upload time (WCR's API maps keys to SQL columns). VideoMetadata only identifies the queued file.
+- Boss name overrides removed (2026-10-23, unused). Old [BossNames] sections in config.ini are ignored.
+- Difficulty IDs live in one table, `constants.DIFFICULTIES` (checked against Difficulty.db2 on wago.tools); config toggles, sidecar letters and the page's DIFFICULTY_SHORT derive from it. Legacy fixed-size raids (3/4/5/6/9) are record_other; party 1/2/23 share the raid tier toggles.
+- config.ini.example is the template for new configs (copied on first run) and the settings reference; keep it in sync when adding a setting. An unparsable config.ini is moved to config.ini.bad and the app runs on defaults.
+- Post-fight scan = `combat_parser/fight_scan.py`, one streaming pass; names are resolved at the end. The cooldown rescan binary-searches the log by timestamp, so it stays on the request thread.
 
 ## Conventions
 <!-- Patterns established in this codebase. -->
+- Sidecar writes go through `sidecar_cache.write_sidecar` (atomic, refreshes the cached listing); config saves are atomic + 0600.
+- Read `get_state().cloud_manager` once into a local per function: `restart_cloud_manager` (one lock, waits for the old workers) can replace it at any time.
+- Clip names: `clip_export.is_clip` / `strip_clip_suffix`, never a local regex.
 - Frontend assets vendored (static/vendor). Tailwind v4: config lives in styles/tailwind.css (@theme, @source "../templates"); no tailwind.config.js. After adding classes to templates run `npm run build:css` and commit static/css/tailwind.css.
 - `npm run build` = CSS + PyInstaller + electron-builder (AppImage); `npm run build:electron` only repackages.
 
@@ -27,12 +34,16 @@
 - The recording player is taken per fight from the window's first local-player (0x511) line, like WCR: the live identity goes stale on a character swap within one log, and a player outside the combatant list breaks uniqueHash, so the POV doesn't group on WCR's site.
 - CHALLENGE_MODE_START's affix list "[10,9,147]" is cut at its commas by the CSV split; `CombatEvent._parse_affixes` rejoins it.
 - Claude's sandbox has no Node and Python 3.13 while venv/ is 3.14 — test via a scratch venv (`pip install -r requirements.txt`), JS syntax via tree-sitter, page logic via py_mini_racer, layout via Playwright headless Chromium.
-- Alpine: never combine x-show with a string `:style` — re-evaluating the string replaces the style attribute and wipes x-show's display:none (the REC banner showed while idle). Use object form `:style="{ left: x + '%' }"`.
+- Alpine: a string `:style` replaces the whole style attribute — it wipes x-show's display:none (the REC banner) and any static `style=` on the element (the cooldown timeline's name column/playhead). Always use object form `:style="{ left: x + '%' }"`.
+- Alpine calls a component's init() itself; adding x-init="init()" runs it twice (two sockets, doubled debug lines).
 - Bar charts with percentage heights need a definite-height box per bar (column `h-full`, bar in its own `flex-1 min-h-0` box, fixed-height labels); otherwise the bars collapse to 0.
 - npm audit (2026-10-21): remaining braces (via @tailwindcss/cli watcher) and sprintf-js (via electron-builder's @electron/get) are build-time only with no fixed release; `npm audit fix --force` downgrades and reintroduces tar issues — don't run it.
 
 ## Technical Debt
 <!-- Known shortcuts and what a proper fix would look like. -->
 - Not done: tray icon.
-- main.py is an unused legacy CLI entry (run.py / Electron is the real app).
+- main.py is an unused legacy CLI entry (run.py / Electron is the real app); constants.ERROR_MESSAGES is only used there.
+- Google Drive: an expired refresh token makes startup block in the OAuth browser flow, and refreshed tokens aren't written back. Fix: consent only from an explicit user action.
+- Templates duplicate the nav, shared CSS and player helpers (Phase 7 of the 2026-10-23 review: Jinja base layout + static/js/common.js).
+- Unverified: whether Hunter Feign Death shows up as UNIT_DIED (WCR checks unconsciousOnDeath).
 - M+ upgradeLevel is always 0 (needs WCR's dungeonTimersByMapId table); no challengeModeTimeline.

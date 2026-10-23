@@ -1,10 +1,16 @@
+# WoW Raid Recorder configuration
+# Everything here can also be set on the Config page; a missing key uses the
+# default shown.
+
 [General]
 # Path to your WoW logs directory
 log_dir = /path/to/World of Warcraft/_retail_/Logs
-# Pattern to match combat log files
+# Regular expression matching combat log file names
 log_pattern = WoWCombatLog-\d{6}_\d{6}\.txt$
-# Extension for recording files (must match OBS settings)
+# Extension of the recordings OBS writes (must match OBS settings)
 recording_extension = .mp4
+# ffmpeg binary for clip export; empty = find it on PATH
+ffmpeg_path =
 
 [OBS]
 # OBS WebSocket connection settings
@@ -14,31 +20,66 @@ port = 4455
 password =
 
 [Recording]
-# Automatically rename recordings based on boss encounters
-auto_rename = true
-# Delay in seconds before renaming (to ensure OBS finished writing)
+# Seconds to wait after OBS stops before renaming the file
 rename_delay = 3
-# Maximum attempts before giving up on finding the recording file
-max_rename_attempts = 10
-# Minimum recording duration in seconds (shorter recordings are ignored/deleted)
+# Recordings shorter than this many seconds are not kept
 min_recording_duration = 5
 # Delete recordings shorter than min_recording_duration
 delete_short_recordings = true
-# Fallback recording path if OBS recording directory cannot be detected
-recording_path_fallback = /path/to/Videos
+# Used only when the recording folder can't be read from OBS (filled in
+# automatically from OBS once connected)
+recording_path_fallback =
+# Add player deaths to the recording metadata
+track_player_deaths = false
+# Move finished recordings into YYYY-MM-DD subfolders
+organize_by_date = false
+# Retention: delete recordings older than this many days (0 = never)
+retention_max_age_days = 0
+# Retention: keep at most this many recordings per boss, difficulty and
+# result (0 = no limit). Recordings marked Keep are never deleted.
+retention_max_per_group = 0
 
 [Difficulties]
-# Which raid difficulties to record
-# Set to true to record, false to ignore
+# Which content to record
 record_lfr = false
 record_normal = true
 record_heroic = true
 record_mythic = true
+record_mplus = true
+# Legacy raids, timewalking and other difficulties
 record_other = false
 
-[BossNames]
-# Boss ID to name overrides (optional)
-# Format: <boss_id> = <display_name>
-# Example:
-# 2688 = Rashok
-# 2687 = The Vigilant Steward, Zskarn
+[CloudUpload]
+enabled = false
+# warcraft_recorder or google_drive
+provider = warcraft_recorder
+# Queue each new recording for upload
+auto_upload = true
+# Delete the local copy once uploaded (recordings marked Keep stay)
+delete_after_upload = false
+# Which content auto upload covers (the Upload button ignores these)
+upload_lfr = true
+upload_normal = true
+upload_heroic = true
+upload_mythic = true
+upload_mplus = true
+
+# Warcraft Recorder Cloud
+wcr_username =
+wcr_password =
+wcr_guild =
+
+# Google Drive: OAuth client secrets JSON from Google Cloud Console, and the
+# folder to upload into (empty = My Drive root)
+gdrive_credentials_file =
+gdrive_folder_id =
+
+# POV sync (Warcraft Recorder only): look for guildmates' recordings of your
+# pulls. On by default for Warcraft Recorder; uncomment to turn it off.
+# pov_sync_enabled = false
+# Minutes between checks
+pov_sync_interval = 15
+# Download POVs of pulls from the last day without asking
+pov_auto_download = false
+# Where downloaded POVs go (empty = <recordings>/other_povs)
+pov_download_dir =

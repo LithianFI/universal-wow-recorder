@@ -19,9 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Callable, Any
 
-from constants import VIDEO_EXTENSIONS
+from constants import POV_START_TOLERANCE_MS, VIDEO_EXTENSIONS
 from sidecar_cache import sidecars, write_sidecar
-from cloud_upload import redact_urls
+from cloud_upload import find_signed_url, redact_urls
 import wcr_format
 
 
@@ -40,6 +40,12 @@ _DIFF_MAP: Dict[str, str] = {
 
 _PROGRESS_INTERVAL_SECONDS = 0.5
 _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
+# The sync loop wakes this often to see whether a sync is due.
+_SYNC_TICK_SECONDS = 30
+# How often a paused download checks whether the recording ended.
+_RECORDING_POLL_SECONDS = 5
+# Auto download only fetches POVs of pulls this recent.
+_AUTO_DOWNLOAD_MAX_AGE_SECONDS = 24 * 3600
 
 # Separators and drive/stream markers that would let a key leave the download dir.
 _UNSAFE_KEY_CHARS = ('/', '\\', ':', '\0')
@@ -226,20 +232,19 @@ class PovSyncManager:
 
         for meta in self._local_meta.get(local_hash, []):
             l_start = int(meta.get('start') or 0)
-            if l_start and abs(c_start - l_start) <= 60 * 1000:
+            if l_start and abs(c_start - l_start) <= POV_START_TOLERANCE_MS:
                 return True
         return False
 
     def _find_matching_local_hash(self, cloud_video: dict) -> Optional[str]:
         """
         Fallback: return the local uniqueHash whose pulls best match this cloud
-        video by encounter name + difficulty + result + duration + start time.
+        video by encounter name + difficulty + result + start time.
         Used when the cloud video carries no uniqueHash (e.g. other-client upload).
         """
         c_name = (cloud_video.get('encounterName') or '').lower().strip()
         c_diff = _normalize_difficulty(cloud_video.get('difficulty') or '')
         c_result = bool(cloud_video.get('result'))
-        c_dur = int(cloud_video.get('duration') or 0)
         c_start = int(cloud_video.get('start') or 0)
 
         if not c_name:
@@ -254,7 +259,7 @@ class PovSyncManager:
                 if bool(meta.get('result')) != c_result:
                     continue
                 l_start = int(meta.get('start') or 0)
-                if l_start and c_start and abs(l_start - c_start) > 60 * 1000:
+                if l_start and c_start and abs(l_start - c_start) > POV_START_TOLERANCE_MS:
                     continue
                 return h
         return None
@@ -309,56 +314,12 @@ class PovSyncManager:
                     with self._lock:
                         self._sync_error = redact_urls(exc)
                 self._last_sync_time = time.time()
-            self._stop_event.wait(30)
+            self._stop_event.wait(_SYNC_TICK_SECONDS)
 
     def _do_sync(self):
         print("[PovSync] Running sync…")
-
-        # 1. Build local index from JSON sidecars
-        local_hashes: Dict[str, List[str]] = {}
-        local_meta: Dict[str, List[dict]] = {}
-        local_keys: Set[str] = set()
-        recording_dir = self._get_recording_dir()
-        ext = getattr(self._config, 'RECORDING_EXTENSION', '.mp4').lower()
-
-        if recording_dir and recording_dir.exists():
-            for json_path in sidecars.json_files(recording_dir):
-                try:
-                    data = sidecars.read(json_path)
-                    if data is None:
-                        continue
-                    h = data.get('uniqueHash', '')
-                    if h:
-                        rel = str(json_path.with_suffix('').relative_to(recording_dir))
-                        local_hashes.setdefault(h, []).append(rel)
-                        local_meta.setdefault(h, []).append({
-                            'encounterName': data.get('encounterName', ''),
-                            'difficulty': data.get('difficulty', ''),
-                            'result': data.get('result', False),
-                            'duration': data.get('duration', 0),
-                            'start': data.get('start', 0),
-                        })
-                except Exception:
-                    continue
-            for vf in recording_dir.rglob(f'*{ext}'):
-                local_keys.add(vf.name)
-            # A custom download dir outside the recordings tree isn't covered above.
-            download_dir = self._get_download_dir(recording_dir)
-            if download_dir.exists() and not download_dir.resolve().is_relative_to(recording_dir.resolve()):
-                for vf in download_dir.rglob(f'*{ext}'):
-                    local_keys.add(vf.name)
-
-        # 2. Fetch cloud video list
-        g = requests.utils.quote(self._cloud.guild_name)
-        url = f"{self._cloud.API_BASE}/guild/{g}/video"
-        resp = requests.get(url, headers=self._cloud._headers, timeout=15)
-
-        if resp.status_code == 401:
-            print("[PovSync] 401 — credentials may have expired")
-            return
-        resp.raise_for_status()
-
-        cloud_videos: List[dict] = resp.json()
+        local_hashes, local_meta, local_keys = self._build_local_index()
+        cloud_videos = self._cloud.list_videos()
         print(f"[PovSync] Fetched {len(cloud_videos)} cloud videos; "
               f"{len(local_hashes)} local hashes found")
 
@@ -369,13 +330,48 @@ class PovSyncManager:
             self._local_keys = local_keys
             self._sync_error = None
 
-        # 3. Auto-queue recent POVs if configured (only encounters < 24 h old)
         if self._config.POV_AUTO_DOWNLOAD:
-            cutoff_ms = (time.time() - 86400) * 1000  # 24 h ago in epoch ms
-            for videos in self.get_available_povs().values():
-                for video in videos:
-                    if (video.get('start') or 0) >= cutoff_ms:
-                        self.queue_download(video.get('videoKey', ''))
+            self._queue_recent_povs()
+
+    def _build_local_index(self) -> tuple:
+        """(uniqueHash -> recording paths, uniqueHash -> pull summaries,
+        video file names on disk) from the recordings tree."""
+        local_hashes: Dict[str, List[str]] = {}
+        local_meta: Dict[str, List[dict]] = {}
+        local_keys: Set[str] = set()
+        recording_dir = self._get_recording_dir()
+        if not recording_dir or not recording_dir.exists():
+            return local_hashes, local_meta, local_keys
+
+        for json_path in sidecars.json_files(recording_dir):
+            data = sidecars.read(json_path)
+            h = data.get('uniqueHash', '') if data else ''
+            if not h:
+                continue
+            rel = str(json_path.with_suffix('').relative_to(recording_dir))
+            local_hashes.setdefault(h, []).append(rel)
+            local_meta.setdefault(h, []).append({
+                'encounterName': data.get('encounterName', ''),
+                'difficulty': data.get('difficulty', ''),
+                'result': data.get('result', False),
+                'start': data.get('start', 0),
+            })
+
+        ext = self._config.RECORDING_EXTENSION.lower()
+        local_keys.update(vf.name for vf in recording_dir.rglob(f'*{ext}'))
+        # A custom download dir outside the recordings tree isn't covered above.
+        download_dir = self._get_download_dir(recording_dir)
+        if download_dir.exists() and not download_dir.resolve().is_relative_to(recording_dir.resolve()):
+            local_keys.update(vf.name for vf in download_dir.rglob(f'*{ext}'))
+        return local_hashes, local_meta, local_keys
+
+    def _queue_recent_povs(self):
+        """Auto download: queue available POVs of pulls from the last day."""
+        cutoff_ms = (time.time() - _AUTO_DOWNLOAD_MAX_AGE_SECONDS) * 1000
+        for videos in self.get_available_povs().values():
+            for video in videos:
+                if (video.get('start') or 0) >= cutoff_ms:
+                    self.queue_download(video.get('videoKey', ''))
 
     # ------------------------------------------------------------------
     # Download loop
@@ -386,11 +382,11 @@ class PovSyncManager:
 
         Returns True if it's safe to proceed, False if stop was requested.
         """
-        while self._is_recording():
-            if self._stop_event.is_set():
-                return False
+        if self._is_recording():
             print("[PovSync] Recording in progress — download paused")
-            self._stop_event.wait(5)
+        while self._is_recording():
+            if self._stop_event.wait(_RECORDING_POLL_SECONDS):
+                return False
         return not self._stop_event.is_set()
 
     def _download_loop(self):
@@ -433,35 +429,12 @@ class PovSyncManager:
         if not recording_dir:
             raise RuntimeError("No recording directory available for POV download")
 
-        # Extract pre-signed download URL — first try fields in the video list object,
-        # then fall back to fetching it from the individual video endpoint.
-        signed_url = ''
-        for field in ('signedVideoKey', 'videoUrl', 'signedUrl', 'url', 'downloadUrl'):
-            v = cloud_video.get(field, '')
-            if v and str(v).startswith('http'):
-                signed_url = v
-                break
-
-        if not signed_url:
-            fields = [k for k, v in cloud_video.items() if v]
-            print(f"[PovSync] No URL in video object for {key} — fields present: {fields}")
-            signed_url = self._cloud.get_signed_download_url(key) or ''
-
+        # The video list usually carries a pre-signed URL; otherwise ask for one.
+        signed_url = find_signed_url(cloud_video) or self._cloud.get_signed_download_url(key)
         if not signed_url:
             raise RuntimeError(f"Could not obtain a download URL for {key}")
 
-        # Fetch file size for progress reporting (best-effort)
-        total_bytes = 0
-        try:
-            g = requests.utils.quote(self._cloud.guild_name)
-            enc_key = requests.utils.quote(key)
-            size_resp = requests.get(
-                f"{self._cloud.API_BASE}/guild/{g}/video/{enc_key}/size",
-                headers=self._cloud._headers, timeout=10)
-            if size_resp.status_code == 200:
-                total_bytes = size_resp.json().get('bytes', 0)
-        except Exception as exc:
-            print(f"[PovSync] Could not get size for {key}: {redact_urls(exc)}")
+        total_bytes = self._cloud.get_video_size(key)  # for progress; 0 if unknown
 
         progress = DownloadProgress(
             video_key=key, total_bytes=total_bytes,

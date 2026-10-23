@@ -62,7 +62,6 @@ class RecordingState:
             self.dungeon_level = dungeon_level
             self.dungeon_start_time = time.time()
             self.dungeon_start_timestamp = timestamp
-            self.last_activity_time = time.time()
 
         print(f"{LOG_PREFIXES['STATE']} 🏁 M+ Dungeon started: {dungeon_name} (+{dungeon_level})")
     
@@ -114,13 +113,7 @@ class RecordingState:
         self.dungeon_level = None
         self.dungeon_start_time = None
         self.dungeon_start_timestamp = None
-        self.last_activity_time = None
-    
-    def update_activity(self):
-        """Update last activity timestamp."""
-        with self._lock:
-            self.last_activity_time = time.time()
-    
+
     # ---------------------------------------------------------------------
     # State Queries
     # ---------------------------------------------------------------------
@@ -197,5 +190,4 @@ class RecordingState:
                 'dungeon_name': self.dungeon_name,
                 'dungeon_level': self.dungeon_level,
                 'dungeon_start_timestamp': self.dungeon_start_timestamp,
-                'last_activity_time': self.last_activity_time,
             }

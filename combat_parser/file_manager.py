@@ -16,6 +16,15 @@ from constants import (
 )
 
 
+def unused_path(path: Path) -> Path:
+    """*path*, or "name (2).ext" etc. if taken: rename() overwrites on POSIX."""
+    candidate, counter = path, 2
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
+        counter += 1
+    return candidate
+
+
 class RecordingFileManager:
     """Manages recording file operations: finding, renaming, deleting."""
     
@@ -121,16 +130,6 @@ class RecordingFileManager:
             print(f"[FILE] Error deleting recording: {e}")
             return False
     
-    def _get_difficulty_name(self, difficulty_id: int) -> str:
-        """Convert difficulty ID to readable name."""
-        difficulties = {
-            1: "Normal", 2: "Heroic", 3: "Mythic", 4: "Mythic+",
-            5: "Timewalking", 7: "LFR", 9: "40Player",
-            14: "Normal", 15: "Heroic", 16: "Mythic", 17: "LFR",
-            22: "Mythic", 23: "Mythic", 24: "Timewalking", 33: "Timewalking",
-        }
-        return difficulties.get(difficulty_id, f"Difficulty_{difficulty_id}")
-    
     def organize_into_date_subfolder(self, file_path: Path) -> Optional[Path]:
         """Move *file_path* (and its companion .json) into a YYYY-MM-DD subfolder.
 
@@ -165,18 +164,7 @@ class RecordingFileManager:
             print(f"{LOG_PREFIXES['FILE']} Could not create date subfolder {target_dir}: {e}")
             return None
 
-        # Move the video file.
-        new_path = target_dir / file_path.name
-
-        # Avoid silent overwrites if a file with the same name already exists
-        if new_path.exists():
-            stem = file_path.stem
-            suffix = file_path.suffix
-            counter = 1
-            while new_path.exists():
-                new_path = target_dir / f"{stem}_{counter}{suffix}"
-                counter += 1
-
+        new_path = unused_path(target_dir / file_path.name)
         try:
             file_path.rename(new_path)
             print(f"{LOG_PREFIXES['FILE']} 📁 Organised into {date_str}/: {new_path.name}")
@@ -191,9 +179,15 @@ class RecordingFileManager:
             try:
                 json_src.rename(json_dst)
                 print(f"{LOG_PREFIXES['FILE']} 📁 Organised companion JSON: {json_dst.name}")
-            except Exception as e:
-                # Non-fatal — the video already moved successfully
-                print(f"{LOG_PREFIXES['FILE']} Warning: could not move companion JSON: {e}")
+            except OSError as e:
+                # Apart, the video would list without its metadata: move it back.
+                print(f"{LOG_PREFIXES['FILE']} Could not move companion JSON ({e}); leaving both in place")
+                try:
+                    new_path.rename(file_path)
+                except OSError as undo_error:
+                    print(f"{LOG_PREFIXES['FILE']} ❌ Could not move {new_path.name} back: {undo_error}")
+                    return new_path
+                return None
 
         self.last_renamed_path = new_path
         return new_path

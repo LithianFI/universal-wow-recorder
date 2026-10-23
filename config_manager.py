@@ -5,13 +5,19 @@ Handles loading, saving, and accessing configuration settings.
 
 import os
 import re
+import shutil
 import tempfile
 import threading
 import configparser
 from pathlib import Path
-from typing import Dict, Any, Optional, Set
+from typing import Dict, Optional, Set
 
+from constants import DIFFICULTY_IDS
 from metadata_generator import RecordingCategory
+
+
+# Template for a new config file; bundled at the same place by PyInstaller.
+_EXAMPLE_CONFIG = Path(__file__).with_name('config.ini.example')
 
 
 def _int_setting(minimum: int, maximum: Optional[int] = None):
@@ -34,15 +40,6 @@ class ConfigManager:
     # ---------------------------------------------------------------------
     # Constants and Defaults
     # ---------------------------------------------------------------------
-
-    # Difficulty ID mappings for WoW combat logs
-    DIFFICULTY_IDS = {
-        'lfr': [7, 17],
-        'normal': [1, 14],
-        'heroic': [2, 15],
-        'mythic': [3, 16, 22, 23, 233],
-        'other': [4, 5, 8, 9, 24, 33],
-    }
 
     # Content kinds with their own auto-upload toggle (CloudUpload upload_<kind>).
     UPLOAD_CONTENT_KINDS = ('lfr', 'normal', 'heroic', 'mythic', 'mplus')
@@ -88,10 +85,8 @@ class ConfigManager:
             'wcr_username': '',
             'wcr_password': '',
             'wcr_guild': '',
-            'gdrive_enabled': 'false',
+            'gdrive_credentials_file': '',
             'gdrive_folder_id': '',
-            'proton_enabled': 'false',
-            'proton_folder': '',
             # POV sync — check cloud for other players' recordings of the same encounter.
             # pov_sync_enabled has no default here on purpose: save() writes every
             # option, and a written default would read back as an explicit choice
@@ -100,7 +95,6 @@ class ConfigManager:
             'pov_auto_download': 'false',
             'pov_download_dir': '',
         },
-        'BossNames': {},
     }
 
     # Maps JSON payload sections to their ini section name and per-key coercion functions.
@@ -190,7 +184,7 @@ class ConfigManager:
         self._explicit_options: Set[tuple] = set()
 
         if not self.config_path.exists():
-            print(f"[CONFIG] Configuration file not found.")
+            print("[CONFIG] Configuration file not found.")
             self._create_default_config()
 
         try:
@@ -232,119 +226,18 @@ class ConfigManager:
         }
 
     def _create_default_config(self):
-        """Create a default configuration file."""
+        """Create the config file from config.ini.example (shipped next to
+        this module), or from the built-in defaults if it is missing."""
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            config_content = self._generate_default_config_content()
-            with open(self.config_path, 'w') as f:
-                f.write(config_content)
+            if _EXAMPLE_CONFIG.is_file():
+                shutil.copyfile(_EXAMPLE_CONFIG, self.config_path)
+            else:
+                self.save()
             print(f"[CONFIG] Created default configuration at: {self.config_path}")
             print("[CONFIG] Please edit the file to match your setup.")
-        except Exception as e:
-            print(f"[CONFIG] Failed to create config file: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _generate_default_config_content(self) -> str:
-        """Generate content for default configuration file."""
-        recording_path = self._get_default_recording_path()
-        log_dir = "/path/to/World of Warcraft/_retail_/Logs"
-
-        return f"""# WoW Raid Recorder Configuration
-# ============================================
-# Edit this file to match your setup, then run the program.
-
-[General]
-# Path to your WoW logs directory
-log_dir = {log_dir}
-
-# Pattern to match combat log files
-log_pattern = WoWCombatLog-\\d{{6}}_\\d{{6}}\\.txt$
-
-# Extension for recording files (must match OBS settings)
-recording_extension = .mp4
-
-# ffmpeg binary for clip export; empty = find it on PATH
-ffmpeg_path =
-
-[OBS]
-# OBS WebSocket connection settings
-host = localhost
-port = 4455
-
-# Leave empty if no password is set in OBS
-password =
-
-[Recording]
-# Delay in seconds before renaming (to ensure OBS finished writing)
-rename_delay = 3
-
-# Minimum recording duration in seconds
-min_recording_duration = 5
-
-# Delete recordings shorter than minimum duration
-delete_short_recordings = true
-
-# Fallback recording path if OBS directory cannot be detected
-recording_path_fallback = {recording_path}
-
-# Track player deaths in metadata
-track_player_deaths = false
-
-organize_by_date = false
-
-[Difficulties]
-# --- Raids ---
-record_lfr = false
-record_normal = true
-record_heroic = true
-record_mythic = true
-
-# --- Dungeons ---
-record_mplus = true
-
-[CloudUpload]
-# Enable cloud upload functionality
-enabled = false
-
-# Cloud provider: warcraft_recorder, google_drive, proton_drive
-provider = warcraft_recorder
-
-# Auto upload after recording completion
-auto_upload = true
-
-# Delete local file after successful upload
-delete_after_upload = false
-
-# Which content auto upload covers (manual uploads ignore these)
-upload_lfr = true
-upload_normal = true
-upload_heroic = true
-upload_mythic = true
-upload_mplus = true
-
-# Warcraft Recorder Cloud settings
-wcr_username =
-wcr_password =
-wcr_guild =
-
-# Google Drive settings
-# credentials_file: path to OAuth2 client secrets JSON from Google Cloud Console
-# folder_id: Drive folder ID to upload into (leave empty for My Drive root)
-gdrive_credentials_file =
-gdrive_folder_id =
-
-# Proton Drive settings (future)
-proton_enabled = false
-proton_folder =
-
-[BossNames]
-# Boss ID to name overrides (optional)
-# Format: <boss_id> = <display_name>
-# Example:
-# 2688 = Rashok
-# 2687 = The Vigilant Steward, Zskarn
-"""
+        except OSError as e:
+            print(f"[CONFIG] ❌ Failed to create config file: {e}")
 
     def save(self):
         """Save current configuration to file.
@@ -379,14 +272,6 @@ proton_folder =
     # ---------------------------------------------------------------------
     # Path Handling
     # ---------------------------------------------------------------------
-
-    def _get_default_recording_path(self) -> str:
-        """Get default recording path based on OS."""
-        home = Path.home()
-        if os.name == 'nt':
-            return str(home / "Videos")
-        else:
-            return str(home / "Videos")
 
     def _sanitize_path(self, path_str: str) -> Path:
         """Sanitize and normalize a path string."""
@@ -541,7 +426,7 @@ proton_folder =
         if category == RecordingCategory.MYTHIC_PLUS:
             return self.is_upload_kind_enabled('mplus')
         for kind in ('lfr', 'normal', 'heroic', 'mythic'):
-            if difficulty_id in self.DIFFICULTY_IDS[kind]:
+            if difficulty_id in DIFFICULTY_IDS[kind]:
                 return self.is_upload_kind_enabled(kind)
         return True
 
@@ -558,24 +443,12 @@ proton_folder =
         return self.config.get('CloudUpload', 'wcr_guild', fallback='', raw=True)
 
     @property
-    def GDRIVE_ENABLED(self) -> bool:
-        return self.config.getboolean('CloudUpload', 'gdrive_enabled', fallback=False)
-
-    @property
     def GDRIVE_FOLDER_ID(self) -> str:
         return self.config.get('CloudUpload', 'gdrive_folder_id', fallback='', raw=True)
     
     @property
     def GDRIVE_CREDENTIALS_FILE(self) -> str:
         return self.config.get('CloudUpload', 'gdrive_credentials_file', fallback='', raw=True)
-
-    @property
-    def PROTON_ENABLED(self) -> bool:
-        return self.config.getboolean('CloudUpload', 'proton_enabled', fallback=False)
-
-    @property
-    def PROTON_FOLDER(self) -> str:
-        return self.config.get('CloudUpload', 'proton_folder', fallback='', raw=True)
 
     @property
     def POV_SYNC_ENABLED(self) -> bool:
@@ -609,63 +482,20 @@ proton_folder =
         """Get set of enabled difficulty IDs."""
         enabled = set()
         if self.RECORD_LFR:
-            enabled.update(self.DIFFICULTY_IDS['lfr'])
+            enabled.update(DIFFICULTY_IDS['lfr'])
         if self.RECORD_NORMAL:
-            enabled.update(self.DIFFICULTY_IDS['normal'])
+            enabled.update(DIFFICULTY_IDS['normal'])
         if self.RECORD_HEROIC:
-            enabled.update(self.DIFFICULTY_IDS['heroic'])
+            enabled.update(DIFFICULTY_IDS['heroic'])
         if self.RECORD_MYTHIC:
-            enabled.update(self.DIFFICULTY_IDS['mythic'])
+            enabled.update(DIFFICULTY_IDS['mythic'])
         if self.RECORD_OTHER:
-            enabled.update(self.DIFFICULTY_IDS['other'])
+            enabled.update(DIFFICULTY_IDS['other'])
         return enabled
 
     def is_difficulty_enabled(self, difficulty_id: int) -> bool:
         """Check if a specific difficulty ID is enabled."""
         return difficulty_id in self.get_enabled_difficulties()
-
-    # ---------------------------------------------------------------------
-    # Boss Name Management
-    # ---------------------------------------------------------------------
-
-    @property
-    def BOSS_NAME_OVERRIDES(self) -> Dict[int, str]:
-        """Get boss name overrides from config."""
-        overrides = {}
-        if 'BossNames' in self.config:
-            for key, value in self.config.items('BossNames', raw=True):
-                try:
-                    boss_id = int(key)
-                    overrides[boss_id] = value
-                except ValueError:
-                    continue
-        return overrides
-
-    def set_boss_name_override(self, boss_id: int, name: str):
-        """Set a boss name override."""
-        if 'BossNames' not in self.config:
-            self.config.add_section('BossNames')
-        self.config.set('BossNames', str(boss_id), name)
-        self.save()
-
-    def _replace_boss_names(self, overrides: dict):
-        """Replace all overrides with *overrides* ({boss_id: name}); no save.
-
-        The config page always sends the full map, so removed rows disappear.
-        """
-        if not isinstance(overrides, dict):
-            return
-        if self.config.has_section('BossNames'):
-            self.config.remove_section('BossNames')
-        self.config.add_section('BossNames')
-        for boss_id, name in overrides.items():
-            try:
-                key = str(int(boss_id))
-            except (TypeError, ValueError):
-                continue
-            name = str(name).strip()
-            if name:
-                self.config.set('BossNames', key, name)
 
     # ---------------------------------------------------------------------
     # Utility Methods
@@ -692,8 +522,6 @@ proton_folder =
         if not isinstance(data, dict):
             raise ValueError("expected a JSON object")
         changes = self._convert_update(data)
-        if 'boss_names' in data:
-            self._replace_boss_names(data['boss_names'])
         for ini_section, key, value in changes:
             if not self.config.has_section(ini_section):
                 self.config.add_section(ini_section)
@@ -744,7 +572,7 @@ proton_folder =
 
         if self.CLOUD_UPLOAD_ENABLED:
             print("\n[Cloud Upload]")
-            print(f"  • Enabled: ✓")
+            print("  • Enabled: ✓")
             print(f"  • Provider: {self.CLOUD_UPLOAD_PROVIDER}")
             print(f"  • Auto Upload: {'✓' if self.CLOUD_AUTO_UPLOAD else '✗'}")
 
