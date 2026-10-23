@@ -3,6 +3,8 @@ OBS WebSocket Client for WoW Raid Recorder.
 Handles communication with OBS Studio for recording control.
 """
 
+import functools
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +33,20 @@ class StopResult:
     output_path: Optional[Path] = None
 
 
+def _locked(method):
+    """Run *method* under the client's lock.
+
+    The status loop, the reconnect route and the parser's OBS worker all use
+    one client; without the lock a reconnect could replace (and leak) a
+    ReqClient, or tear it down in the middle of another thread's request.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class OBSClient:
     """Client for OBS WebSocket communication."""
     
@@ -57,11 +73,13 @@ class OBSClient:
         self.client = None
         self._is_connected = False
         self._cached_record_directory: str = ''
+        self._lock = threading.RLock()
     
     # ---------------------------------------------------------------------
     # Connection Management
     # ---------------------------------------------------------------------
     
+    @_locked
     def connect(self) -> bool:
         """Establish connection to OBS WebSocket.
         
@@ -96,9 +114,12 @@ class OBSClient:
             self._is_connected = False
             return False
     
+    @_locked
     def disconnect(self):
         """Disconnect from OBS WebSocket."""
-        if self.client and self._is_connected:
+        # Also closes a client already marked dead, whose socket thread is
+        # still running.
+        if self.client:
             try:
                 self.client.disconnect()
                 print(f"{LOG_PREFIXES['OBS']} 🔌 Disconnected from OBS")
@@ -117,6 +138,7 @@ class OBSClient:
     # Recording Control
     # ---------------------------------------------------------------------
     
+    @_locked
     def start_recording(self) -> bool:
         """Start OBS recording.
         
@@ -144,6 +166,7 @@ class OBSClient:
             self._note_request_failure(e)
             return False
     
+    @_locked
     def stop_recording(self) -> StopResult:
         """Stop OBS recording and report the file it wrote."""
         if not self._ensure_connection():
@@ -173,7 +196,8 @@ class OBSClient:
     # Recording Status and Information
     # ---------------------------------------------------------------------
     
-    def get_recording_status(self) -> dict:
+    @_locked
+    def get_recording_status(self) -> Optional[dict]:
         """Get current recording status.
         
         Returns:
@@ -206,7 +230,8 @@ class OBSClient:
             self._note_request_failure(e)
             return None
     
-    def get_recording_settings(self) -> dict:
+    @_locked
+    def get_recording_settings(self) -> Optional[dict]:
         """Get recording settings including output directory.
         
         Returns:

@@ -165,6 +165,12 @@ class PovSyncManager:
         self._download_work_event.set()
         print("[PovSync] Stopping…")
 
+    def join(self, timeout: Optional[float] = None):
+        """Wait for stopped threads to exit (a download stops at its next chunk)."""
+        for thread in (self._sync_thread, self._download_thread):
+            if thread:
+                thread.join(timeout)
+
     def trigger_sync(self):
         """Force an immediate sync on the next loop tick."""
         self._last_sync_time = 0.0

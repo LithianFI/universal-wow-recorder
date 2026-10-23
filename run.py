@@ -70,6 +70,8 @@ class AppState:
     state_manager: Optional[RecordingState] = None
     log_monitor: Optional[LogMonitor] = None
     combat_parser: Optional[CombatParser] = None
+    # Replaced by restart_cloud_manager on config saves: read it once per
+    # function into a local rather than re-reading the attribute.
     cloud_manager: Optional[CloudUploadManager] = None
     recorder_running: bool = False
     event_log: deque = field(default_factory=lambda: deque(maxlen=MAX_EVENT_LOG_SIZE))
@@ -101,19 +103,23 @@ class LogCapture:
         self._real = real_stream
         self._tag = tag
         self._buf = ''
+        # Every thread prints; without it partial lines interleave or get lost.
+        self._lock = threading.Lock()
 
     def write(self, text: str):
         self._real.write(text)
-        self._buf += text
-        while '\n' in self._buf:
-            line, self._buf = self._buf.split('\n', 1)
+        with self._lock:
+            self._buf += text
+            *lines, self._buf = self._buf.split('\n')
+        # Emitted outside the lock: anything emit prints comes back here.
+        for line in lines:
             if line:
                 entry = {'ts': time.time(), 'stream': self._tag, 'line': line}
                 console_log.append(entry)
                 try:
                     socketio.emit('log_line', entry)
                 except Exception:
-                    pass
+                    pass  # reporting it would recurse into this writer
 
     def flush(self):
         self._real.flush()
@@ -246,7 +252,7 @@ def reconnect_obs():
     if not s.obs_client:
         return jsonify({'error': 'OBS client not initialized'}), 503
     try:
-        success = s.obs_client.connect()
+        success = s.obs_client.is_connected or s.obs_client.connect()
         if success:
             _persist_obs_recording_path(s.obs_client, s.config_manager)
             return jsonify({'success': True, 'message': 'Reconnected to OBS'})
@@ -314,9 +320,6 @@ def get_config():
     return jsonify(config_data)
 
 
-_cloud_reinit_lock = threading.Lock()
-
-
 @app.route('/api/config', methods=['POST'])
 def save_config():
     """Save configuration changes."""
@@ -345,33 +348,7 @@ def save_config():
         cloud_changed = before != after
 
         if cloud_changed:
-            # Shut down existing manager (if any) then reinitialise.
-            def _reinit_cloud():
-                # Saves in quick succession must not build several managers
-                # (each with its own upload worker) at once.
-                with _cloud_reinit_lock:
-                    _replace_cloud_manager()
-
-            def _replace_cloud_manager():
-                if s.cloud_manager:
-                    try:
-                        asyncio.run(s.cloud_manager.shutdown())
-                    except Exception as e:
-                        print(f"[Cloud] ⚠️ Error shutting down the old cloud manager: {e}")
-                    s.cloud_manager = None
-
-                if s.config_manager.CLOUD_UPLOAD_ENABLED:
-                    try:
-                        asyncio.run(init_cloud_manager())  # already passes get_recording_directory
-                        broadcast_cloud_status()
-                        print("[Cloud] ✅ Cloud manager reinitialized after config change")
-                    except Exception as e:
-                        print(f"[Cloud] ❌ Reinit error after config change: {e}")
-                else:
-                    broadcast_cloud_status()
-                    print("[Cloud] Cloud upload disabled — manager shut down")
-
-            threading.Thread(target=_reinit_cloud, daemon=True).start()
+            threading.Thread(target=restart_cloud_manager, name='cloud-reinit', daemon=True).start()
 
         return jsonify({'success': True, 'message': 'Configuration saved'})
     except ValueError as e:
@@ -614,7 +591,8 @@ def protect_recording(filename: str):
         return jsonify({'error': f'Could not write metadata: {e}'}), 500
 
     s = get_state()
-    cloud_synced = bool(s.cloud_manager) and s.cloud_manager.set_cloud_protection(video_path.stem, protect)
+    cloud_manager = s.cloud_manager
+    cloud_synced = bool(cloud_manager) and cloud_manager.set_cloud_protection(video_path.stem, protect)
     socketio.emit('recordings_updated')
     return jsonify({'protected': protect, 'cloud': cloud_synced})
 
@@ -743,16 +721,18 @@ def create_clip(filename: str):
 @app.route('/api/cloud/upload/retry-failed', methods=['POST'])
 def retry_failed_uploads():
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.is_ready():
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.is_ready():
         return jsonify({'error': 'Cloud upload not available'}), 503
-    count = s.cloud_manager.retry_failed_uploads()
+    count = cloud_manager.retry_failed_uploads()
     return jsonify({'success': True, 'requeued': count})
 
 
 @app.route('/api/cloud/upload/<path:filename>', methods=['POST'])
 def queue_cloud_upload(filename: str):
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.is_ready():
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.is_ready():
         return jsonify({'error': 'Cloud upload not available'}), 503
     try:
         record_dir = get_recording_directory()
@@ -768,7 +748,7 @@ def queue_cloud_upload(filename: str):
         from cloud_upload import VideoMetadata
         metadata = VideoMetadata.for_file(file_path)
 
-        success = s.cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
+        success = cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
         if success:
             return jsonify({'success': True, 'message': f'Queued {filename} for upload'})
         return jsonify({'success': False, 'error': 'Failed to queue upload'}), 500
@@ -1026,19 +1006,20 @@ def get_recordings():
 def get_cloud_status():
     """Get current cloud upload status."""
     s = get_state()
-    if not s.cloud_manager:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager:
         return jsonify({
             'enabled': False,
             'authenticated': False,
             'error': 'Cloud manager not initialized'
         })
 
-    queue_status = s.cloud_manager.get_queue_status()
-    storage_info = s.cloud_manager.get_storage_info()
+    queue_status = cloud_manager.get_queue_status()
+    storage_info = cloud_manager.get_storage_info()
 
     return jsonify({
         'enabled': True,
-        'authenticated': s.cloud_manager.is_ready(),
+        'authenticated': cloud_manager.is_ready(),
         'provider': queue_status.get('provider', ''),
         'queue': queue_status,
         'storage': storage_info,
@@ -1123,10 +1104,11 @@ def get_available_povs():
       }
     """
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.pov_sync:
         return jsonify({'enabled': False, 'povs': {}})
 
-    raw = s.cloud_manager.get_available_povs()
+    raw = cloud_manager.get_available_povs()
     # Strip heavy/stale signed URLs before sending to the browser
     safe = {}
     for h, videos in raw.items():
@@ -1156,10 +1138,11 @@ def _safe_pov_video(v: dict) -> dict:
 def download_povs_for_hash(unique_hash: str):
     """Queue all available POVs for a specific encounter uniqueHash."""
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.pov_sync:
         return jsonify({'error': 'POV sync not available'}), 503
 
-    count = s.cloud_manager.queue_all_povs_for_hash(unique_hash)
+    count = cloud_manager.queue_all_povs_for_hash(unique_hash)
     return jsonify({'success': True, 'queued': count})
 
 
@@ -1167,7 +1150,8 @@ def download_povs_for_hash(unique_hash: str):
 def download_single_pov():
     """Queue a single POV for download by videoKey. Body: {"videoKey": "..."}"""
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.pov_sync:
         return jsonify({'error': 'POV sync not available'}), 503
 
     data = request.get_json(silent=True) or {}
@@ -1175,7 +1159,7 @@ def download_single_pov():
     if not video_key:
         return jsonify({'error': 'videoKey is required'}), 400
 
-    ok = s.cloud_manager.queue_pov_download(video_key)
+    ok = cloud_manager.queue_pov_download(video_key)
     if ok:
         return jsonify({'success': True})
     return jsonify({'success': False, 'error': 'Video not found or already downloaded'}), 404
@@ -1185,18 +1169,20 @@ def download_single_pov():
 def get_pov_sync_status():
     """Return POV sync status (last sync time, queue size, etc.)."""
     s = get_state()
-    if not s.cloud_manager:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager:
         return jsonify({'enabled': False})
-    return jsonify(s.cloud_manager.get_pov_status())
+    return jsonify(cloud_manager.get_pov_status())
 
 
 @app.route('/api/cloud/pov-sync/trigger', methods=['POST'])
 def trigger_pov_sync():
     """Force an immediate POV sync."""
     s = get_state()
-    if not s.cloud_manager or not s.cloud_manager.pov_sync:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager or not cloud_manager.pov_sync:
         return jsonify({'error': 'POV sync not available'}), 503
-    s.cloud_manager.trigger_pov_sync()
+    cloud_manager.trigger_pov_sync()
     return jsonify({'success': True, 'message': 'Sync triggered'})
 
 
@@ -1329,14 +1315,15 @@ def build_status() -> dict:
 def broadcast_cloud_status():
     """Broadcast current cloud upload status to all clients."""
     s = get_state()
-    if not s.cloud_manager:
+    cloud_manager = s.cloud_manager
+    if not cloud_manager:
         status = {'enabled': False, 'authenticated': False}
     else:
-        queue_status = s.cloud_manager.get_queue_status()
-        storage_info = s.cloud_manager.get_storage_info()
+        queue_status = cloud_manager.get_queue_status()
+        storage_info = cloud_manager.get_storage_info()
         status = {
             'enabled': True,
-            'authenticated': s.cloud_manager.is_ready(),
+            'authenticated': cloud_manager.is_ready(),
             'provider': queue_status.get('provider', ''),
             'queue_size': queue_status.get('queue_size', 0),
             'active_upload': queue_status.get('active_upload'),
@@ -1505,12 +1492,13 @@ def _run_retention_sweep():
 def handle_recording_saved(recording_info: dict = None):
     """Handle recording saved event — notify clients and trigger cloud upload."""
     s = get_state()
+    cloud_manager = s.cloud_manager
     socketio.emit('recordings_updated')
 
     # Retention sweeps after every save. Cheap when disabled.
     _run_retention_sweep()
 
-    if not (s.cloud_manager and s.cloud_manager.is_ready() and s.combat_parser):
+    if not (cloud_manager and cloud_manager.is_ready() and s.combat_parser):
         return
 
     info = recording_info or {}
@@ -1532,11 +1520,33 @@ def handle_recording_saved(recording_info: dict = None):
 
         from cloud_upload import VideoMetadata
         metadata = VideoMetadata.for_file(file_path)
-        s.cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
+        cloud_manager.queue_upload(file_path=file_path, metadata=metadata)
         print(f"[Cloud] Queued for upload: {file_path.name}")
 
     except Exception as e:
         print(f"[Cloud] Error queuing upload: {e}")
+
+
+_cloud_restart_lock = threading.Lock()
+
+
+def restart_cloud_manager():
+    """(Re)build the cloud manager from the current config. Blocking.
+
+    Serialised, so the startup login and config saves in quick succession
+    never run two managers (each with an upload worker) at once.
+    """
+    s = get_state()
+    with _cloud_restart_lock:
+        old = s.cloud_manager
+        if old:
+            s.cloud_manager = None
+            try:
+                asyncio.run(old.shutdown(wait_for_workers=True))
+            except Exception as e:
+                print(f"[Cloud] ⚠️ Error shutting down the old cloud manager: {e}")
+        asyncio.run(init_cloud_manager())
+        broadcast_cloud_status()
 
 
 async def init_cloud_manager():
@@ -1552,22 +1562,21 @@ async def init_cloud_manager():
             sm = get_state().state_manager
             return bool(sm and sm.is_recording)
 
-        s.cloud_manager = await initialize_cloud_upload(
+        manager = await initialize_cloud_upload(
             s.config_manager,
             get_recording_dir_fn=get_recording_directory,
             is_recording_fn=_is_recording,
         )
-
-        if s.cloud_manager:
-            s.cloud_manager.set_progress_callback(broadcast_upload_progress)
-            s.cloud_manager.on_local_copy_deleted = lambda: socketio.emit('recordings_updated')
-            s.cloud_manager.set_pov_progress_callback(broadcast_download_progress)
-            print("[Cloud] ✅ Cloud manager initialized")
-        else:
+        if not manager:
             print("[Cloud] ❌ Failed to initialize cloud manager")
+            return
+        manager.set_progress_callback(broadcast_upload_progress)
+        manager.on_local_copy_deleted = lambda: socketio.emit('recordings_updated')
+        manager.set_pov_progress_callback(broadcast_download_progress)
+        s.cloud_manager = manager
+        print("[Cloud] ✅ Cloud manager initialized")
     except Exception as e:
         print(f"[Cloud] ❌ Initialization error: {e}")
-        import traceback
         traceback.print_exc()
 
 
@@ -1618,8 +1627,7 @@ def init_recorder(config_path: Path) -> bool:
 
         # Cloud login (Google OAuth, WCR) can take minutes; don't hold up the
         # web server, which Electron waits on.
-        threading.Thread(target=lambda: asyncio.run(init_cloud_manager()),
-                         name='cloud-init', daemon=True).start()
+        threading.Thread(target=restart_cloud_manager, name='cloud-init', daemon=True).start()
 
         # One-off retention sweep on startup (no-op if disabled in config)
         _run_retention_sweep()
@@ -1652,13 +1660,15 @@ def shutdown_recorder():
     if s.log_monitor:
         s.log_monitor.stop()
 
+    # Drains the parser's OBS queue first, so a start still queued there
+    # can't run after the stop below.
+    if s.combat_parser:
+        s.combat_parser.shutdown()
+
     # Leaving OBS recording after we exit would record forever.
     if s.obs_client and s.state_manager and s.state_manager.recording:
         print("[RECORDER] Stopping active OBS recording")
         s.obs_client.stop_recording()
-
-    if s.combat_parser:
-        s.combat_parser.shutdown()
 
     if s.cloud_manager:
         print("[Cloud] Shutting down cloud manager...")

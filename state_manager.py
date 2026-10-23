@@ -131,71 +131,71 @@ class RecordingState:
             return self.recording and (self.encounter_active or self.dungeon_active or self.manual_recording)
 
     def get_encounter_duration(self) -> float:
-        """Get current encounter duration in seconds.
-        
-        Returns:
-            Duration in seconds, or 0 if no encounter active
-        """
+        """Seconds since the encounter (or M+ run) started, 0 if none is active."""
+        with self._lock:
+            return self._encounter_duration()
+
+    def get_recording_duration(self) -> float:
+        """Seconds since the recording started, 0 if not recording."""
+        with self._lock:
+            return self._recording_duration()
+
+    # The parser thread resets state while web threads read it: the helpers
+    # below must be called with _lock held so they see one consistent state.
+
+    def _encounter_duration(self) -> float:
         if self.encounter_active and self.encounter_start_time:
             return time.time() - self.encounter_start_time
-        elif self.dungeon_active and self.dungeon_start_time:
+        if self.dungeon_active and self.dungeon_start_time:
             return time.time() - self.dungeon_start_time
         return 0.0
-    
-    def get_recording_duration(self) -> float:
-        """Get current recording duration in seconds.
-        
-        Returns:
-            Duration in seconds, or 0 if not recording
-        """
+
+    def _recording_duration(self) -> float:
         if not self.recording_start_time:
             return 0.0
         return time.time() - self.recording_start_time
-    
+
     # ---------------------------------------------------------------------
     # String Representation
     # ---------------------------------------------------------------------
-    
+
     def __str__(self) -> str:
         """Get string representation of current state."""
+        with self._lock:
+            return self._describe()
+
+    def _describe(self) -> str:
         if self.dungeon_active:
             if self.recording:
-                duration = self.get_recording_duration()
+                duration = self._recording_duration()
                 return f"RecordingState(M+ RECORDING {self.dungeon_name} +{self.dungeon_level}, {duration:.1f}s)"
-            else:
-                return f"RecordingState(M+ {self.dungeon_name} +{self.dungeon_level}, not recording)"
-        
+            return f"RecordingState(M+ {self.dungeon_name} +{self.dungeon_level}, not recording)"
+
         if not self.encounter_active:
             return "RecordingState(IDLE)"
-        
+
         boss_info = f"{self.boss_name}" if self.boss_name else "Unknown"
-        
         if self.recording:
-            duration = self.get_recording_duration()
-            return f"RecordingState(RECORDING {boss_info}, {duration:.1f}s)"
-        else:
-            return f"RecordingState(ENCOUNTER {boss_info}, not recording)"
-    
+            return f"RecordingState(RECORDING {boss_info}, {self._recording_duration():.1f}s)"
+        return f"RecordingState(ENCOUNTER {boss_info}, not recording)"
+
     def summary(self) -> dict:
-        """Get summary of current state as dictionary.
-        
-        Returns:
-            Dictionary with current state information
-        """
-        return {
-            'recording': self.recording,
-            'manual_recording': self.manual_recording, 
-            'encounter_active': self.encounter_active,
-            'boss_id': self.boss_id,
-            'boss_name': self.boss_name,
-            'difficulty_id': self.difficulty_id,
-            'instance_id': self.instance_id,
-            'encounter_duration': self.get_encounter_duration(),
-            'recording_duration': self.get_recording_duration(),
-            'dungeon_active': self.dungeon_active,
-            'dungeon_id': self.dungeon_id,
-            'dungeon_name': self.dungeon_name,
-            'dungeon_level': self.dungeon_level,
-            'dungeon_start_timestamp': self.dungeon_start_timestamp,
-            'last_activity_time': self.last_activity_time,
-        }
+        """Snapshot of the current state as a dictionary."""
+        with self._lock:
+            return {
+                'recording': self.recording,
+                'manual_recording': self.manual_recording,
+                'encounter_active': self.encounter_active,
+                'boss_id': self.boss_id,
+                'boss_name': self.boss_name,
+                'difficulty_id': self.difficulty_id,
+                'instance_id': self.instance_id,
+                'encounter_duration': self._encounter_duration(),
+                'recording_duration': self._recording_duration(),
+                'dungeon_active': self.dungeon_active,
+                'dungeon_id': self.dungeon_id,
+                'dungeon_name': self.dungeon_name,
+                'dungeon_level': self.dungeon_level,
+                'dungeon_start_timestamp': self.dungeon_start_timestamp,
+                'last_activity_time': self.last_activity_time,
+            }

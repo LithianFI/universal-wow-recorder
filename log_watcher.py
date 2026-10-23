@@ -45,7 +45,9 @@ class LogTailer:
         
         print(f"{LOG_PREFIXES['WATCHER']} 🎯 Starting to tail: {log_path.name}")
 
-        self._stop_event.clear()
+        # A fresh event per thread: an old thread that didn't stop in time
+        # (blocked in the parser) must still see its own stop request.
+        self._stop_event = Event()
 
         self._tail_thread = Thread(
             target=self._tail_file,
@@ -180,11 +182,13 @@ class LogDirHandler(FileSystemEventHandler):
             self.tailer.stop_tailing()
             self.parser.on_log_switched()
 
-        # Start tailing the new file
+        # Set before the thread starts: the parser pairs byte offsets it
+        # reads with this path (CombatParser.get_log_path) as soon as lines arrive.
+        self.current_log = file_path
         if self.tailer.start_tailing(file_path, from_start=is_new_log):
-            self.current_log = file_path
             print(f"{LOG_PREFIXES['WATCHER']} ✅ Now monitoring: {file_path.name}")
         else:
+            self.current_log = None
             print(f"{LOG_PREFIXES['WATCHER']} ❌ Failed to start tailing: {file_path.name}")
     
     def attach_to_latest_log(self, log_dir: Path, log_pattern):

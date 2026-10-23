@@ -707,8 +707,8 @@ class CloudUploadQueue:
 
     def _save_state(self):
         """Write pending/failed items. Call with self._lock held."""
-        if not self._state_file or self._stop_event.is_set():
-            return  # a stopped queue must not overwrite its replacement's state
+        if not self._state_file:
+            return
         pending = ([self._active] if self._active else []) + self._queue
         data = {
             'pending': [self._item_to_json(i) for i in pending],
@@ -737,6 +737,16 @@ class CloudUploadQueue:
         """Signal the worker to stop after the current upload finishes."""
         self._stop_event.set()
         self._work_event.set()  # wake it up so it can exit
+
+    def join(self, timeout: Optional[float] = None) -> bool:
+        """Wait for a stopped worker to exit; True once it has."""
+        if self._thread:
+            self._thread.join(timeout)
+        return not (self._thread and self._thread.is_alive())
+
+    def is_busy(self) -> bool:
+        """Whether an upload is in progress."""
+        return self._active is not None
 
     # ── queue operations ─────────────────────────────────────────────
     def _is_queued(self, file_path: Path) -> bool:

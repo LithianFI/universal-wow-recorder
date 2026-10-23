@@ -83,8 +83,8 @@ _RECORDING_OVERRUN_SECONDS = 3
 # Upper bound for a believable gap between the log's START and the video start.
 _MAX_VIDEO_START_DELAY_MS = 60_000
 
-# Long enough for an end thread to finish (log flush wait, rename delay,
-# file stability check) so a save in progress isn't cut off at exit.
+# On top of RENAME_DELAY: long enough for an end thread to finish (log flush
+# wait, file stability check, log scan) so a save isn't cut off at exit.
 _SHUTDOWN_THREAD_JOIN_SECONDS = 10.0
 
 
@@ -227,27 +227,31 @@ class CombatParser:
         # on every UNIT_DIED line is pure overhead on the hot path.
         
     def start_manual_recording(self) -> bool:
-        """Start a manual recording triggered by the user."""
-        with self._event_lock:
-            return self._start_manual_recording()
+        """Start a manual recording triggered by the user.
 
-    def _start_manual_recording(self) -> bool:
+        The OBS start is awaited outside the event lock: it can queue behind a
+        previous fight's stop (overrun plus RPCs), and holding the lock that
+        long would stall the log tail thread.
+        """
+        with self._event_lock:
+            if not self._reserve_manual_recording():
+                return False
+            fight_seq = self._fight_seq
+        started = self._submit_obs_job(self.obs.start_recording).result()
+        with self._event_lock:
+            return self._finish_manual_start(started, fight_seq)
+
+    def _reserve_manual_recording(self) -> bool:
+        """Mark a manual session active so log events leave it alone."""
         if self.state.is_recording or self.state.manual_recording:
             print(f"{LOG_PREFIXES['PARSER']} Manual recording requested but already recording")
             return False
 
         print(f"{LOG_PREFIXES['PARSER']} Starting manual recording...")
-
-        # The queued start waits behind any pending stop; cut its overrun.
-        self._signal_new_fight()
-        if not self._submit_obs_job(self.obs.start_recording).result():
-            print(f"{LOG_PREFIXES['PARSER']} Failed to start OBS recording for manual session")
-            return False
-
         self.state.start_manual_recording()
-        self.state.start_recording()
         self.encounter_start_time = datetime.now()
         # No START line: the window begins at the last line read, ends at EOF.
+        # Also signals a new fight, so a pending stop cuts its overrun short.
         self._mark_window_start(timestamp=None)
 
         # Reset metadata to a clean manual baseline
@@ -256,16 +260,27 @@ class CombatParser:
         self.current_metadata.set_start_time(int(time.time() * 1000))
         if self.player_guid and self.player_name:
             self.current_metadata.set_player_info(
-            guid=self.player_guid,
-            name=self.player_name,
-            realm=self.player_realm or "Unknown",
-            spec_id=self.player_spec_id or 0,
-        )
+                guid=self.player_guid,
+                name=self.player_name,
+                realm=self.player_realm or "Unknown",
+                spec_id=self.player_spec_id or 0,
+            )
+        return True
 
+    def _finish_manual_start(self, started: bool, fight_seq: int) -> bool:
+        still_reserved = self.state.manual_recording and self._fight_seq == fight_seq
+        if not started:
+            print(f"{LOG_PREFIXES['PARSER']} Failed to start OBS recording for manual session")
+            if still_reserved:
+                self.state.reset()
+            return False
+        if not still_reserved:
+            return True  # stopped again while OBS was starting; its stop is queued
+
+        self.state.start_recording()
         self._emit_event('MANUAL_RECORDING_START', '', {'boss_name': 'Manual'})
         print(f"{LOG_PREFIXES['PARSER']} Manual recording started")
         return True
-
 
     def stop_manual_recording(self) -> bool:
         """Stop an active manual recording."""
@@ -461,7 +476,8 @@ class CombatParser:
 
         self._recording_requested = self.processor.should_record_dungeon()
         if self._recording_requested:
-            self._submit_obs_job(self._dungeon_start_job, dungeon_info, self.current_metadata)
+            self._submit_obs_job(self._dungeon_start_job, dungeon_info, self.current_metadata,
+                                 self._fight_seq)
 
         # Emit event for frontend
         self._emit_event('DUNGEON_START', dungeon_info.timestamp, {
@@ -537,7 +553,9 @@ class CombatParser:
     def _handle_recording_timeout(self):
         """Watchdog callback: a fight ran past its maximum length without an END."""
         with self._event_lock:
-            self._force_end_active("timeout")
+            if self.dungeon_monitor.is_overdue():
+                print(f"{LOG_PREFIXES['PARSER']} No END after the maximum fight length, ending it")
+                self._force_end_active("timeout")
 
     def on_log_switched(self):
         """A new combat log replaced the old one: its END will never arrive."""
@@ -556,11 +574,11 @@ class CombatParser:
 
     def _handle_encounter_start(self, event: CombatEvent):
         """Handle ENCOUNTER_START event."""
-        # Don't start if already recording (either encounter or dungeon)
-        if self.state.is_recording:
+        # Boss pulls inside a key belong to the key, recorded or not: starting
+        # an encounter there would end in a reset that wipes the key's state.
+        if self.state.dungeon_active or self.state.manual_recording:
             return
-        
-        if self.state.manual_recording:  
+        if self.state.is_recording:
             return
 
         # Extract boss information
@@ -591,7 +609,8 @@ class CombatParser:
 
         self._recording_requested = self.processor.should_record_encounter(boss_info)
         if self._recording_requested:
-            self._submit_obs_job(self._encounter_start_job, boss_info, self.current_metadata)
+            self._submit_obs_job(self._encounter_start_job, boss_info, self.current_metadata,
+                                 self._fight_seq)
 
         # Emit event for frontend
         self._emit_event('ENCOUNTER_START', boss_info.timestamp, {
@@ -964,15 +983,27 @@ class CombatParser:
                 return None
         return self._obs_executor.submit(run)
 
-    def _dungeon_start_job(self, dungeon_info: DungeonInfo, metadata: RecordingMetadata):
+    def _dungeon_start_job(self, dungeon_info: DungeonInfo, metadata: RecordingMetadata, fight_seq: int):
         if self.processor.process_dungeon_start(dungeon_info):
             self._note_video_start(metadata)
-            self.state.start_recording()
+            self._mark_recording_started(fight_seq)
 
-    def _encounter_start_job(self, boss_info: BossInfo, metadata: RecordingMetadata):
+    def _encounter_start_job(self, boss_info: BossInfo, metadata: RecordingMetadata, fight_seq: int):
         if self.processor.process_encounter_start(boss_info):
             self._note_video_start(metadata)
-            self.state.start_recording()
+            self._mark_recording_started(fight_seq)
+
+    def _mark_recording_started(self, fight_seq: int):
+        """Flag the fight as recording, unless it already ended.
+
+        A short pull's START and END can arrive in one log flush, so the END
+        handler may have reset state before this job ran; flagging it then
+        would show "recording" while idle. The queued end job stops OBS.
+        """
+        with self._event_lock:
+            fight_active = self.state.encounter_active or self.state.dungeon_active
+            if fight_active and self._fight_seq == fight_seq:
+                self.state.start_recording()
 
     @staticmethod
     def _note_video_start(metadata: RecordingMetadata):
@@ -1106,10 +1137,12 @@ class CombatParser:
         # Clean up completed threads
         self._cleanup_completed_threads()
 
-        # Wait for active threads to complete (with timeout)
+        # End threads sleep RENAME_DELAY before renaming; daemon threads
+        # still running at exit die mid-rename.
+        join_seconds = self.config.RENAME_DELAY + _SHUTDOWN_THREAD_JOIN_SECONDS
         for thread in self._active_threads:
             if thread.is_alive():
-                thread.join(timeout=_SHUTDOWN_THREAD_JOIN_SECONDS)
+                thread.join(timeout=join_seconds)
 
         self._active_threads.clear()
         print(f"{LOG_PREFIXES['PARSER']} Shutdown complete")

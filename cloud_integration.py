@@ -321,16 +321,29 @@ class CloudUploadManager:
             self.upload_queue is not None
         )
     
-    async def shutdown(self):
+    async def shutdown(self, wait_for_workers: bool = False):
+        """Stop POV sync and the upload worker.
+
+        With *wait_for_workers*, return only once both have exited. A
+        replacement manager must wait: its queue reloads the saved state,
+        which still lists the in-flight upload, and would upload it again
+        alongside the old worker.
+        """
         print("[Cloud Manager] Shutting down...")
         if self.pov_sync:
             self.pov_sync.stop()
         if self.upload_queue:
             wait = 0
-            while self.upload_queue._active and wait < UPLOAD_SHUTDOWN_GRACE_SECONDS:
+            while self.upload_queue.is_busy() and wait < UPLOAD_SHUTDOWN_GRACE_SECONDS:
                 await asyncio.sleep(1)
                 wait += 1
             self.upload_queue.stop()
+        if wait_for_workers:
+            if self.pov_sync:
+                self.pov_sync.join()
+            if self.upload_queue and not self.upload_queue.join(timeout=0):
+                print("[Cloud Manager] Waiting for the current upload to finish...")
+                self.upload_queue.join()
         print("[Cloud Manager] Shutdown complete")
 
 # =============================================================================

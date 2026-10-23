@@ -12,6 +12,8 @@ from constants import (
     MAX_ENCOUNTER_SECONDS,
 )
 
+_CHECK_INTERVAL_SECONDS = 5
+
 
 class DungeonMonitor:
     """Calls *on_timeout* when a dungeon or encounter outlives its maximum length."""
@@ -22,15 +24,14 @@ class DungeonMonitor:
         self.on_timeout = on_timeout
         
         self._monitor_thread = None
-        self._running = False
-        self._check_interval = 5  # seconds
-    
+        self._stop_event = threading.Event()
+
     def start(self):
         """Start the dungeon monitor thread."""
-        if self._running:
+        if self.is_running():
             return
-        
-        self._running = True
+
+        self._stop_event.clear()
         self._monitor_thread = threading.Thread(
             target=self._monitor_loop,
             daemon=True
@@ -40,7 +41,7 @@ class DungeonMonitor:
     
     def stop(self):
         """Stop the dungeon monitor."""
-        self._running = False
+        self._stop_event.set()
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=2.0)
         print(f"{LOG_PREFIXES['DUNGEON']} Stopped dungeon timeout monitor")
@@ -49,13 +50,14 @@ class DungeonMonitor:
         # No idle timeout: logs are buffered during boss fights, so activity
         # goes quiet mid-pull even when the fight is ongoing. Only a total
         # duration far beyond any real fight counts as a missed END.
-        while self._running:
-            time.sleep(self._check_interval)
-            if self._is_overdue() and self.on_timeout:
-                print(f"{LOG_PREFIXES['DUNGEON']} No END after the maximum fight length, ending it")
+        # on_timeout must re-check is_overdue() under the parser's lock: an END
+        # and a new pull can land between this check and that call.
+        while not self._stop_event.wait(_CHECK_INTERVAL_SECONDS):
+            if self.is_overdue() and self.on_timeout:
                 self.on_timeout()
 
-    def _is_overdue(self) -> bool:
+    def is_overdue(self) -> bool:
+        """Whether the active dungeon or encounter is past its maximum length."""
         now = time.time()
         state = self.state
         if state.dungeon_active and state.dungeon_start_time:
@@ -66,4 +68,5 @@ class DungeonMonitor:
     
     def is_running(self) -> bool:
         """Check if monitor is running."""
-        return self._running
+        return bool(self._monitor_thread and self._monitor_thread.is_alive()
+                    and not self._stop_event.is_set())
