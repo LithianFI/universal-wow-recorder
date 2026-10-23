@@ -5,13 +5,22 @@ The recordings list, stats, local-POV lookup, retention and POV sync each walk
 the whole recordings tree; without a cache every call re-parses every sidecar.
 Entries are keyed by path and invalidated by (mtime, size), so edits on disk
 (cooldown rescans, new recordings) are picked up without explicit hooks.
+
+The list of sidecar files is cached briefly too: selecting a recording looks
+up its local POVs, which would otherwise walk the tree on every click.
+write_sidecar drops it, so files this app writes show up at once.
 """
 
 import json
 import os
 import threading
+import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+# How long a directory listing is reused. Bounds how late files written by
+# something else (a manual copy) appear.
+_LISTING_TTL_SECONDS = 10.0
 
 # Large lists none of the bulk readers use; endpoints that need them (the
 # per-recording metadata view, cloud upload) read the file directly.
@@ -21,7 +30,25 @@ _HEAVY_KEYS = ('cooldownCasts', 'combatants')
 class SidecarCache:
     def __init__(self):
         self._entries: Dict[Path, Tuple[Tuple[int, int], Optional[dict]]] = {}
+        self._listings: Dict[Path, Tuple[float, List[Path]]] = {}
         self._lock = threading.Lock()
+
+    def json_files(self, root: Path) -> List[Path]:
+        """Every *.json under *root* (cached; may include just-deleted files,
+        for which read() returns None)."""
+        now = time.monotonic()
+        with self._lock:
+            cached = self._listings.get(root)
+        if cached and now - cached[0] < _LISTING_TTL_SECONDS:
+            return cached[1]
+        files = list(root.rglob('*.json'))
+        with self._lock:
+            self._listings[root] = (now, files)
+        return files
+
+    def invalidate_listings(self):
+        with self._lock:
+            self._listings.clear()
 
     def read(self, json_path: Path) -> Optional[dict]:
         """Parsed sidecar without the heavy keys, or None if missing/invalid.
@@ -76,3 +103,4 @@ def write_sidecar(json_path: Path, data: dict):
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+    sidecars.invalidate_listings()

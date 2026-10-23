@@ -28,6 +28,35 @@ HTTP_STEP_ATTEMPTS = 5
 MAX_BACKOFF_SECONDS = 30
 
 
+class _FilePart:
+    """Read-only view of *length* bytes of an open file from *offset*.
+
+    Lets requests stream a multipart chunk from disk instead of holding it in
+    memory (100 MB per part, kept alive across its retries). Each attempt
+    re-reads from the start because requests calls read() until empty.
+    """
+
+    def __init__(self, f, offset: int, length: int):
+        self._f = f
+        self._offset = offset
+        self._length = length
+        self._read = 0
+        f.seek(offset)
+
+    def __len__(self) -> int:
+        return self._length
+
+    def read(self, size: int = -1) -> bytes:
+        remaining = self._length - self._read
+        if remaining <= 0:
+            return b''
+        if size is None or size < 0 or size > remaining:
+            size = remaining
+        data = self._f.read(size)
+        self._read += len(data)
+        return data
+
+
 def _backoff(attempt: int):
     time.sleep(min(2 ** (attempt - 1), MAX_BACKOFF_SECONDS))
 
@@ -439,11 +468,8 @@ class WarcraftRecorderCloud(CloudUploadProvider):
 
             with open(file_path, 'rb') as f:
                 for part_num, url in enumerate(urls, start=1):
-                    remaining = file_size - offset
-                    chunk_size = min(part_size, remaining)
-                    chunk = f.read(chunk_size)
-
-                    if not chunk:
+                    chunk_size = min(part_size, file_size - offset)
+                    if chunk_size <= 0:
                         break
 
                     # Retry each part up to 5 times — on failure we only need to
@@ -459,10 +485,10 @@ class WarcraftRecorderCloud(CloudUploadProvider):
                         try:
                             put_resp = requests.put(
                                 url,
-                                data=chunk,
+                                data=_FilePart(f, offset, chunk_size),
                                 headers={
                                     'Content-Type': content_type,
-                                    'Content-Length': str(len(chunk)),
+                                    'Content-Length': str(chunk_size),
                                 },
                                 timeout=600,
                             )

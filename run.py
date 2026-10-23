@@ -5,7 +5,6 @@ Runs the recorder and web interface in a single process with WebSocket communica
 """
 
 import os
-import re
 import sys
 import math
 import shutil
@@ -873,7 +872,7 @@ def get_stats():
         return jsonify({'error': 'Recording directory not available'}), 500
 
     encounters = []
-    for json_path in record_dir.rglob('*.json'):
+    for json_path in sidecars.json_files(record_dir):
         data = sidecars.read(json_path)
         # Skip files that don't look like recording metadata
         if not data or ('encounterName' not in data and 'category' not in data):
@@ -1058,7 +1057,7 @@ def get_local_povs_for_recording(filename: str):
         roots.append((pov_dir, '/pov-video/'))
 
     for root, url_prefix, candidate_json in (
-            (root, prefix, j) for root, prefix in roots for j in root.rglob('*.json')):
+            (root, prefix, j) for root, prefix in roots for j in sidecars.json_files(root)):
         if candidate_json == json_path:
             continue
         try:

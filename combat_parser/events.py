@@ -102,6 +102,46 @@ def parse_player_name_realm(raw_name: str) -> tuple[str, str]:
         return raw_name, 'Unknown'
 
 
+# Unit flags of the player who wrote the log (mine, friendly, player).
+_LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
+
+
+def local_player_in(parts: List[str]) -> Optional[tuple]:
+    """(guid, name, realm) of the local player in a combat event, else None.
+
+    *parts* is the event split on ',' after the timestamp:
+    eventType, srcGUID, "srcName", srcFlags, srcRaidFlags,
+    dstGUID, "dstName", dstFlags, dstRaidFlags, ...
+    """
+    if len(parts) < 9:
+        return None
+    for guid_idx, name_idx, flags_idx in ((1, 2, 3), (5, 6, 7)):
+        guid = parts[guid_idx].strip()
+        if not guid.startswith('Player-') or parts[flags_idx].strip() not in _LOCAL_PLAYER_FLAGS:
+            continue
+        raw_name = parts[name_idx].strip().strip('"')
+        if not raw_name or raw_name in ('nil', 'Unknown'):
+            continue
+        # "Isalith-Ravencrest-EU" -> ("Isalith", "Ravencrest")
+        name, realm = parse_player_name_realm(raw_name)
+        if name:
+            return guid, name, realm
+    return None
+
+
+def log_timestamp_ms(timestamp: str) -> Optional[int]:
+    """Epoch ms of a combat log timestamp ("10/22/2026 20:00:01.0003", with
+    an optional "-4" UTC offset suffix that is ignored), or None."""
+    head, dot, frac = timestamp.strip().rpartition('.')
+    if not dot or '/' not in head:
+        return None
+    try:
+        second = datetime.strptime(head, "%m/%d/%Y %H:%M:%S")
+        return int(second.timestamp() * 1000) + int(frac[:3])
+    except ValueError:
+        return None
+
+
 class CombatEvent:
     """Represents a parsed combat log event."""
     

@@ -1357,6 +1357,9 @@
         // the previous evening when grouping by night.
         const NIGHT_ROLLOVER_HOUR = 6;
         const POV_OFFSET_STEP_SECONDS = 0.1;
+        // Cloud POVs with the same uniqueHash but a start further apart than
+        // this are a different pull (matches the server's /local-povs check).
+        const POV_START_TOLERANCE_MS = 60 * 1000;
         // A pull more than this long after the previous one starts a new
         // session when counting attempts on the live boss.
         const SESSION_GAP_SECONDS = 2 * 3600;
@@ -1395,6 +1398,10 @@
         }
 
         function recordingsPage() {
+            // Derived-list caches. Kept outside the reactive object: writing
+            // reactive state from a getter would re-trigger it.
+            let listMemo = null;            // filteredAndSorted, keyed on its inputs
+            let povMemo = { source: null, byName: new Map() };  // povsForRecording per availablePovs
             return {
                 recordings: [],
                 directory: null,
@@ -1716,26 +1723,33 @@
                     } catch (_) {}
                 },
 
+                // Read several times per list row; recomputed only when the
+                // POV index is replaced (fetchPovs).
                 povsForRecording(rec) {
+                    if (povMemo.source !== this.availablePovs) {
+                        povMemo = { source: this.availablePovs, byName: new Map() };
+                    }
+                    const key = rec.name + '|' + (rec._meta?.uniqueHash || '') + '|' + (rec._meta?.start || 0);
+                    let povs = povMemo.byName.get(key);
+                    if (!povs) {
+                        povs = this._matchingPovs(rec);
+                        povMemo.byName.set(key, povs);
+                    }
+                    return povs;
+                },
+                _matchingPovs(rec) {
                     const h = rec._meta?.uniqueHash;
                     if (!h) return [];
                     const recStart = rec._meta?.start || 0;
                     return (this.availablePovs[h] || []).filter(pov => {
                         const cStart = pov.start || 0;
                         if (!cStart || !recStart) return true;
-                        return Math.abs(cStart - recStart) <= 60 * 1000;
+                        return Math.abs(cStart - recStart) <= POV_START_TOLERANCE_MS;
                     });
                 },
 
                 get selectedPovs() {
-                    const h = this.selectedRecording?._meta?.uniqueHash;
-                    if (!h) return [];
-                    const mainStart = this.selectedRecording?._meta?.start || 0;
-                    return (this.availablePovs[h] || []).filter(pov => {
-                        const cStart = pov.start || 0;
-                        if (!cStart || !mainStart) return true;
-                        return Math.abs(cStart - mainStart) <= 60 * 1000;
-                    });
+                    return this.selectedRecording ? this._matchingPovs(this.selectedRecording) : [];
                 },
 
                 async downloadPov(videoKey) {
@@ -2048,7 +2062,17 @@
                 },
 
                 // ── Computed: filtering & sorting ────────────────────
+                // Read by several bindings per render; sorting thousands of
+                // recordings on each read is wasted while the inputs are equal.
                 get filteredAndSorted() {
+                    const inputs = [this.recordings, this.searchQuery, this.diffFilter,
+                                    this.resultFilter, this.sortBy];
+                    if (listMemo && inputs.every((v, i) => v === listMemo.inputs[i])) return listMemo.out;
+                    const out = this._filterAndSort();
+                    listMemo = { inputs, out };
+                    return out;
+                },
+                _filterAndSort() {
                     let out = this.recordings;
                     const q = this.searchQuery.trim().toLowerCase();
                     if (q) {

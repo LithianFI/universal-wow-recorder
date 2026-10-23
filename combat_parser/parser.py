@@ -9,7 +9,7 @@ import traceback
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, List, Callable
+from typing import Callable, Iterator, List, Optional
 from pathlib import Path
 
 from obs_client import OBSClient, StopResult
@@ -20,10 +20,10 @@ from combat_parser.file_manager import RecordingFileManager
 from combat_parser.recording_processor import RecordingProcessor
 from combat_parser.dungeon_monitor import DungeonMonitor
 from combat_parser.events import (
-    CombatEvent, BossInfo, DungeonInfo, parse_player_name_realm, parse_combatant_spec_id,
+    CombatEvent, BossInfo, DungeonInfo, local_player_in, parse_combatant_spec_id,
 )
-from combat_parser.cooldown_scanner import collect_cooldown_casts
-from metadata_generator import RecordingMetadata, RecordingCategory, DeathParser
+from combat_parser.fight_scan import scan_fight
+from metadata_generator import RecordingMetadata, RecordingCategory
 
 from constants import LOG_PREFIXES
 
@@ -58,30 +58,6 @@ def _event_name(line: str) -> str:
 _MIN_BOSS_HP = 100 * 10 ** 6
 
 
-_LOCAL_PLAYER_FLAGS = frozenset({'0x511', '0x10511'})
-
-
-def _local_player_in(parts: List[str]) -> Optional[tuple]:
-    """(guid, name, realm) of the local player in a combat event, else None.
-
-    *parts* is the event split on ',' after the timestamp:
-    eventType, srcGUID, "srcName", srcFlags, srcRaidFlags,
-    dstGUID, "dstName", dstFlags, dstRaidFlags, ...
-    """
-    if len(parts) < 9:
-        return None
-    for guid_idx, name_idx, flags_idx in ((1, 2, 3), (5, 6, 7)):
-        guid = parts[guid_idx].strip()
-        if not guid.startswith('Player-') or parts[flags_idx].strip() not in _LOCAL_PLAYER_FLAGS:
-            continue
-        raw_name = parts[name_idx].strip().strip('"')
-        if not raw_name or raw_name in ('nil', 'Unknown'):
-            continue
-        # "Isalith-Ravencrest-EU" -> ("Isalith", "Ravencrest")
-        name, realm = parse_player_name_realm(raw_name)
-        if name:
-            return guid, name, realm
-    return None
 
 # Video kept after ENCOUNTER_END (matches metadata overrun). Also gives WoW
 # time to flush the end of the fight to the log before we scan it. A new
@@ -355,7 +331,7 @@ class CombatParser:
             # Split into the first 9 fields (event + 4 src fields + 4 dst fields)
             # Use a limit so we don't split the whole (potentially huge) line
             parts = data.split(',', 9)
-            local_player = _local_player_in(parts)
+            local_player = local_player_in(parts)
             if local_player:
                 self._set_player(*local_player)
 
@@ -776,189 +752,82 @@ class CombatParser:
         self.current_metadata = RecordingMetadata()
         return context
 
-    def _read_window_lines(self, context: _RecordingContext) -> Optional[List[str]]:
-        """Log lines from the fight's START up to its END (or EOF)."""
-        log_path = context.log_path
-        if not log_path or not log_path.exists():
+    def _can_scan_window(self, context: _RecordingContext) -> bool:
+        if not context.log_path or not context.log_path.exists():
             print(f"{LOG_PREFIXES['PARSER']} Log file not available for encounter data scan")
-            return None
+            return False
         if context.start_offset is None and not context.start_ts:
             print(f"{LOG_PREFIXES['PARSER']} Missing encounter start for data scan")
-            return None
+            return False
+        return True
 
-        window_lines = []
-        try:
-            with open(log_path, 'rb') as f:
-                # Seeking skips re-reading a multi-GB raid-night log from byte 0.
-                in_window = context.start_offset is not None
-                if in_window:
-                    f.seek(context.start_offset)
-                for raw in f:
-                    # One bad byte must not abort the scan.
-                    line = raw.decode('utf-8', errors='replace')
-                    if not in_window:
-                        if context.start_ts not in line:
-                            continue
-                        in_window = True
-                    window_lines.append(line)
-                    # The END line itself, not the first line of its second:
-                    # deaths and casts logged on that tick come before it.
-                    if (context.end_ts and line.startswith(context.end_ts)
-                            and _event_name(line) in _END_EVENTS):
-                        break
-        except OSError as e:
-            print(f"{LOG_PREFIXES['PARSER']} Error reading log for encounter data: {e}")
-            return None
-        return window_lines
+    @staticmethod
+    def _iter_window_lines(f, context: _RecordingContext) -> Iterator[str]:
+        """Log lines from the fight's START up to its END (or EOF)."""
+        # Seeking skips re-reading a multi-GB raid-night log from byte 0.
+        in_window = context.start_offset is not None
+        if in_window:
+            f.seek(context.start_offset)
+        for raw in f:
+            # One bad byte must not abort the scan.
+            line = raw.decode('utf-8', errors='replace')
+            if not in_window:
+                if context.start_ts not in line:
+                    continue
+                in_window = True
+            yield line
+            # The END line itself, not the first line of its second:
+            # deaths and casts logged on that tick come before it.
+            if (context.end_ts and line.startswith(context.end_ts)
+                    and _event_name(line) in _END_EVENTS):
+                return
 
     def _scan_log_for_encounter_data(self, context: _RecordingContext):
         """Collect deaths, combatants and cooldown casts for a finished fight.
 
         WoW only flushes combat log data to disk after the encounter ends, so
-        neither deaths nor combatant info can be collected in real-time -- we must
-        read them retroactively once ENCOUNTER_END / CHALLENGE_MODE_END fires.
-
-        Player names are not in COMBATANT_INFO directly -- we build a GUID->name
-        map from srcGUID/srcName pairs seen throughout the encounter window.
+        they are read back from the log once ENCOUNTER_END / CHALLENGE_MODE_END
+        fires (see fight_scan).
         """
-        window_lines = self._read_window_lines(context)
-        if window_lines is None:
+        if not self._can_scan_window(context):
             return
         metadata = context.metadata
-        print(f"{LOG_PREFIXES['PARSER']} Scanning {len(window_lines)} log lines for encounter data")
+        try:
+            with open(context.log_path, 'rb') as f:
+                scan = scan_fight(self._iter_window_lines(f, context),
+                                  metadata.start_timestamp or None,
+                                  self.config.TRACK_PLAYER_DEATHS)
+        except OSError as e:
+            print(f"{LOG_PREFIXES['PARSER']} Error reading log for encounter data: {e}")
+            return
 
-        deaths_found = 0
-        combatants_found = 0
+        if scan.local_player:
+            self._apply_fight_player(metadata, *scan.local_player)
+        self._apply_combatants(metadata, scan.combatants)
+        for death in scan.deaths:
+            metadata.add_death(**death)
+            print(f"{LOG_PREFIXES['PARSER']} 💀 Death: {death['name']}")
+        for cast in scan.casts:
+            metadata.add_cooldown_cast(cast)
 
-        # GUID -> (name, realm) map built from any combat event in the window
-        guid_to_name: dict = {}
-        # Like WCR, the fight's own lines say who recorded it: the live
-        # identity goes stale when the user swaps characters in one log.
-        local_player = None
-
-        # Build GUID->name map from src/dest fields in combat event lines.
-        # Standard combat event format (after timestamp double-space):
-        #   eventType, srcGUID, srcName, srcFlags, srcRaidFlags,
-        #   destGUID, destName, destFlags, destRaidFlags, ...
-        # We skip COMBATANT_INFO lines because their field layout is different
-        # (field [2] is faction, not a name) and would corrupt the map.
-        for line in window_lines:
-            try:
-                ts_split = line.split('  ', 1)
-                if len(ts_split) < 2:
-                    continue
-                event_data = ts_split[1]
-                # Skip COMBATANT_INFO - field layout is incompatible with src/dest parsing
-                if event_data.startswith('COMBATANT_INFO'):
-                    continue
-                parts = event_data.split(',', 9)
-                if len(parts) < 7:
-                    continue
-                if local_player is None:
-                    local_player = _local_player_in(parts)
-                for guid_idx, name_idx in ((1, 2), (5, 6)):
-                    guid = parts[guid_idx].strip()
-                    if not guid.startswith('Player-'):
-                        continue
-                    raw_name = parts[name_idx].strip().strip('"')
-                    if not raw_name or raw_name in ('nil', 'Unknown'):
-                        continue
-                    if guid not in guid_to_name:
-                        # Format: "CharName-Realm-EU" or "CharName-Realm-US" etc.
-                        # Strip the trailing region code (2-3 uppercase letters)
-                        # then split on the first '-' to get name vs realm.
-                        name, realm = parse_player_name_realm(raw_name)
-                        guid_to_name[guid] = (name, realm)
-            except Exception:
-                continue
-
-        if local_player:
-            self._apply_fight_player(metadata, *local_player)
-
-        guid_to_spec: dict = {}
-        for line in window_lines:
-            is_combatant = 'COMBATANT_INFO' in line
-            is_death = 'UNIT_DIED' in line
- 
-            if not is_combatant and not is_death:
-                continue
- 
-            if is_death and self.config.TRACK_PLAYER_DEATHS:
-                death_info = DeathParser.parse_death_line(line)
-                if death_info:
-                    spec_id = guid_to_spec.get(death_info['guid'], 0)
-                    metadata.add_death(
-                        name=death_info['name'],
-                        timestamp_ms=death_info['timestamp'],
-                        spec_id=spec_id,
-                    )
-                    deaths_found += 1
-                    print(f"{LOG_PREFIXES['PARSER']} 💀 Death: {death_info['name']}")
- 
-            if is_combatant:
-                try:
-                    ts_split = line.split('  ', 1)
-                    if len(ts_split) < 2:
-                        continue
-                    parts = ts_split[1].split(',', 27)
-                    if len(parts) < 26:
-                        continue
- 
-                    guid = parts[1].strip()
-                    if not guid.startswith('Player-'):
-                        continue
- 
-                    faction = int(parts[2].strip())
-                    spec_id = parse_combatant_spec_id(parts)
- 
-                    # Always update guid_to_spec so any death lines later in this
-                    # same pass can look up the spec_id for this player.
-                    if spec_id > 0:
-                        guid_to_spec[guid] = spec_id
- 
-                    if guid not in guid_to_name:
-                        continue
- 
-                    name, realm = guid_to_name[guid]
- 
-                    if metadata.player_info.get("_GUID") == guid and spec_id > 0:
-                        metadata.player_info["_specID"] = spec_id
-                        if guid == self.player_guid:
-                            self.player_spec_id = spec_id
- 
-                    metadata.add_combatant(
-                        guid=guid,
-                        name=name,
-                        realm=realm,
-                        spec_id=spec_id,
-                        team_id=faction,
-                    )
-                    combatants_found += 1
- 
-                except (ValueError, IndexError):
-                    continue
- 
-        # Collect tracked cooldown casts from the same window lines.
-        # guid_to_name is already built above so caster names resolve cleanly.
-        if metadata.start_timestamp:
-            casts = collect_cooldown_casts(
-                window_lines,
-                metadata.start_timestamp,
-                guid_to_name,
-            )
-            for cast in casts:
-                metadata.add_cooldown_cast(cast)
-        else:
-            casts = []
-
-        print(f"{LOG_PREFIXES['PARSER']} Scan complete: {deaths_found} deaths, "
-              f"{combatants_found} combatants, {len(casts)} cooldown casts found")
+        print(f"{LOG_PREFIXES['PARSER']} Scanned {scan.line_count} log lines: {len(scan.deaths)} deaths, "
+              f"{len(scan.combatants)} combatants, {len(scan.casts)} cooldown casts")
 
         # Recompute uniqueHash now that combatants are fully populated.
         # _finalize_metadata() runs before this scan, so the hash it computed
         # had an empty combatants list — WCR only writes metadata after all
         # processing is done, so we match that by recomputing here.
         metadata._recompute_hash()
+
+    def _apply_combatants(self, metadata: RecordingMetadata, combatants: List[dict]):
+        recording_guid = metadata.player_info.get("_GUID")
+        for combatant in combatants:
+            if combatant['guid'] == recording_guid and combatant['spec_id'] > 0:
+                metadata.player_info["_specID"] = combatant['spec_id']
+                with self._event_lock:
+                    if combatant['guid'] == self.player_guid:
+                        self.player_spec_id = combatant['spec_id']
+            metadata.add_combatant(**combatant)
 
     def _apply_fight_player(self, metadata: RecordingMetadata, guid: str, name: str, realm: str):
         """Make the player seen in the fight's lines its recording player."""

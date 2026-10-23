@@ -322,7 +322,7 @@ class PovSyncManager:
         ext = getattr(self._config, 'RECORDING_EXTENSION', '.mp4').lower()
 
         if recording_dir and recording_dir.exists():
-            for json_path in recording_dir.rglob('*.json'):
+            for json_path in sidecars.json_files(recording_dir):
                 try:
                     data = sidecars.read(json_path)
                     if data is None:
