@@ -1,42 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - WoW Recorder</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-    <script defer src="/static/vendor/alpine.min.js"></script>
+{% extends 'base.html' %}
+{% import '_macros.html' as macros %}
+{% block title %}Settings{% endblock %}
+{% block head %}
     <style>
-        [x-cloak] { display: none !important; }
-
-        html, body { height: 100%; overflow: hidden; }
-        body {
-            background: #0a0806;
-            color: #c8bfa8;
-            font-family: 'Raleway', sans-serif;
-            font-size: 14px;
-        }
-
-        .seam { border-color: #1c1710; }
-
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
-
         .card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 18px 20px; }
-        .label-cap {
-            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
-            font-family: 'Raleway', sans-serif; font-weight: 600;
-        }
-        .section-title {
-            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
-            font-family: 'Raleway', sans-serif; font-weight: 600;
-        }
 
         /* Inputs */
         .input {
@@ -160,38 +127,15 @@
         .diff-tile.on-normal  { background: rgba(135,207,99,0.12); color: #87cf63; border-color: rgba(135,207,99,0.45); }
         .diff-tile.on-lfr     { background: rgba(168,156,130,0.18); color: #d4ccb6; border-color: rgba(168,156,130,0.55); }
         .diff-tile.on-mplus   { background: rgba(157,157,255,0.14); color: #9d9dff; border-color: rgba(157,157,255,0.45); }
-
-        .pill {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 12px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #a89c82;
-        }
-
-        .nav-tab {
-            display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
-            color: #8a8270; border-bottom: 2px solid transparent;
-            transition: color 0.12s, border-color 0.12s;
-            text-decoration: none; font-family: 'Raleway', sans-serif;
-        }
-        .nav-tab:hover { color: #a89c82; }
-        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
+    
     </style>
-</head>
-
-<body>
+{% endblock %}
+{% block body %}
     <div x-data="configApp()" x-init="loadConfig()" class="flex flex-col h-full">
 
         <!-- Top bar -->
         <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
-            <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
-            <nav class="flex items-center h-full">
-                <a href="/" class="nav-tab">Recordings</a>
-                <a href="/stats" class="nav-tab">Stats</a>
-                <a href="/clips" class="nav-tab">Clips</a>
-                <a href="/config" class="nav-tab nav-tab-active">Config</a>
-                <a href="/debug" class="nav-tab">Debug</a>
-            </nav>
+            {{ macros.nav('Config') }}
         </header>
 
         <!-- Scrollable content -->
@@ -812,6 +756,8 @@
 
                 retentionPreviewSummary() {
                     const p = this.retentionPreview;
+                    // x-text runs even while the preview is hidden (null or an error).
+                    if (!p || p.error) return '';
                     const total = p.by_age.length + p.by_count.length;
                     if (total === 0) return `Nothing would be deleted (${p.scanned} recordings checked).`;
                     return `${total} of ${p.scanned} recordings would be deleted by the next sweep:`;
@@ -897,6 +843,4 @@
             };
         }
     </script>
-</body>
-
-</html>
+{% endblock %}

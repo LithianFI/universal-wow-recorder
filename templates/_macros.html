@@ -1,0 +1,24 @@
+{# App title and page tabs, shared by every page's top bar. #}
+{% macro nav(active) %}
+<h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
+<nav class="flex items-center h-full">
+    {% for href, label in [('/', 'Recordings'), ('/stats', 'Stats'), ('/clips', 'Clips'), ('/config', 'Config'), ('/debug', 'Debug')] %}
+    <a href="{{ href }}" class="nav-tab{{ ' nav-tab-active' if label == active }}">{{ label }}</a>
+    {% endfor %}
+</nav>
+{% endmacro %}
+
+{# Toast stack for components using toastMixin() (static/js/common.js). #}
+{% macro toasts() %}
+<div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:300px;">
+    <template x-for="t in toasts" :key="t.id">
+        <div class="pointer-events-auto toast-enter flex items-start gap-2.5 px-3.5 py-2.5 rounded-sm text-[13px] shadow-2xl"
+            :style="t.type === 'error'
+                ? { background: '#180a0a', border: '1px solid rgba(192,80,80,0.4)', color: '#d46060' }
+                : { background: '#0a150a', border: '1px solid rgba(100,175,70,0.4)', color: '#78c352' }">
+            <span x-text="t.type === 'error' ? '✕' : '✓'" class="shrink-0 font-bold mt-px"></span>
+            <span x-text="t.message" class="leading-snug"></span>
+        </div>
+    </template>
+</div>
+{% endmacro %}

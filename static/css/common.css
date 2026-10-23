@@ -1,0 +1,64 @@
+/* Styles shared by every page. Page <style> blocks load after this and
+   override where a page differs. Tailwind utilities come from tailwind.css. */
+
+[x-cloak] { display: none !important; }
+
+html, body { height: 100%; overflow: hidden; }
+body {
+    background: #0a0806;
+    color: #c8bfa8;
+    font-family: 'Raleway', sans-serif;
+    font-size: 14px;
+}
+
+.seam { border-color: #1c1710; }
+
+/* Top navigation */
+.nav-tab {
+    display: inline-flex; align-items: center; height: 100%;
+    padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+    color: #8a8270; border-bottom: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+    text-decoration: none; font-family: 'Raleway', sans-serif;
+}
+.nav-tab:hover { color: #a89c82; }
+.nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
+
+.card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 14px 16px; }
+.pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    background: #141109; border: 1px solid #221d15; color: #a89c82;
+}
+.section-title {
+    font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
+    font-family: 'Raleway', sans-serif; font-weight: 600;
+}
+.label-cap { font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
+    font-family: 'Raleway', sans-serif; font-weight: 600; }
+
+.quick-btn:hover { background: #1c1710; color: #c8bfa8; border-color: #2e271d; }
+.quick-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Filter toggles (recordings list, stats) */
+.filter-pill {
+    display: inline-flex; align-items: center;
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    background: #141109; border: 1px solid #221d15; color: #a89c82;
+    cursor: pointer; transition: all 0.12s;
+    font-family: 'Raleway', sans-serif; font-weight: 600; letter-spacing: 0.5px;
+}
+.filter-pill:hover { color: #d4ccb6; border-color: #2e271d; }
+.filter-pill.active { background: rgba(201,169,97,0.12); border-color: rgba(201,169,97,0.5); color: #c9a961; }
+
+/* Toasts (templates/_macros.html) */
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.toast-enter { animation: toast-in 0.2s ease forwards; }

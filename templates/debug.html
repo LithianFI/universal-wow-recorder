@@ -1,41 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debug Console - WoW Recorder</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-    <script defer src="/static/vendor/alpine.min.js"></script>
+{% extends 'base.html' %}
+{% import '_macros.html' as macros %}
+{% block title %}Debug Console{% endblock %}
+{% block head %}
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="/static/vendor/socket.io.min.js"></script>
     <style>
-        [x-cloak] { display: none !important; }
-
         /* This page's monospace font differs from the shared Tailwind theme. */
         .font-mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
-
-        html, body { height: 100%; overflow: hidden; }
         body {
             background: #060504;
             color: #c8bfa8;
             font-family: 'Raleway', sans-serif;
             font-size: 14px;
         }
-
-        .seam { border-color: #1c1710; }
-
-        .nav-tab {
-            display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
-            color: #8a8270; border-bottom: 2px solid transparent;
-            transition: color 0.12s, border-color 0.12s;
-            text-decoration: none; font-family: 'Raleway', sans-serif;
-        }
-        .nav-tab:hover { color: #a89c82; }
-        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
 
         /* Terminal */
         #terminal {
@@ -126,22 +103,15 @@
             font-size: 11px; padding: 1px 6px; border-radius: 999px;
             background: #1a1610; color: #8a8270; font-family: 'JetBrains Mono', monospace;
         }
+    
     </style>
-</head>
-
-<body>
+{% endblock %}
+{% block body %}
     <div x-data="debugConsole()" class="flex flex-col h-full">
 
         <!-- Top bar -->
         <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
-            <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
-            <nav class="flex items-center h-full">
-                <a href="/" class="nav-tab">Recordings</a>
-                <a href="/stats" class="nav-tab">Stats</a>
-                <a href="/clips" class="nav-tab">Clips</a>
-                <a href="/config" class="nav-tab">Config</a>
-                <a href="/debug" class="nav-tab nav-tab-active">Debug</a>
-            </nav>
+            {{ macros.nav('Debug') }}
             <div class="flex items-center gap-2 ml-auto">
                 <span class="pill" x-show="connected">
                     <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Live
@@ -312,6 +282,4 @@
             };
         }
     </script>
-</body>
-
-</html>
+{% endblock %}

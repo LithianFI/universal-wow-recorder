@@ -1,43 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recordings — WoW Recorder</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-    <script defer src="/static/vendor/alpine.min.js"></script>
+{% extends 'base.html' %}
+{% import '_macros.html' as macros %}
+{% block title %}Recordings{% endblock %}
+{% block head %}
     <script src="/static/vendor/socket.io.min.js"></script>
     <style>
-        [x-cloak] { display: none !important; }
-
         *, *::before, *::after { box-sizing: border-box; }
-
-        html, body { height: 100%; overflow: hidden; }
-        body {
-            background: #0a0806;
-            color: #c8bfa8;
-            font-family: 'Raleway', sans-serif;
-            font-size: 14px;
-        }
-
-        /* ─── Scrollbar ─────────────────────────────────────────── */
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
-
-        /* ─── Topographic seam lines ────────────────────────────── */
-        .seam { border-color: #1c1710; }
-
-        /* ─── Typography ────────────────────────────────────────── */
-        .label-cap {
-            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
-            color: #8a8270; font-family: 'Raleway', sans-serif; font-weight: 600;
-        }
 
         /* ─── Diff badges ───────────────────────────────────────── */
         .diff-badge {
@@ -70,17 +37,7 @@
         .rec-row-active { background: rgba(201,169,97,0.06) !important; }
         .rec-row-active:hover { background: rgba(201,169,97,0.09) !important; }
 
-        /* ─── Filter / input controls ───────────────────────────── */
-        .filter-pill {
-            display: inline-flex; align-items: center;
-            font-size: 11px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #a89c82;
-            cursor: pointer; transition: all 0.12s;
-            font-family: 'Raleway', sans-serif; font-weight: 600; letter-spacing: 0.5px;
-        }
-        .filter-pill:hover { color: #d4ccb6; border-color: #2e271d; }
-        .filter-pill.active { background: rgba(201,169,97,0.12); border-color: rgba(201,169,97,0.5); color: #c9a961; }
-
+        /* ─── Input controls ────────────────────────────────────── */
         .input-bare {
             background: #141109; border: 1px solid #221d15; border-radius: 3px;
             color: #c8bfa8; padding: 5px 9px; font-size: 13px;
@@ -96,8 +53,6 @@
             text-align: center; cursor: pointer; transition: all 0.12s;
             font-family: 'Raleway', sans-serif; font-weight: 500;
         }
-        .quick-btn:hover { background: #1c1710; color: #c8bfa8; border-color: #2e271d; }
-        .quick-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
         /* ─── Analysis panel ────────────────────────────────────── */
         .panel-section {
@@ -158,43 +113,17 @@
             100% { box-shadow: 0 0 0 0 rgba(232,69,69,0); }
         }
         .pulse-rec { animation: pulse-recording 1.4s ease-in-out infinite; }
-
-        /* ─── Section title ─────────────────────────────────────── */
-        .section-title {
-            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase;
-            color: #8a8270; font-family: 'Raleway', sans-serif; font-weight: 600;
-        }
-
-        /* ─── Top nav tabs ───────────────────────────────────────── */
-        .nav-tab {
-            display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
-            color: #8a8270; border-bottom: 2px solid transparent;
-            transition: color 0.12s, border-color 0.12s;
-            text-decoration: none; font-family: 'Raleway', sans-serif;
-        }
-        .nav-tab:hover { color: #a89c82; }
-        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
+    
     </style>
-</head>
-
-<body>
+{% endblock %}
+{% block body %}
 <div x-data="recordingsPage()" class="flex flex-col h-full">
 
     <!-- ══════════════════════════════════════════════════════ -->
     <!-- TOP BAR                                               -->
     <!-- ══════════════════════════════════════════════════════ -->
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
-        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
-
-        <!-- Primary nav -->
-        <nav class="flex items-center h-full">
-            <a href="/" class="nav-tab nav-tab-active">Recordings</a>
-            <a href="/stats" class="nav-tab">Stats</a>
-            <a href="/clips" class="nav-tab">Clips</a>
-            <a href="/config" class="nav-tab">Config</a>
-            <a href="/debug" class="nav-tab">Debug</a>
-        </nav>
+        {{ macros.nav('Recordings') }}
 
         <!-- Inline stat chips -->
         <!-- Library chips are the first to go when the header gets narrow; Stats has them too -->
@@ -545,7 +474,7 @@
                                         <span x-show="rec._meta?.deaths?.length > 0"
                                             class="text-[11px] font-mono"
                                             style="color:#804040;"
-                                            x-text="'💀' + rec._meta.deaths.length"></span>
+                                            x-text="'💀' + (rec._meta?.deaths?.length || 0)"></span>
                                     </div>
                                 </div>
 
@@ -1186,17 +1115,7 @@
     </div><!-- /three-column layout -->
 
 <!-- ── Toast notifications ── -->
-<div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:300px;">
-    <template x-for="t in toasts" :key="t.id">
-        <div class="pointer-events-auto flex items-start gap-2.5 px-3.5 py-2.5 rounded-sm text-[13px] shadow-2xl"
-            :style="t.type === 'error'
-                ? 'background:#180a0a;border:1px solid rgba(192,80,80,0.4);color:#d46060;'
-                : 'background:#0a150a;border:1px solid rgba(100,175,70,0.4);color:#78c352;'">
-            <span x-text="t.type === 'error' ? '✕' : '✓'" class="shrink-0 font-bold mt-px"></span>
-            <span x-text="t.message" class="leading-snug"></span>
-        </div>
-    </template>
-</div>
+{{ macros.toasts() }}
 
 <!-- ── Delete confirmation modal ── -->
 <div x-show="showDeleteModal" x-cloak
@@ -1400,6 +1319,9 @@
             let listMemo = null;            // filteredAndSorted, keyed on its inputs
             let povMemo = { source: null, byName: new Map() };  // povsForRecording per availablePovs
             return {
+                ...formatMixin(),
+                ...toastMixin(),
+                ...videoPlayerMixin('videoPlayer'),
                 recordings: [],
                 directory: null,
                 selectedRecording: null,
@@ -1455,8 +1377,6 @@
                 clipInSecs: null,
                 clipOutSecs: null,
                 clipBusy: false,
-                toasts: [],
-                _toastSeq: 0,
 
                 // POV state
                 availablePovs: {},     // uniqueHash → [cloud pov objects]
@@ -2349,29 +2269,12 @@
                     if (s === 'M+') return 'diff-mplus';
                     return '';
                 },
-                formatFileSize(bytes) {
-                    if (!bytes) return '0 B';
-                    if (bytes < 1024) return bytes + ' B';
-                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-                    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-                    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-                },
                 formatDuration(seconds) {
                     if (!seconds) return '';
                     const s = Math.max(0, Math.floor(seconds));
                     const m = Math.floor(s / 60);
                     const sec = s % 60;
                     return `${m}:${sec.toString().padStart(2, '0')}`;
-                },
-                formatFullDate(timestamp) {
-                    if (!timestamp) return '';
-                    return new Date(timestamp * 1000).toLocaleString();
-                },
-                formatVideoTime(secs) {
-                    if (!secs && secs !== 0) return '0:00';
-                    const m = Math.floor(secs / 60);
-                    const s = Math.floor(secs % 60).toString().padStart(2, '0');
-                    return `${m}:${s}`;
                 },
 
                 // ── Player control wiring ────────────────────────────
@@ -2411,43 +2314,17 @@
                     this.playedPercent = this.duration ? (v.currentTime / this.duration) * 100 : 0;
                     this.syncPovPlayers(v);
                 },
-                togglePlay() {
-                    const v = this.$refs.videoPlayer;
-                    if (!v) return;
-                    v.paused ? v.play() : v.pause();
-                },
-                setSpeed(spd) {
-                    this.speed = spd;
-                    if (this.$refs.videoPlayer) this.$refs.videoPlayer.playbackRate = spd;
+                // videoPlayerMixin hook: POV videos follow the main speed.
+                onSpeedChange(spd) {
                     this.localPovs.forEach((_, i) => {
                         const el = this._povVideoEl(i);
                         if (el) el.playbackRate = spd;
                     });
                 },
-                toggleFullscreen() {
-                    const w = this.$refs.playerWrapper;
-                    if (!w) return;
-                    document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen();
-                },
-                showControls() {
-                    this.controlsVisible = true;
-                    clearTimeout(this._controlsTimer);
-                    if (this.isFullscreen) {
-                        this._controlsTimer = setTimeout(() => { this.controlsVisible = false; }, 2500);
-                    }
-                },
                 handleKey(e) {
-                    if (!this.selectedRecording) return;
-                    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
-                    // Leave browser shortcuts (Ctrl+F, ...) and Space-on-a-button alone.
-                    if (e.ctrlKey || e.metaKey || e.altKey) return;
-                    if (e.key === ' ' && e.target.closest?.('button, a')) return;
-                    if (e.key === ' ' || e.key === 'k') { e.preventDefault(); this.togglePlay(); }
-                    else if (e.key === 'ArrowRight' || e.key === 'l' || e.key === 'L') { e.preventDefault(); if (this.$refs.videoPlayer) this.$refs.videoPlayer.currentTime = Math.min(this.$refs.videoPlayer.duration, this.$refs.videoPlayer.currentTime + 10); }
-                    else if (e.key === 'ArrowLeft'  || e.key === 'j' || e.key === 'J') { e.preventDefault(); if (this.$refs.videoPlayer) this.$refs.videoPlayer.currentTime = Math.max(0, this.$refs.videoPlayer.currentTime - 10); }
-                    else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); this.toggleFullscreen(); }
-                    else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); this.isMuted = !this.isMuted; }
-                    else if (e.key === '[') { e.preventDefault(); this.prevDeath(); }
+                    if (!this.selectedRecording || !this.playerKeyAllowed(e)) return;
+                    if (this.handlePlayerKey(e)) return;
+                    if (e.key === '[') { e.preventDefault(); this.prevDeath(); }
                     else if (e.key === ']') { e.preventDefault(); this.nextDeath(); }
                     else if (e.key === 'i' || e.key === 'I') { e.preventDefault(); this.clipSetIn(); }
                     else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); this.clipSetOut(); }
@@ -2576,14 +2453,7 @@
                         this.clipBusy = false;
                     }
                 },
-                toast(message, type = 'success', duration = 4000) {
-                    const id = ++this._toastSeq;
-                    this.toasts.push({ id, message, type });
-                    setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, duration);
-                },
             };
         }
     </script>
-</body>
-
-</html>
+{% endblock %}

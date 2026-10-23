@@ -1,54 +1,15 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clips — WoW Recorder</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;500;600&family=Fira+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/tailwind.css">
-    <script defer src="/static/vendor/alpine.min.js"></script>
+{% extends 'base.html' %}
+{% import '_macros.html' as macros %}
+{% block title %}Clips{% endblock %}
+{% block head %}
     <script src="/static/vendor/socket.io.min.js"></script>
     <style>
-        [x-cloak] { display: none !important; }
-
-        html, body { height: 100%; overflow: hidden; }
-        body {
-            background: #0a0806;
-            color: #c8bfa8;
-            font-family: 'Raleway', sans-serif;
-            font-size: 14px;
-        }
-
-        .seam { border-color: #1c1710; }
-
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2e271d; border-radius: 3px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3d3529; }
-
-        .card { background: #141109; border: 1px solid #1c1710; border-radius: 4px; padding: 14px 16px; }
-        .pill {
-            display: inline-flex; align-items: center; gap: 6px;
-            font-size: 12px; padding: 3px 9px; border-radius: 999px;
-            background: #141109; border: 1px solid #221d15; color: #a89c82;
-        }
-        .section-title {
-            font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
-            font-family: 'Raleway', sans-serif; font-weight: 600;
-        }
-        .label-cap { font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: #8a8270;
-            font-family: 'Raleway', sans-serif; font-weight: 600; }
-
         .quick-btn {
             font-size: 12px; padding: 4px 10px; border-radius: 3px;
             background: #141109; border: 1px solid #221d15; color: #8a8270;
             cursor: pointer; transition: all 0.12s; white-space: nowrap;
             font-family: 'Raleway', sans-serif; font-weight: 500;
         }
-        .quick-btn:hover { background: #1c1710; color: #c8bfa8; border-color: #2e271d; }
-        .quick-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
         /* Clip card */
         .clip-card {
@@ -69,40 +30,17 @@
             transition: opacity 0.25s;
         }
 
-        /* Toast */
-        @keyframes toast-in {
-            from { opacity: 0; transform: translateY(-6px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-        .toast-enter { animation: toast-in 0.2s ease forwards; }
-
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
         .fade-in { animation: fade-in 0.2s ease forwards; }
-
-        .nav-tab {
-            display: inline-flex; align-items: center; height: 100%;
-            padding: 0 12px; font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
-            color: #8a8270; border-bottom: 2px solid transparent;
-            transition: color 0.12s, border-color 0.12s;
-            text-decoration: none; font-family: 'Raleway', sans-serif;
-        }
-        .nav-tab:hover { color: #a89c82; }
-        .nav-tab-active { color: #c9a961 !important; border-bottom-color: #c9a961; }
+    
     </style>
-</head>
-<body>
+{% endblock %}
+{% block body %}
 <div x-data="clipsPage()" class="flex flex-col h-full">
 
     <!-- Top bar -->
     <header class="shrink-0 flex items-center gap-0 px-3 h-11 border-b seam" style="background:#0d0b08;">
-        <h1 class="font-display text-base text-gold-500 tracking-wide shrink-0 mr-4">WoW Recorder</h1>
-        <nav class="flex items-center h-full">
-            <a href="/" class="nav-tab">Recordings</a>
-            <a href="/stats" class="nav-tab">Stats</a>
-            <a href="/clips" class="nav-tab nav-tab-active">Clips</a>
-            <a href="/config" class="nav-tab">Config</a>
-            <a href="/debug" class="nav-tab">Debug</a>
-        </nav>
+        {{ macros.nav('Clips') }}
     </header>
 
     <!-- Scrollable content -->
@@ -110,17 +48,7 @@
     <div class="px-6 py-5 max-w-5xl mx-auto">
 
     <!-- Toasts -->
-    <div class="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" style="max-width:300px;">
-        <template x-for="t in toasts" :key="t.id">
-            <div class="pointer-events-auto toast-enter flex items-start gap-2 px-3.5 py-2.5 rounded-lg text-sm shadow-xl"
-                :style="t.type === 'error'
-                    ? 'background:#1f0c0c;border:1px solid rgba(224,112,112,0.45);color:#e07070;'
-                    : 'background:#0d1a0d;border:1px solid rgba(112,194,89,0.45);color:#8fd06b;'">
-                <span x-text="t.type === 'error' ? '✕' : '✓'" class="shrink-0 font-bold mt-px"></span>
-                <span x-text="t.message" class="leading-snug"></span>
-            </div>
-        </template>
-    </div>
+    {{ macros.toasts() }}
 
     <!-- Loading -->
     <div x-show="loading" class="text-center py-20 text-parchment-300 text-sm">Loading clips…</div>
@@ -372,7 +300,7 @@
                         <div x-show="seekPreviewTime !== null"
                             class="absolute -top-7 text-[11px] font-mono bg-black/80 text-white px-1.5 py-0.5 rounded-sm pointer-events-none -translate-x-1/2"
                             :style="{ left: seekPreviewPct + '%' }"
-                            x-text="fmtTime(seekPreviewTime)"></div>
+                            x-text="formatVideoTime(seekPreviewTime)"></div>
                     </div>
 
                     <div class="flex items-center gap-3 text-xs">
@@ -388,9 +316,9 @@
 
                         <!-- Time -->
                         <span class="font-mono text-white/70">
-                            <span x-text="fmtTime(currentTime)"></span>
+                            <span x-text="formatVideoTime(currentTime)"></span>
                             <span class="text-white/30"> / </span>
-                            <span x-text="fmtTime(duration)"></span>
+                            <span x-text="formatVideoTime(duration)"></span>
                         </span>
 
                         <!-- Volume -->
@@ -456,6 +384,9 @@
 <script>
 function clipsPage() {
     return {
+        ...formatMixin(),
+        ...toastMixin(),
+        ...videoPlayerMixin('player'),
         loading: true,
         clips: [],
         search: '',
@@ -478,8 +409,6 @@ function clipsPage() {
         _controlsTimer: null,
 
         // Toasts
-        toasts: [],
-        _toastSeq: 0,
 
         // Rename
         renamingClip: null,
@@ -640,11 +569,6 @@ function clipsPage() {
             this.playedPct = this.duration ? (v.currentTime / this.duration) * 100 : 0;
         },
 
-        togglePlay() {
-            const v = this.$refs.player;
-            if (!v) return;
-            v.paused ? v.play() : v.pause();
-        },
 
         seekTo(e) {
             const v = this.$refs.player;
@@ -663,36 +587,11 @@ function clipsPage() {
             this.seekPreviewTime = (pct / 100) * this.duration;
         },
 
-        setSpeed(spd) {
-            this.speed = spd;
-            if (this.$refs.player) this.$refs.player.playbackRate = spd;
-        },
 
-        toggleFullscreen() {
-            const w = this.$refs.playerWrapper;
-            if (!w) return;
-            document.fullscreenElement ? document.exitFullscreen() : w.requestFullscreen();
-        },
 
-        showControls() {
-            this.controlsVisible = true;
-            clearTimeout(this._controlsTimer);
-            if (this.playerIsFullscreen) {
-                this._controlsTimer = setTimeout(() => { this.controlsVisible = false; }, 2500);
-            }
-        },
 
         handleKey(e) {
-            if (!this.playerClip) return;
-            if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
-            // Leave browser shortcuts (Ctrl+F, ...) and Space-on-a-button alone.
-            if (e.ctrlKey || e.metaKey || e.altKey) return;
-            if (e.key === ' ' && e.target.closest?.('button, a')) return;
-            if (e.key === ' ' || e.key === 'k') { e.preventDefault(); this.togglePlay(); }
-            else if (e.key === 'ArrowRight' || e.key === 'l' || e.key === 'L') { e.preventDefault(); if (this.$refs.player) this.$refs.player.currentTime = Math.min(this.$refs.player.duration, this.$refs.player.currentTime + 10); }
-            else if (e.key === 'ArrowLeft'  || e.key === 'j' || e.key === 'J') { e.preventDefault(); if (this.$refs.player) this.$refs.player.currentTime = Math.max(0, this.$refs.player.currentTime - 10); }
-            else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); this.toggleFullscreen(); }
-            else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); this.isMuted = !this.isMuted; }
+            if (this.playerClip && this.playerKeyAllowed(e)) this.handlePlayerKey(e);
         },
 
         // ── Helpers ──────────────────────────────────────────────────
@@ -707,8 +606,8 @@ function clipsPage() {
             const start = clipMatch ? parseInt(clipMatch[1]) : null;
             const end   = clipMatch ? parseInt(clipMatch[2]) : null;
 
-            const range    = (start !== null && end !== null) ? `${this.fmtTime(start)}–${this.fmtTime(end)}` : '';
-            const duration = (start !== null && end !== null) ? this.fmtTime(end - start) : '';
+            const range    = (start !== null && end !== null) ? `${this.formatVideoTime(start)}–${this.formatVideoTime(end)}` : '';
+            const duration = (start !== null && end !== null) ? this.formatVideoTime(end - start) : '';
 
             // Strip the _clip_ suffix and try to parse the encounter name
             const baseStem = clipMatch ? stem.replace(/_clip_\d+-\d+$/, '') : stem;
@@ -720,20 +619,7 @@ function clipsPage() {
             return { encounter, range, duration, start, end };
         },
 
-        fmtTime(secs) {
-            if (secs == null || isNaN(secs)) return '0:00';
-            const m = Math.floor(secs / 60);
-            const s = Math.floor(secs % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
-        },
 
-        formatFileSize(bytes) {
-            if (!bytes) return '0 B';
-            if (bytes < 1024) return bytes + ' B';
-            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-        },
 
         formatDate(ts) {
             if (!ts) return '';
@@ -746,18 +632,8 @@ function clipsPage() {
             return d.toLocaleDateString();
         },
 
-        formatFullDate(ts) {
-            if (!ts) return '';
-            return new Date(ts * 1000).toLocaleString();
-        },
 
-        toast(message, type = 'success', duration = 3500) {
-            const id = ++this._toastSeq;
-            this.toasts.push({ id, message, type });
-            setTimeout(() => { this.toasts = this.toasts.filter(t => t.id !== id); }, duration);
-        },
     };
 }
 </script>
-</body>
-</html>
+{% endblock %}

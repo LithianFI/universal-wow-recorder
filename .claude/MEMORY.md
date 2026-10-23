@@ -23,6 +23,8 @@
 - Sidecar writes go through `sidecar_cache.write_sidecar` (atomic, refreshes the cached listing); config saves are atomic + 0600.
 - Read `get_state().cloud_manager` once into a local per function: `restart_cloud_manager` (one lock, waits for the old workers) can replace it at any time.
 - Clip names: `clip_export.is_clip` / `strip_clip_suffix`, never a local regex.
+- Pages extend `templates/base.html` (head, fonts, Alpine) and use `_macros.html` (nav, toasts). Shared CSS is plain `static/css/common.css` (page `<style>` overrides it); shared JS mixins (formatMixin, toastMixin, videoPlayerMixin) are in `static/js/common.js`, spread into the page's Alpine data.
+- Alpine x-text runs even when its element is hidden by x-show: guard optional data (`?.`, `|| 0`).
 - Frontend assets vendored (static/vendor). Tailwind v4: config lives in styles/tailwind.css (@theme, @source "../templates"); no tailwind.config.js. After adding classes to templates run `npm run build:css` and commit static/css/tailwind.css.
 - `npm run build` = CSS + PyInstaller + electron-builder (AppImage); `npm run build:electron` only repackages.
 
@@ -44,6 +46,5 @@
 - Not done: tray icon.
 - main.py is an unused legacy CLI entry (run.py / Electron is the real app); constants.ERROR_MESSAGES is only used there.
 - Google Drive: an expired refresh token makes startup block in the OAuth browser flow, and refreshed tokens aren't written back. Fix: consent only from an explicit user action.
-- Templates duplicate the nav, shared CSS and player helpers (Phase 7 of the 2026-10-23 review: Jinja base layout + static/js/common.js).
 - Unverified: whether Hunter Feign Death shows up as UNIT_DIED (WCR checks unconsciousOnDeath).
 - M+ upgradeLevel is always 0 (needs WCR's dungeonTimersByMapId table); no challengeModeTimeline.
