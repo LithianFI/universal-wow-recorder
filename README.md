@@ -123,7 +123,7 @@ npm start
 
 ## Running the pre-built installer (Windows)
 
-Download `WoW Raid Recorder Setup 1.0.0.exe` from the [Releases page](https://github.com/LithianFI/universal-wow-recorder/releases) and run it. It's unsigned, so Windows SmartScreen may warn about it — click **More info → Run anyway**.
+Download `WoW Raid Recorder Setup 1.1.0.exe` from the [Releases page](https://github.com/LithianFI/universal-wow-recorder/releases) and run it. It's unsigned, so Windows SmartScreen may warn about it — click **More info → Run anyway**.
 
 On first launch, a `config.ini` is created at `%APPDATA%\wow-raid-recorder\config.ini`. Edit it to set your WoW log directory and OBS connection before starting.
 
@@ -134,8 +134,8 @@ On first launch, a `config.ini` is created at `%APPDATA%\wow-raid-recorder\confi
 A pre-built AppImage requires no Python or Node.js installation — double-click to run, or:
 
 ```bash
-chmod +x "WoW Raid Recorder-1.0.0.AppImage"
-./"WoW Raid Recorder-1.0.0.AppImage"
+chmod +x "WoW Raid Recorder-1.1.0.AppImage"
+./"WoW Raid Recorder-1.1.0.AppImage"
 ```
 
 On first launch, a `config.ini` is created at `~/.config/wow-raid-recorder/config.ini`. Edit it to set your WoW log directory and OBS connection before starting.
@@ -179,7 +179,7 @@ npm run build
 This runs three steps in sequence:
 1. **Tailwind** compiles the classes used in `templates/` into `static/css/tailwind.css`
 2. **PyInstaller** bundles the Python backend into `dist/WoWRaidRecorder/`
-3. **electron-builder** wraps it with Electron into `dist/WoW Raid Recorder-1.0.0.AppImage`
+3. **electron-builder** wraps it with Electron into `dist/WoW Raid Recorder-1.1.0.AppImage`
 
 You can also run the steps individually:
 
